@@ -1,13 +1,80 @@
+"""
+database.py — Database engine, session factory, and table initialisation.
+
+Uses SQLModel (a thin SQLAlchemy wrapper) with SQLite for local development.
+All table definitions are registered automatically when SQLModel models are
+imported before `create_db_and_tables()` is called.
+
+Internal deployment notes:
+    - Replace `DATABASE_URL` in the environment with a production DSN.
+    - For PostgreSQL, remove the `check_same_thread` connect arg (SQLite-only).
+    - Consider adding Alembic for schema migrations before going to production.
+"""
+
 from sqlmodel import SQLModel, create_engine, Session
 from config import settings
 
-engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+
+# ------------------------------------------------------------------
+# Engine
+# ------------------------------------------------------------------
+
+engine = create_engine(
+    settings.database_url,
+    connect_args={
+        # `check_same_thread=False` is required for SQLite only.
+        # It allows the same connection to be used across multiple threads,
+        # which is necessary because FastAPI handles requests concurrently.
+        # Remove this argument when switching to PostgreSQL or MySQL.
+        "check_same_thread": False
+    },
+)
 
 
-def create_db_and_tables():
+# ------------------------------------------------------------------
+# Table Initialisation
+# ------------------------------------------------------------------
+
+def create_db_and_tables() -> None:
+    """
+    Create all database tables defined by SQLModel model classes.
+
+    This function is called once at application startup (see main.py).
+    It is idempotent — calling it on an existing database with existing
+    tables is safe and will not overwrite or drop data.
+
+    For this to work, all SQLModel table models MUST be imported somewhere
+    before this function is called so that SQLModel's metadata registry
+    is populated. The canonical place for those imports is main.py.
+
+    Returns:
+        None
+    """
     SQLModel.metadata.create_all(engine)
 
 
+# ------------------------------------------------------------------
+# Session Dependency
+# ------------------------------------------------------------------
+
 def get_session():
+    """
+    FastAPI dependency that yields a database session per request.
+
+    Usage in a router:
+        from fastapi import Depends
+        from database import get_session
+        from sqlmodel import Session
+
+        @router.get("/items")
+        def list_items(session: Session = Depends(get_session)):
+            ...
+
+    The `with` block ensures the session is always closed after the
+    request completes, even if an exception is raised mid-handler.
+
+    Yields:
+        Session: An active SQLModel/SQLAlchemy session bound to `engine`.
+    """
     with Session(engine) as session:
         yield session

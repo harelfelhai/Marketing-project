@@ -1,23 +1,101 @@
+"""
+main.py — FastAPI application factory and entry point.
+
+This module creates the FastAPI app instance, registers middleware,
+mounts all API routers, and wires up startup/shutdown lifecycle hooks.
+
+Running the server:
+    cd backend/
+    uvicorn main:app --reload --port 8000
+
+The `--reload` flag enables hot-reloading for development. Remove it
+in production and use a process manager (e.g. gunicorn + uvicorn workers).
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from database import create_db_and_tables
 
-app = FastAPI(title="Marketing Automation Pipeline", version="0.1.0")
+# ------------------------------------------------------------------
+# App Instance
+# ------------------------------------------------------------------
+
+app = FastAPI(
+    title="Marketing Automation Pipeline",
+    version="0.1.0",
+    description=(
+        "A generic, secrets-free marketing automation backend. "
+        "All business logic is injected at runtime via environment variables. "
+        "See `dependencies.py` and `config.py` for the injection points."
+    ),
+)
+
+# ------------------------------------------------------------------
+# Middleware
+# ------------------------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
+    # Allow requests from the Vite dev server during development.
+    # In production, replace this with the actual frontend origin(s).
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ------------------------------------------------------------------
+# Lifecycle Hooks
+# ------------------------------------------------------------------
 
 @app.on_event("startup")
-def on_startup():
+def on_startup() -> None:
+    """
+    Runs once when the application process starts.
+
+    Responsibilities:
+        1. Create all database tables (idempotent — safe to run on existing DB).
+
+    IMPORTANT FOR INTERNAL ENGINEERS:
+        If you add new SQLModel table models, import them here (or in a
+        dedicated models/__init__.py) BEFORE `create_db_and_tables()` is
+        called, so SQLModel's metadata registry picks them up.
+
+    Returns:
+        None
+    """
+    # Model imports must happen before create_db_and_tables() so that
+    # SQLModel.metadata is populated with all table definitions.
+    # Add new model imports here as new models are introduced in M2.
+    # e.g.: from models.lead import Lead  # noqa: F401
+
     create_db_and_tables()
 
+# ------------------------------------------------------------------
+# Routers
+# ------------------------------------------------------------------
+# Routers will be registered here as each milestone is completed.
+# Pattern:
+#   from routers import leads, campaigns, schema, dashboard
+#   app.include_router(leads.router,     prefix="/api/leads",     tags=["Leads"])
+#   app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Campaigns"])
+#   app.include_router(schema.router,    prefix="/api/schema",    tags=["Schema"])
+#   app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 
-@app.get("/health")
-def health():
+# ------------------------------------------------------------------
+# Health Check
+# ------------------------------------------------------------------
+
+@app.get("/health", tags=["Health"])
+def health() -> dict:
+    """
+    Liveness probe endpoint.
+
+    Returns a simple JSON object indicating the service is running.
+    Used by load balancers, container orchestrators, and monitoring tools.
+
+    Returns:
+        dict: `{"status": "ok"}`
+    """
     return {"status": "ok"}
