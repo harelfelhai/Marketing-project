@@ -1,43 +1,30 @@
 /**
- * ClientHubPage — placeholder for Phase 2 (real content lands later).
+ * ClientHubPage — landing screen: responsive grid of ClientCard tiles.
+ *
+ * Cards derive their metrics from MockDataContext live state, so any
+ * mutation elsewhere in the app (verdict, ingest, etc.) is reflected
+ * here on the next render.
  */
 
-import { useUI } from '../contexts/UIContext';
-import Badge from '../components/primitives/Badge';
+import { useMockData } from '../contexts/MockDataContext';
+import ClientCard       from '../components/clients/ClientCard';
 
 export default function ClientHubPage() {
-  const { pushToast } = useUI();
+  const { clients } = useMockData();
 
   return (
-    <section className="space-y-4">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Client Hub</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Per-client pipeline overview and quick navigation.
-          </p>
-        </div>
-        <Badge variant="gray">placeholder</Badge>
+    <section className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-900">Client Hub</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Per-client pipeline overview. Click a card to filter the Phone Grid to that client.
+        </p>
       </header>
 
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
-        Client Hub Placeholder — real card grid arrives in a later phase.
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => pushToast({ variant: 'success', message: 'Toast framework wired correctly.' })}
-            className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
-          >
-            Test success toast
-          </button>
-          <button
-            type="button"
-            onClick={() => pushToast({ variant: 'error', message: 'Sample error notification.' })}
-            className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
-          >
-            Test error toast
-          </button>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {clients.map((client) => (
+          <ClientCard key={client.id} client={client} />
+        ))}
       </div>
     </section>
   );
