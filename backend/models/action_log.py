@@ -36,12 +36,14 @@ class ActionLog(SQLModel, table=True):
     A single outbound action executed against a phone number.
 
     Lifecycle of a typical row:
-        1. INSERT with status="pending"  and `requested_at` = now
-        2. UPDATE to status="sent" / "failed" / "delivered"
-                  with `executed_at` set by the dispatcher worker
-        3. Optional later updates as upstream provider webhooks arrive
-           (e.g. delivery receipts) — these mutate `status` and
-           append to `extra_data`.
+        1. INSERT with status="pending"    — queued by IngestionService or UserActionService
+        2. UPDATE to status="sent"         — dispatcher handed off to external provider
+              OR  status="failed"          — dispatcher encountered a hard failure
+              OR  status="scheduled_retry" — dispatcher encountered a soft failure;
+                                            `retry_after` set, `retry_count` incremented
+        3. RetryEngine picks up rows where status="scheduled_retry"
+              AND retry_after <= utcnow(), re-dispatches, increments retry_count
+        4. Terminal states: "sent", "delivered", "failed" (after max retries exceeded)
     """
 
     __tablename__ = "action_log"
@@ -104,13 +106,14 @@ class ActionLog(SQLModel, table=True):
     Lifecycle state of this dispatch attempt.
 
     Example values (illustrative, NOT enforced):
-        - "pending"   : queued, awaiting dispatcher pickup
-        - "sent"      : handed off to the external provider successfully
-        - "failed"    : the dispatcher could not deliver the action
-        - "delivered" : confirmed delivered (e.g. via provider webhook)
+        - "pending"           : queued, awaiting dispatcher pickup
+        - "sent"              : handed off to the external provider successfully
+        - "failed"            : hard failure — max retries exceeded or non-retryable error
+        - "delivered"         : confirmed delivered (e.g. via provider webhook)
+        - "scheduled_retry"   : soft failure; RetryEngine will re-dispatch after `retry_after`
 
-    Indexed because the dispatcher worker frequently polls for all rows
-    in "pending" state.
+    Indexed because the RetryEngine and dispatcher worker both run frequent
+    equality-filter queries against this column.
     """
 
     requested_at: datetime = Field(
@@ -128,6 +131,52 @@ class ActionLog(SQLModel, table=True):
     Populated by the CampaignDispatcher only after the outbound call
     completes (either success or failure). Remains NULL while the row
     is still "pending".
+    """
+
+    # ------------------------------------------------------------------
+    # Retry & Recovery Tracking
+    # ------------------------------------------------------------------
+    # These columns exist as explicit schema fields — not inside extra_data —
+    # so that the RetryEngine can run high-performance queries such as:
+    #   SELECT * FROM action_log
+    #   WHERE status = 'scheduled_retry' AND retry_after <= :now
+    # without any JSON parsing overhead.
+
+    retry_count: int = Field(
+        default=0,
+        nullable=False,
+        index=True,
+        description="Number of re-attempt cycles this action has gone through.",
+    )
+    """
+    Incremented by the RetryEngine each time it picks up and re-dispatches
+    this row.
+
+    Use cases for querying this column:
+        - Find choked actions: retry_count >= N (stuck in repeated failure)
+        - Alerting: rows where retry_count exceeds a business-defined threshold
+        - SLA monitoring: group by action_type, aggregate retry_count
+
+    Indexed to support fast "fetch all actions that have been retried > N times"
+    queries without full-table scans.
+    """
+
+    retry_after: Optional[datetime] = Field(
+        default=None,
+        nullable=True,
+        description="UTC timestamp before which the RetryEngine must NOT re-attempt this action.",
+    )
+    """
+    Enforces a cooldown window between retry attempts (back-off strategy).
+
+    Semantics:
+        - NULL          : no retry is scheduled (row is in a terminal or pending state)
+        - datetime < now: row is eligible for re-dispatch by the RetryEngine
+        - datetime > now: row is in a back-off window; RetryEngine must skip it
+
+    Populated by the dispatcher when transitioning a row to "scheduled_retry".
+    The back-off duration (e.g. exponential, linear) is the responsibility of
+    the concrete ActionHandler or the dispatcher configuration — NOT hardcoded here.
     """
 
     # ------------------------------------------------------------------

@@ -11,29 +11,37 @@ HOW IT WORKS
    (e.g. `INGESTION_MODULE=modules.mock_ingestion`).
 2. `_load_class()` calls `importlib.import_module()` with that path and
    retrieves the class by name from the loaded module.
-3. The FastAPI router receives a fully instantiated object that is guaranteed
-   (by the abstract interface contract) to have the expected method signatures.
+3. The resolved class is instantiated and returned, ready for injection
+   into router handlers via FastAPI's `Depends()` mechanism.
 
 HOW TO INJECT AN INTERNAL MODULE
 ---------------------------------
 1. Create a new Python package accessible on the PYTHONPATH of your deployment.
-2. Inside it, create a class that subclasses the matching abstract interface
-   (e.g. `interfaces.ingestion.BaseIngestionEngine`).
-3. Set the corresponding env var to the dotted path of your new module
-   (e.g. `INGESTION_MODULE=company.proprietary.lead_engine`).
+2. Inside it, define a class with the EXACT name listed in each `get_*`
+   function below, subclassing the matching abstract interface.
+3. Set the corresponding env var to the dotted path of your new module.
 4. Restart the application — no other changes needed.
 
-IMPORTANT: The class name inside the target module MUST match the `class_name`
-argument passed to `_load_class()` in each `get_*` function below.
+EXPECTED CLASS NAMES BY MODULE
+-------------------------------
+    INGESTION_MODULE  → class IngestionRoutingEngine(BaseIngestionRoutingEngine)
+    DISPATCHER_MODULE → class ActionHandler(BaseActionHandler)
+    FEEDBACK_MODULE   → class VerificationStrategy(BaseVerificationStrategy)
 """
 
 import importlib
 
-from config import settings
+from fastapi import Depends
+from sqlmodel import Session
 
-# Interface imports are intentionally deferred to each function body below.
-# This avoids a circular/missing-module error before M3 interfaces are written.
-# Once interfaces/ is populated, you may hoist these to module-level if preferred.
+from config import settings
+from database import get_session
+from interfaces.dispatcher import BaseActionHandler
+from interfaces.ingestion import BaseIngestionRoutingEngine
+from interfaces.verification import BaseVerificationStrategy
+from services.dispatcher import ActionDispatcher
+from services.ingestion import IngestionService
+from services.verification import VerificationEngine, VerificationService
 
 
 def _load_class(module_path: str, class_name: str):
@@ -48,7 +56,7 @@ def _load_class(module_path: str, class_name: str):
         module_path (str): Dotted Python module path (e.g. "modules.mock_ingestion").
                            Must be importable from the application's PYTHONPATH.
         class_name  (str): The name of the class to retrieve from the module
-                           (e.g. "IngestionEngine").
+                           (e.g. "IngestionRoutingEngine").
 
     Returns:
         type: The class object (not an instance). The caller is responsible
@@ -62,76 +70,170 @@ def _load_class(module_path: str, class_name: str):
     return getattr(module, class_name)
 
 
-# ------------------------------------------------------------------
-# Stage 1 — Lead Ingestion
-# ------------------------------------------------------------------
+# ===========================================================================
+# PHASE 1 — INGESTION
+# ===========================================================================
 
-def get_ingestion_engine():
+def get_ingestion_routing_engine() -> BaseIngestionRoutingEngine:
     """
-    FastAPI dependency: resolves and returns the active IngestionEngine.
+    Resolve and return the active IngestionRoutingEngine instance.
 
     The concrete class is determined by the `INGESTION_MODULE` env var.
-    The returned object is guaranteed to implement `BaseIngestionEngine`.
+    The returned object is guaranteed to implement `BaseIngestionRoutingEngine`.
 
-    Used in routers via:
-        engine: BaseIngestionEngine = Depends(get_ingestion_engine)
+    Used via:  Depends(get_ingestion_routing_engine)
+
+    HOOK FOR INTERNAL ENGINEERS:
+        Set INGESTION_MODULE to your proprietary module path.
+        The class inside must be named `IngestionRoutingEngine`
+        and must subclass `interfaces.ingestion.BaseIngestionRoutingEngine`.
 
     Returns:
-        BaseIngestionEngine: A fresh instance of the configured ingestion class.
-            (Return type annotation added in M3 once the interface is defined.)
+        BaseIngestionRoutingEngine: Fresh instance of the configured routing class.
     """
-    # HOOK FOR INTERNAL ENGINEERS:
-    # Point INGESTION_MODULE at your proprietary module. The class inside
-    # must be named `IngestionEngine` and must subclass BaseIngestionEngine.
-    cls = _load_class(settings.ingestion_module, "IngestionEngine")
+    cls = _load_class(settings.ingestion_module, "IngestionRoutingEngine")
     return cls()
 
 
-# ------------------------------------------------------------------
-# Stage 2 — Campaign Dispatch
-# ------------------------------------------------------------------
-
-def get_campaign_dispatcher():
+def get_ingestion_service(
+    session: Session = Depends(get_session),
+    routing_engine: BaseIngestionRoutingEngine = Depends(get_ingestion_routing_engine),
+) -> IngestionService:
     """
-    FastAPI dependency: resolves and returns the active CampaignDispatcher.
+    Compose and return a fully wired `IngestionService` for the current request.
+
+    Injects the DB session, routing engine, and action dispatcher automatically.
+    All three dependencies are resolved independently by FastAPI.
+
+    The `ActionDispatcher` sub-dependency is constructed inline here because
+    it is an internal service (not a pluggable module) that simply needs the
+    current session and the loaded action handler.
+
+    Args:
+        session        (Session):                    Injected per-request DB session.
+        routing_engine (BaseIngestionRoutingEngine): Injected routing engine instance.
+
+    Returns:
+        IngestionService: A fully initialised ingestion service ready to handle
+                          one ingestion request.
+    """
+    dispatcher = get_action_dispatcher(session)
+    return IngestionService(
+        session=session,
+        routing_engine=routing_engine,
+        dispatcher=dispatcher,
+    )
+
+
+# ===========================================================================
+# PHASE 2 — DISPATCHING
+# ===========================================================================
+
+def get_action_handler() -> BaseActionHandler:
+    """
+    Resolve and return the default action handler instance.
 
     The concrete class is determined by the `DISPATCHER_MODULE` env var.
-    The returned object is guaranteed to implement `BaseCampaignDispatcher`.
+    In the open environment, this is a catch-all mock handler. In the internal
+    environment, this may be a default handler, or the registry can be
+    populated with action-type-specific handlers in `get_action_dispatcher()`.
 
-    Used in routers via:
-        dispatcher: BaseCampaignDispatcher = Depends(get_campaign_dispatcher)
+    HOOK FOR INTERNAL ENGINEERS:
+        Set DISPATCHER_MODULE to your proprietary module path.
+        The class inside must be named `ActionHandler`
+        and must subclass `interfaces.dispatcher.BaseActionHandler`.
 
     Returns:
-        BaseCampaignDispatcher: A fresh instance of the configured dispatcher class.
-            (Return type annotation added in M3 once the interface is defined.)
+        BaseActionHandler: Fresh instance of the configured handler class.
     """
-    # HOOK FOR INTERNAL ENGINEERS:
-    # Point DISPATCHER_MODULE at your proprietary module. The class inside
-    # must be named `CampaignDispatcher` and must subclass BaseCampaignDispatcher.
-    cls = _load_class(settings.dispatcher_module, "CampaignDispatcher")
+    cls = _load_class(settings.dispatcher_module, "ActionHandler")
     return cls()
 
 
-# ------------------------------------------------------------------
-# Stage 3 — Feedback / Conversion Checking
-# ------------------------------------------------------------------
-
-def get_feedback_checker():
+def get_action_dispatcher(
+    session: Session = Depends(get_session),
+) -> ActionDispatcher:
     """
-    FastAPI dependency: resolves and returns the active FeedbackChecker.
+    Compose and return a fully wired `ActionDispatcher` for the current request.
+
+    The handler registry is constructed here. In the open environment, only
+    the default catch-all handler is registered. In the internal environment,
+    add action-type-specific handlers to the `handlers` dict:
+
+    HOOK FOR INTERNAL ENGINEERS:
+        Extend this function to build a rich handler registry:
+            handlers = {
+                "advertisement_type_a": MyAdHandler(),
+                "followup_sms":         MySmsHandler(),
+                "retention_call":       MyCallHandler(),
+            }
+        The `default_handler` serves as a fallback for unregistered types.
+        Set it to None to enforce strict action-type registration.
+
+    Args:
+        session (Session): Injected per-request DB session.
+
+    Returns:
+        ActionDispatcher: Fully wired dispatcher with handler registry.
+    """
+    default_handler = get_action_handler()
+
+    # INTERNAL HOOK: Replace {} with a populated handler registry.
+    # Each key is an action_type token; each value is a BaseActionHandler instance.
+    handlers: dict[str, BaseActionHandler] = {}
+
+    return ActionDispatcher(
+        session=session,
+        handlers=handlers,
+        default_handler=default_handler,
+        retry_backoff_seconds=settings.ingestion_interval_seconds,
+    )
+
+
+# ===========================================================================
+# PHASE 3 — VERIFICATION
+# ===========================================================================
+
+def get_verification_strategy() -> BaseVerificationStrategy:
+    """
+    Resolve and return the active VerificationStrategy instance.
 
     The concrete class is determined by the `FEEDBACK_MODULE` env var.
-    The returned object is guaranteed to implement `BaseFeedbackChecker`.
+    The returned object is guaranteed to implement `BaseVerificationStrategy`.
 
-    Used in the APScheduler worker (workers/scheduler.py) — NOT as a
-    request-scoped dependency, but called directly inside the scheduled job.
+    HOOK FOR INTERNAL ENGINEERS:
+        Set FEEDBACK_MODULE to your proprietary module path.
+        The class inside must be named `VerificationStrategy`
+        and must subclass `interfaces.verification.BaseVerificationStrategy`.
 
     Returns:
-        BaseFeedbackChecker: A fresh instance of the configured feedback class.
-            (Return type annotation added in M3 once the interface is defined.)
+        BaseVerificationStrategy: Fresh instance of the configured strategy class.
     """
-    # HOOK FOR INTERNAL ENGINEERS:
-    # Point FEEDBACK_MODULE at your proprietary module. The class inside
-    # must be named `FeedbackChecker` and must subclass BaseFeedbackChecker.
-    cls = _load_class(settings.feedback_module, "FeedbackChecker")
+    cls = _load_class(settings.feedback_module, "VerificationStrategy")
     return cls()
+
+
+def get_verification_engine(
+    session: Session = Depends(get_session),
+    strategy: BaseVerificationStrategy = Depends(get_verification_strategy),
+) -> VerificationEngine:
+    """
+    Compose and return a fully wired `VerificationEngine`.
+
+    Used by the APScheduler background job in `workers/scheduler.py`
+    (called directly, not via FastAPI Depends).
+
+    Args:
+        session  (Session):                   Injected per-request DB session.
+        strategy (BaseVerificationStrategy):  Injected verification strategy.
+
+    Returns:
+        VerificationEngine: Fully wired engine ready to run `process_eligible_numbers()`.
+    """
+    verification_service = VerificationService(session=session)
+    return VerificationEngine(
+        session=session,
+        strategy=strategy,
+        verification_service=verification_service,
+        verification_window_days=settings.feedback_interval_seconds // 86400 or 7,
+    )
