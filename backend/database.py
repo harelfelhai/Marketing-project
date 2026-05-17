@@ -11,7 +11,9 @@ Internal deployment notes:
     - Consider adding Alembic for schema migrations before going to production.
 """
 
+from sqlalchemy import event
 from sqlmodel import SQLModel, create_engine, Session
+
 from config import settings
 
 
@@ -29,6 +31,30 @@ engine = create_engine(
         "check_same_thread": False
     },
 )
+
+
+# ------------------------------------------------------------------
+# SQLite Foreign-Key Enforcement
+# ------------------------------------------------------------------
+# SQLite ships with FK enforcement DISABLED by default. Without this listener,
+# INSERTing a row with a dangling FK silently succeeds — meaning our tests on
+# SQLite would not catch FK violations that Postgres would catch in production.
+# This `connect` listener turns the PRAGMA ON for every new SQLite connection.
+# No-op for non-SQLite engines.
+
+@event.listens_for(engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+    """
+    Enable `PRAGMA foreign_keys=ON` for every new SQLite connection.
+
+    Args:
+        dbapi_connection: The raw DBAPI connection just opened by SQLAlchemy.
+        _connection_record: SQLAlchemy connection pool record (unused).
+    """
+    if "sqlite" in str(engine.url):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 # ------------------------------------------------------------------

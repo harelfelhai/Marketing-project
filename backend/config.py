@@ -86,6 +86,40 @@ class Settings(BaseSettings):
     feedback_interval_seconds: int = 120
     """How often (in seconds) the feedback/conversion-check job runs."""
 
+    # ------------------------------------------------------------------
+    # Phase 2 — Retry Policy
+    # ------------------------------------------------------------------
+
+    max_retry_count: int = 5
+    """
+    Upper bound on the number of automated retry attempts per ActionLog row.
+
+    Once `ActionLog.retry_count >= max_retry_count`, the next retryable
+    failure transitions the row to terminal `status="failed"` instead of
+    scheduling yet another retry. Prevents infinite retry loops against
+    a broken external provider.
+    """
+
+    retry_backoff_seconds: int = 300
+    """
+    Default seconds added to `now()` when scheduling a retry.
+    Used by ActionDispatcher to set `ActionLog.retry_after`.
+    Internal deployments may replace this with an exponential back-off
+    by overriding `ActionDispatcher` and computing per-attempt durations.
+    """
+
+    # ------------------------------------------------------------------
+    # Phase 3 — Verification Eligibility Window
+    # ------------------------------------------------------------------
+
+    verification_window_days: int = 7
+    """
+    Number of days that must elapse after the most recent "sent" ActionLog
+    before a `pending` PhoneNumber becomes eligible for the automated
+    VerificationEngine. Independent of `feedback_interval_seconds` (which
+    governs how often the engine *runs*, not its eligibility window).
+    """
+
 
 # Module-level singleton — import this object everywhere settings are needed.
 # Do NOT instantiate Settings() again elsewhere; always use this shared instance.

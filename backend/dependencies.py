@@ -186,7 +186,8 @@ def get_action_dispatcher(
         session=session,
         handlers=handlers,
         default_handler=default_handler,
-        retry_backoff_seconds=settings.ingestion_interval_seconds,
+        max_retry_count=settings.max_retry_count,
+        retry_backoff_seconds=settings.retry_backoff_seconds,
     )
 
 
@@ -235,5 +236,5 @@ def get_verification_engine(
         session=session,
         strategy=strategy,
         verification_service=verification_service,
-        verification_window_days=settings.feedback_interval_seconds // 86400 or 7,
+        verification_window_days=settings.verification_window_days,
     )

@@ -34,7 +34,8 @@ To mount your proprietary verification strategy:
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple
+
+from schemas.verification import VerificationVerdict
 
 
 class BaseVerificationStrategy(ABC):
@@ -53,9 +54,7 @@ class BaseVerificationStrategy(ABC):
     """
 
     @abstractmethod
-    def evaluate_quality(
-        self, phone_id: int
-    ) -> Tuple[str, str, dict]:
+    def evaluate_quality(self, phone_id: int) -> VerificationVerdict:
         """
         Analyse a phone number's history and return a quality verdict.
 
@@ -65,11 +64,11 @@ class BaseVerificationStrategy(ABC):
             1. Query `ActionLog` for all rows with `phone_id == phone_id`.
             2. Apply your proprietary scoring model, pattern analysis, or
                external validation (e.g. HLR lookup, carrier check).
-            3. Return the (status, reason, metadata) tuple described below.
+            3. Return a `VerificationVerdict` (see `schemas/verification.py`).
 
         This method must be idempotent — calling it multiple times for the
-        same `phone_id` must return the same result given the same underlying
-        data. This allows safe retries by the VerificationEngine.
+        same `phone_id` must return an equivalent result given the same
+        underlying data. This allows safe retries by the VerificationEngine.
 
         Args:
             phone_id (int): The primary key of the `PhoneNumber` row to
@@ -77,42 +76,25 @@ class BaseVerificationStrategy(ABC):
                             and any other relevant DB state.
 
         Returns:
-            Tuple[str, str, dict]: A three-element tuple:
-
-                [0] verification_status (str):
-                    The quality verdict. Will be written to
-                    `PhoneNumber.verification_status`.
-                    Example values (illustrative, NOT enforced):
-                        - "verified_good"  : number is actionable
-                        - "verified_bad"   : number is non-actionable / invalid
-
-                [1] verification_reason (str):
-                    Natural-language explanation of the verdict.
-                    Will be written to `PhoneNumber.verification_reason`.
-                    Should be detailed enough for a human reviewer to
-                    understand why the number was classified this way.
-                    Example: "3 consecutive 'failed' actions in 7 days"
-
-                [2] metadata (dict):
-                    Arbitrary structured metadata produced during evaluation.
-                    Will be merged into `PhoneNumber.extra_data`.
-                    Recommended keys (illustrative, NOT enforced):
-                        {
-                            "evaluated_action_count": int,
-                            "last_action_status":     str,
-                            "scoring_breakdown":      dict,
-                            "external_lookup_result": dict,
-                        }
+            VerificationVerdict: A typed verdict object with three fields:
+                - status   (str):  Written to PhoneNumber.verification_status
+                                    (e.g. "verified_good" / "verified_bad").
+                - reason   (str):  Written to PhoneNumber.verification_reason.
+                - metadata (dict): Merged into PhoneNumber.extra_data.
 
         Raises:
             Exception: Any unhandled exception propagates to the
-                       `VerificationEngine`, which should log it and
-                       continue processing the rest of the eligible batch
+                       VerificationEngine, which logs it and continues
+                       processing the rest of the eligible batch
                        (fail-safe, not fail-fast).
 
         Examples:
             # Minimal mock — always returns "verified_good":
-            def evaluate_quality(self, phone_id: int) -> Tuple[str, str, dict]:
-                return ("verified_good", "mock evaluation passed", {})
+            def evaluate_quality(self, phone_id: int) -> VerificationVerdict:
+                return VerificationVerdict(
+                    status="verified_good",
+                    reason="mock evaluation passed",
+                    metadata={},
+                )
         """
         pass

@@ -18,7 +18,7 @@ classes here define the API boundary. Keeping them separate means:
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IngestionPayload(BaseModel):
@@ -159,8 +159,8 @@ class IngestionPayload(BaseModel):
     as `entity_extra` — the service layer must treat it as opaque.
     """
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "phone_number": "+14155550002",
                 "entity_type": "family",
@@ -171,3 +171,4 @@ class IngestionPayload(BaseModel):
                 "phone_extra": None,
             }
         }
+    )

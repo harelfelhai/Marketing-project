@@ -172,14 +172,28 @@ class IngestionService:
 
         # ----------------------------------------------------------------
         # c) ROUTING DECISION + OPTIONAL IMMEDIATE DISPATCH
-        # The routing engine is the ONLY place where the question
-        # "does this number deserve an immediate action?" is answered.
+        #
+        # Transaction boundary semantics (deliberate, documented contract):
+        #
+        #   - The Entity + PhoneNumber inserts above are AUTHORITATIVE and
+        #     already committed. If the dispatch step below fails, the
+        #     ingestion is still considered successful — the caller receives
+        #     the new PhoneNumber and the action can be recovered later via
+        #     ActionDataTriggerService or a manual operator re-trigger.
+        #
+        #   - This is a deliberate "at-least-once" model: ingestion is
+        #     authoritative; dispatch is best-effort. We choose this over
+        #     full atomicity because Phase 1 must never lose a circle-of-trust
+        #     record due to a transient Phase 2 provider failure.
+        #
+        #   - Hard dispatcher errors (PhoneNumberNotFoundError, ValueError for
+        #     missing handler) still propagate so the caller can surface them.
+        #     The PhoneNumber row remains in the DB — clean, queryable, ready
+        #     for re-trigger.
         # ----------------------------------------------------------------
         action_token = self.routing_engine.determine_immediate_action(new_phone)
 
         if action_token is not None:
-            # Fire-and-record: the dispatcher creates an ActionLog row
-            # and attempts the outbound action synchronously.
             self.dispatcher.dispatch(
                 phone_id=new_phone.id,
                 action_type=action_token,

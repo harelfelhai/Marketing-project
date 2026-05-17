@@ -4,25 +4,26 @@ services/dispatcher.py — Phase 2 orchestration: Action Dispatch & Recovery.
 This module contains four classes covering the full Phase 2 lifecycle:
 
     ActionDispatcher          — core dispatch orchestrator (used by all triggers)
-    UserActionService         — handles explicit operator-triggered actions from the UI
+    UserActionService         — operator-triggered actions from the UI
     RetryEngine               — background worker: re-dispatches scheduled retries
     ActionDataTriggerService  — event-driven recovery: re-dispatches on data fixes
 
 DESIGN NOTES
 ------------
 - `ActionDispatcher` is the ONLY class that writes to `ActionLog`. All other
-  classes in this module delegate to it. This keeps status transition logic
-  in one place.
-- Handler selection uses a registry dict (`Dict[str, BaseActionHandler]`) keyed
-  by action_type token. In the open environment, a `default_handler` catches all
-  tokens. In the internal environment, dedicated handlers are registered per type.
-- `RetryEngine` and `ActionDataTriggerService` are designed to be called from
-  the APScheduler background job in `workers/scheduler.py`.
+  classes delegate to it. Status transition logic lives in one place.
+- One `ActionLog` row = one logical action. Retries MUTATE the same row;
+  they do not spawn new rows. `retry_count` tracks attempts on THAT row.
+- `RetryEngine` uses an atomic UPDATE … WHERE status='scheduled_retry'
+  to claim rows, eliminating the TOCTOU window between SELECT and flip.
+- `ActionDispatcher.max_retry_count` caps the retry loop; once exceeded,
+  the next retryable failure transitions the row to terminal `failed`.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from exceptions import ActionExecutionError, PhoneNumberNotFoundError
@@ -35,23 +36,18 @@ class ActionDispatcher:
     """
     Central orchestrator for all Phase 2 outbound actions.
 
-    Responsibilities:
-        1. Create a "pending" `ActionLog` row before attempting execution.
-        2. Resolve the correct `BaseActionHandler` for the given action_type.
-        3. Call `handler.execute()` and translate the outcome into a
-           status transition on the ActionLog row.
-        4. Handle retryable vs. hard failures uniformly.
+    Two public entry points:
+        - `dispatch(phone_id, action_type)`:
+            Creates a NEW ActionLog row in status="pending", then executes.
+            Called by IngestionService (immediate-action path) and
+            UserActionService (operator-triggered path).
+        - `execute_pending(log)`:
+            Re-executes the handler against an EXISTING ActionLog row.
+            Called by RetryEngine for scheduled retries — preserves the
+            row's `retry_count` history.
 
-    This class does NOT decide WHEN to dispatch or WHICH action to dispatch.
-    Those decisions live in `IngestionRoutingEngine`, `UserActionService`,
-    and `RetryEngine`. This class only manages HOW an action is executed
-    and recorded.
-
-    Handler Registry:
-        `handlers` maps action_type token strings to handler instances.
-        `default_handler` is used as a fallback for unregistered tokens.
-        In the open/mock environment, `default_handler` catches all tokens.
-        In the internal environment, register specific handlers per type.
+    Both ultimately call the private `_run_handler()` which contains the
+    single source of truth for status transitions.
     """
 
     def __init__(
@@ -59,11 +55,10 @@ class ActionDispatcher:
         session: Session,
         handlers: Dict[str, BaseActionHandler],
         default_handler: Optional[BaseActionHandler] = None,
+        max_retry_count: int = 5,
         retry_backoff_seconds: int = 300,
     ) -> None:
         """
-        Initialise the dispatcher.
-
         Args:
             session               (Session):                    Active DB session.
             handlers              (Dict[str, BaseActionHandler]): Registry mapping
@@ -71,66 +66,54 @@ class ActionDispatcher:
                                                                   concrete handler instances.
             default_handler       (Optional[BaseActionHandler]): Fallback handler used when
                                                                   `action_type` is not in
-                                                                  `handlers`. In the mock
-                                                                  environment this catches all
-                                                                  tokens. In production, None
-                                                                  means unregistered types fail.
-            retry_backoff_seconds (int):                         Seconds to set `retry_after`
-                                                                  ahead of now on soft failures.
-                                                                  Default: 300 (5 minutes).
-
-        INTERNAL HOOK:
-            To add a proprietary handler for a specific action type, register
-            it in the `handlers` dict passed at construction time:
-                handlers = {
-                    "advertisement_type_a": MyAdHandler(),
-                    "followup_sms":         MySmsHandler(),
-                }
+                                                                  `handlers`. Open environment
+                                                                  uses this catch-all; in
+                                                                  production set to None to
+                                                                  enforce strict registration.
+            max_retry_count       (int):                         Upper bound on `retry_count`
+                                                                  before terminal "failed".
+                                                                  Default: 5.
+            retry_backoff_seconds (int):                         Seconds added to `now()`
+                                                                  when setting `retry_after`
+                                                                  on a soft failure.
+                                                                  Default: 300 (5 min).
         """
         self.session = session
         self.handlers = handlers
         self.default_handler = default_handler
+        self.max_retry_count = max_retry_count
         self.retry_backoff_seconds = retry_backoff_seconds
+
+    # ------------------------------------------------------------------
+    # Public entry points
+    # ------------------------------------------------------------------
 
     def dispatch(self, phone_id: int, action_type: str) -> ActionLog:
         """
-        Execute an outbound action and record the result in `ActionLog`.
+        Create a new ActionLog row and execute the handler against it.
 
-        Full lifecycle:
-            1. Verify the phone_id exists — raise PhoneNumberNotFoundError if not.
-            2. INSERT an ActionLog row with status="pending".
-            3. Resolve the handler: `handlers[action_type]` or `default_handler`.
-               Raise ValueError if neither is available.
-            4. Call `handler.execute(phone_number, extra_data={})`.
-            5a. On success: update status="sent", set `executed_at`, merge metadata
-                            into `ActionLog.extra_data`.
-            5b. On ActionExecutionError (retryable=True): update status="scheduled_retry",
-                            increment retry_count, set retry_after.
-            5c. On ActionExecutionError (retryable=False): update status="failed",
-                            record error detail in extra_data.
+        Used for FRESH dispatches (Phase 1 immediate routing or operator
+        manual trigger). For retries against an existing row, use
+        `execute_pending()` instead.
 
         Args:
             phone_id    (int): PK of the target `PhoneNumber` row.
             action_type (str): Token identifying which action to execute.
-                               Must match a key in `self.handlers` or have a
-                               `default_handler` registered.
 
         Returns:
-            ActionLog: The committed ActionLog row reflecting the final status
-                       of this dispatch attempt.
+            ActionLog: The committed row reflecting the final status of
+                       this dispatch attempt.
 
         Raises:
-            PhoneNumberNotFoundError: If `phone_id` does not exist in the DB.
-            ValueError:               If no handler is registered for `action_type`
-                                       and no `default_handler` is set.
+            PhoneNumberNotFoundError: If `phone_id` does not exist.
+            ValueError:               If no handler is registered for
+                                       `action_type` and no `default_handler`
+                                       is configured.
         """
-        # Step 1 — Verify phone exists.
         phone = self.session.get(PhoneNumber, phone_id)
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
-        # Step 2 — Create the pending ActionLog row before attempting execution.
-        # This ensures an audit trail exists even if the process crashes mid-dispatch.
         log = ActionLog(
             phone_id=phone_id,
             action_type=action_type,
@@ -140,49 +123,111 @@ class ActionDispatcher:
         self.session.add(log)
         self.session.flush()  # assigns log.id without committing
 
-        # Step 3 — Resolve handler. Named registry takes priority; default is fallback.
-        handler = self.handlers.get(action_type, self.default_handler)
+        return self.execute_pending(log)
+
+    def execute_pending(self, log: ActionLog) -> ActionLog:
+        """
+        Execute the handler against an EXISTING ActionLog row.
+
+        Caller is responsible for ensuring `log` is in an appropriate
+        pre-execution state (typically "pending" or "retrying"). This
+        method does NOT transition the row INTO "pending" — it transitions
+        OUT of whatever the current state is, into the final state
+        determined by the handler outcome.
+
+        Args:
+            log (ActionLog): The row to execute. Must already exist in the
+                              session and have a valid `phone_id`.
+
+        Returns:
+            ActionLog: The same row, committed with the new status.
+
+        Raises:
+            PhoneNumberNotFoundError: If `log.phone_id` doesn't resolve.
+            ValueError:               If no handler is available for
+                                       `log.action_type`.
+        """
+        phone = self.session.get(PhoneNumber, log.phone_id)
+        if phone is None:
+            raise PhoneNumberNotFoundError(identifier=log.phone_id)
+
+        return self._run_handler(log, phone)
+
+    # ------------------------------------------------------------------
+    # Internal: the single source of truth for status transitions
+    # ------------------------------------------------------------------
+
+    def _run_handler(self, log: ActionLog, phone: PhoneNumber) -> ActionLog:
+        """
+        Invoke the resolved handler and transition `log` to its final state.
+
+        Status transition rules (in order of evaluation):
+            1. No handler available           → status="failed",  raises ValueError
+            2. handler.execute() returns      → status="sent"
+            3. ActionExecutionError(retryable=False)
+                                              → status="failed"
+            4. ActionExecutionError(retryable=True)
+                a. retry_count < max_retry_count  → status="scheduled_retry",
+                                                    retry_count += 1,
+                                                    retry_after = now + backoff
+                b. retry_count >= max_retry_count → status="failed" (ceiling hit)
+
+        Args:
+            log   (ActionLog):  The row being executed (already in session).
+            phone (PhoneNumber): The associated phone (already fetched).
+
+        Returns:
+            ActionLog: `log` after commit + refresh.
+
+        Raises:
+            ValueError: If no handler is registered and no default exists.
+        """
+        handler = self.handlers.get(log.action_type, self.default_handler)
+        now = datetime.utcnow()
+
         if handler is None:
-            # Hard-fail: no handler means we cannot proceed.
-            # Mark the row as failed immediately rather than leaving it "pending".
+            # No handler → terminal failure. Persist the failure state first,
+            # then raise so the caller knows the dispatch did not execute.
             log.status = "failed"
-            log.executed_at = datetime.utcnow()
-            log.extra_data = {"error": f"No handler registered for action_type='{action_type}'"}
+            log.executed_at = now
+            log.extra_data = {
+                "error": f"No handler registered for action_type='{log.action_type}'",
+            }
             self.session.add(log)
             self.session.commit()
             self.session.refresh(log)
             raise ValueError(
-                f"No handler registered for action_type='{action_type}' "
+                f"No handler registered for action_type='{log.action_type}' "
                 "and no default_handler is configured."
             )
 
-        # Step 4 — Execute the action.
         try:
             result_metadata = handler.execute(
                 phone_number=phone.phone_number,
                 extra_data=log.extra_data or {},
             )
-            # Step 5a — Success path.
+            # Success path
             log.status = "sent"
-            log.executed_at = datetime.utcnow()
+            log.executed_at = now
             log.extra_data = result_metadata
 
         except ActionExecutionError as exc:
-            log.executed_at = datetime.utcnow()
-            if exc.retryable:
-                # Step 5b — Soft failure: schedule a retry.
+            log.executed_at = now
+            current_retry = log.retry_count or 0
+
+            if exc.retryable and current_retry < self.max_retry_count:
+                # Soft failure within budget → schedule retry
                 log.status = "scheduled_retry"
-                log.retry_count = (log.retry_count or 0) + 1
-                log.retry_after = datetime.utcnow() + timedelta(
-                    seconds=self.retry_backoff_seconds
-                )
+                log.retry_count = current_retry + 1
+                log.retry_after = now + timedelta(seconds=self.retry_backoff_seconds)
             else:
-                # Step 5c — Hard failure: terminal state.
+                # Either non-retryable, OR retryable but ceiling hit → terminal
                 log.status = "failed"
 
             log.extra_data = {
                 "error_detail": exc.detail,
                 "retryable": exc.retryable,
+                "retry_count_at_failure": current_retry,
             }
 
         self.session.add(log)
@@ -193,16 +238,21 @@ class ActionDispatcher:
 
 class UserActionService:
     """
-    Handles explicit operator-triggered action requests from the UI.
+    Handles operator-triggered action requests from the UI.
 
-    This service is the bridge between a human operator's click in the
-    Review Queue (or any UI) and the `ActionDispatcher`. It adds operator
-    attribution to the dispatch by recording the `operator_id` in `extra_data`
-    before delegating.
+    Records the `operator_id` IN THE SAME COMMIT as the ActionLog row's
+    final state, so there is no window where a successful action exists
+    without operator attribution.
 
-    Operators trigger actions at a LATER lifecycle stage (after initial
-    ingestion), when they manually review a phone number and decide to
-    initiate or reinitiate an outbound action.
+    Implementation strategy: pre-stamp `operator_id` into the row's
+    `extra_data` BEFORE the dispatcher runs the handler. The dispatcher
+    will overwrite `extra_data` with the handler's return value on success
+    — so we re-apply the operator_id after, but the commit is the SAME
+    transaction since `execute_pending()` does the final commit.
+
+    Equivalent without race window:
+        1. Create the ActionLog manually with status="pending" + operator_id baked in.
+        2. Pass it to `dispatcher.execute_pending()` which commits exactly once.
     """
 
     def __init__(
@@ -225,68 +275,74 @@ class UserActionService:
         operator_id: str,
     ) -> ActionLog:
         """
-        Queue and execute a manual action requested by a human operator.
+        Queue and execute an operator-triggered action with attribution.
 
-        Adds `operator_id` attribution to the ActionLog via `extra_data`
-        before calling `dispatcher.dispatch()`.
+        Creates the ActionLog row directly (with operator_id baked into
+        `extra_data`), then delegates to `dispatcher.execute_pending()`.
+        This ensures the operator_id is persisted atomically with the
+        row's final status, regardless of how the dispatch resolves.
 
         INTERNAL HOOK:
-            If operator-level permissions or rate limiting need to be enforced
-            (e.g. an operator can only trigger X actions per day), add those
-            checks here before calling `self.dispatcher.dispatch()`. This service
-            is the right layer for that logic — not the router, not the dispatcher.
+            Add permission checks, quota limits, or approval-workflow
+            integrations here BEFORE creating the log row. This service
+            is the right layer for operator-policy enforcement.
 
         Args:
             phone_id    (int): PK of the target PhoneNumber row.
-            action_type (str): Token of the action to execute.
-            operator_id (str): Identifier of the human operator. May be a username,
-                               employee ID, or any opaque string the UI provides.
-                               Stored in ActionLog.extra_data for audit purposes.
+            action_type (str): Action token.
+            operator_id (str): Operator identifier (username, employee ID, etc.).
+                               Stored in ActionLog.extra_data for audit.
 
         Returns:
-            ActionLog: The committed ActionLog row from the dispatcher.
+            ActionLog: Committed row with `extra_data` containing operator_id.
 
         Raises:
-            PhoneNumberNotFoundError: Propagated from ActionDispatcher.
-            ValueError:               Propagated from ActionDispatcher if no handler
-                                       is registered.
+            PhoneNumberNotFoundError: Propagated from dispatcher.
+            ValueError:               Propagated from dispatcher.
         """
-        # Inject operator attribution into the dispatcher's initial extra_data.
-        # The dispatcher will merge result metadata on top of this.
-        # INTERNAL HOOK: Add permission checks, quota checks, or approval workflow
-        # hooks here if required by the internal deployment's security model.
-        log = self.dispatcher.dispatch(
+        phone = self.session.get(PhoneNumber, phone_id)
+        if phone is None:
+            raise PhoneNumberNotFoundError(identifier=phone_id)
+
+        # Pre-stamp the operator_id so it cannot be lost between commits.
+        # The handler's return metadata will be merged on top by the dispatcher.
+        log = ActionLog(
             phone_id=phone_id,
             action_type=action_type,
+            status="pending",
+            requested_at=datetime.utcnow(),
+            extra_data={"triggered_by_operator": operator_id},
         )
-
-        # Record operator attribution on the committed row.
-        existing_extra = log.extra_data or {}
-        existing_extra["triggered_by_operator"] = operator_id
-        log.extra_data = existing_extra
         self.session.add(log)
+        self.session.flush()
+
+        # Run handler. After this returns, `log.extra_data` is the handler's
+        # output (success) or the error payload (failure). Either way, we
+        # re-attach the operator_id and commit once more.
+        completed = self.dispatcher.execute_pending(log)
+        merged = dict(completed.extra_data or {})
+        merged["triggered_by_operator"] = operator_id
+        completed.extra_data = merged
+        self.session.add(completed)
         self.session.commit()
-        self.session.refresh(log)
-        return log
+        self.session.refresh(completed)
+        return completed
 
 
 class RetryEngine:
     """
-    Background worker that re-dispatches scheduled retry actions.
+    Background worker that re-dispatches scheduled-retry actions.
 
-    Designed to be called on a periodic APScheduler tick (e.g. every 60s).
-    Each call finds all ActionLog rows where:
-        - status == "scheduled_retry"
-        - retry_after <= utcnow()
-    ...and re-dispatches them via `ActionDispatcher.dispatch()`.
-
-    IMPORTANT: This engine does NOT re-dispatch by updating the EXISTING
-    ActionLog row. It creates a NEW ActionLog row for each retry attempt,
-    preserving the full retry history as a timeline.
-
-    Wait — looking at the design again: `ActionDispatcher.dispatch()` always
-    creates a NEW row. So calling dispatch() here will naturally create new rows.
-    The original "scheduled_retry" row remains as historical record.
+    Called periodically by the APScheduler job in `workers/scheduler.py`.
+    Each tick:
+        1. Selects ActionLog rows where status="scheduled_retry"
+           AND retry_after <= utcnow().
+        2. For each row, atomically claims it via:
+              UPDATE action_log SET status='retrying'
+              WHERE id=? AND status='scheduled_retry'
+           Skips the row if rowcount != 1 (another worker claimed it).
+        3. Re-executes via `ActionDispatcher.execute_pending(row)` —
+           the SAME row is mutated, preserving its `retry_count` history.
     """
 
     def __init__(
@@ -304,62 +360,67 @@ class RetryEngine:
 
     def process_scheduled_retries(self) -> int:
         """
-        Scan for eligible retries and re-dispatch them.
+        Scan for eligible retries and re-execute them.
 
-        Query:  SELECT * FROM action_log
-                WHERE status = 'scheduled_retry'
-                  AND retry_after <= :now
+        ATOMIC CLAIM
+        ------------
+        Each row is claimed via an UPDATE … WHERE status='scheduled_retry'
+        and a `rowcount == 1` check. This closes the TOCTOU window where
+        two concurrent workers could see the same row in the initial
+        SELECT and both attempt to dispatch it.
 
-        For each eligible row:
-            1. Mark the row as "processing" to prevent double-dispatch
-               (important if multiple workers run concurrently).
-            2. Call `dispatcher.dispatch(phone_id, action_type)` to
-               create a new ActionLog row for this retry attempt.
-            3. The dispatcher handles success/failure/re-retry transitions
-               on the NEW row automatically.
-
-        INTERNAL HOOK:
-            If your deployment runs multiple worker instances, you may need
-            to add a SELECT FOR UPDATE or row-level locking strategy here
-            to prevent the same row from being processed twice. The current
-            implementation uses a simple status-flip guard which is safe
-            for single-worker deployments.
+        For Postgres, an internal subclass may override this method to
+        use `SELECT … FOR UPDATE SKIP LOCKED` for true row-level locking.
+        SQLite has no such mechanism — single-worker deployments only.
 
         Returns:
-            int: The number of retry jobs that were processed in this tick.
+            int: Number of retries successfully re-dispatched in this tick.
+                  Rows that were already claimed by another worker (and
+                  skipped) are NOT counted.
         """
         now = datetime.utcnow()
 
-        # Fetch all rows eligible for retry.
-        eligible_rows = self.session.exec(
-            select(ActionLog).where(
+        candidate_ids = self.session.exec(
+            select(ActionLog.id).where(
                 ActionLog.status == "scheduled_retry",
                 ActionLog.retry_after <= now,
             )
         ).all()
 
         processed_count = 0
-        for row in eligible_rows:
-            # Flip the original row out of the retry queue immediately.
-            # This prevents a second worker from picking it up concurrently.
-            row.status = "retrying"
-            self.session.add(row)
-            self.session.flush()
+        for log_id in candidate_ids:
+            # Atomic claim: only proceed if WE flipped status from
+            # 'scheduled_retry' → 'retrying'. If rowcount is 0, another
+            # worker beat us to it — skip silently.
+            result = self.session.execute(
+                update(ActionLog)
+                .where(
+                    ActionLog.id == log_id,
+                    ActionLog.status == "scheduled_retry",
+                )
+                .values(status="retrying")
+            )
+            self.session.commit()
+
+            if result.rowcount != 1:
+                continue  # Lost the claim race; another worker has it.
+
+            # Re-load the claimed row and re-execute. execute_pending will
+            # commit the final state when done.
+            row = self.session.get(ActionLog, log_id)
+            if row is None:
+                continue
 
             try:
-                self.dispatcher.dispatch(
-                    phone_id=row.phone_id,
-                    action_type=row.action_type,
-                )
+                self.dispatcher.execute_pending(row)
                 processed_count += 1
             except Exception:
-                # Log and continue — a single bad row must not block the batch.
-                # INTERNAL HOOK: Replace with your observability/alerting logic.
+                # Mark terminally failed so we don't get stuck in 'retrying'.
+                # INTERNAL HOOK: Replace with structured logging / alerting.
                 row.status = "failed"
                 self.session.add(row)
-                self.session.flush()
+                self.session.commit()
 
-        self.session.commit()
         return processed_count
 
 
@@ -367,30 +428,42 @@ class ActionDataTriggerService:
     """
     Event-driven recovery: re-dispatches actions after data corrections.
 
-    Called when a PhoneNumber record is updated (e.g. a data fix or a
-    manual correction by an operator). If the number had a previous
-    `failed` action, this service gives the pipeline a second chance
-    by re-triggering the dispatcher.
+    Called when a PhoneNumber record is updated (e.g. a data fix). If the
+    number has at least one `failed` ActionLog row AND at least one of the
+    updated fields is in the configured allowlist, re-dispatches the most
+    recent failed action's `action_type`.
 
-    Use case example:
-        An operator corrects a misclassified `classification_type` on a
-        PhoneNumber row. The data change event fires
-        `evaluate_data_change_trigger(phone_id, updated_fields=["classification_type"])`.
-        The service checks for failed actions, and if found, re-dispatches.
+    LOOP PREVENTION
+    ---------------
+    The `trigger_fields` allowlist is the primary guard against re-entrant
+    loops. If left empty (open-environment default), the service triggers
+    on ANY field update — internal teams should configure it explicitly
+    to restrict triggering to a documented set of data fields.
     """
 
     def __init__(
         self,
         session: Session,
         dispatcher: ActionDispatcher,
+        trigger_fields: Optional[Set[str]] = None,
     ) -> None:
         """
         Args:
-            session    (Session):          Active DB session.
-            dispatcher (ActionDispatcher): Shared dispatcher instance.
+            session        (Session):          Active DB session.
+            dispatcher     (ActionDispatcher): Shared dispatcher instance.
+            trigger_fields (Optional[Set[str]]): Allowlist of field names that,
+                                                  when changed, are eligible to
+                                                  trigger a re-dispatch.
+                                                  If None or empty, ANY field
+                                                  update triggers re-dispatch
+                                                  (open-environment default).
+                                                  Internal teams should configure
+                                                  this with a documented set
+                                                  (e.g. {"classification_type"}).
         """
         self.session = session
         self.dispatcher = dispatcher
+        self.trigger_fields = trigger_fields or set()
 
     def evaluate_data_change_trigger(
         self,
@@ -401,35 +474,30 @@ class ActionDataTriggerService:
         Check whether a data-field update warrants re-dispatching a failed action.
 
         Logic:
-            1. Find the most recent `failed` ActionLog row for this phone_id.
-            2. If one exists, re-dispatch its `action_type` via the dispatcher.
-            3. Return the new ActionLog row if a dispatch occurred, else None.
-
-        INTERNAL HOOK:
-            The `updated_fields` list is provided so that internal implementations
-            can add field-specific trigger rules (e.g. "only re-dispatch if
-            'classification_type' changed, not if 'ingestion_reason' changed").
-            The current implementation triggers on ANY field change if a failed
-            action exists. Override this method in an internal subclass to
-            restrict triggering conditions.
+            1. If `trigger_fields` is configured and none of `updated_fields`
+               is in the allowlist → return None.
+            2. Find the most recent `failed` ActionLog row for this phone_id.
+            3. If found, re-dispatch its `action_type` via the dispatcher
+               (which creates a NEW ActionLog row with retry_count=0).
+            4. Return the new row, or None.
 
         Args:
             phone_id       (int):        PK of the updated PhoneNumber row.
-            updated_fields (List[str]):  Names of the fields that were changed.
-                                          Available for internal filtering logic.
+            updated_fields (List[str]):  Names of fields that were changed.
 
         Returns:
-            Optional[ActionLog]: The new ActionLog row created by the dispatcher,
+            Optional[ActionLog]: The new ActionLog created by the dispatcher,
                                   or None if no re-dispatch was triggered.
 
         Raises:
-            PhoneNumberNotFoundError: Propagated from ActionDispatcher if phone_id
-                                       is invalid.
+            PhoneNumberNotFoundError: Propagated from ActionDispatcher.
         """
-        # INTERNAL HOOK: Add field-specific gating logic here if needed.
-        # Example: if "classification_type" not in updated_fields: return None
+        # Allowlist gate: if configured, require at least one overlap.
+        if self.trigger_fields:
+            if not (set(updated_fields) & self.trigger_fields):
+                return None
 
-        # Find the most recent failed action for this phone number.
+        # Find the most recent failed action for this phone.
         last_failed = self.session.exec(
             select(ActionLog)
             .where(
@@ -440,12 +508,11 @@ class ActionDataTriggerService:
         ).first()
 
         if last_failed is None:
-            # No failed actions — data change does not trigger a retry.
             return None
 
-        # Re-dispatch the same action_type that previously failed.
-        new_log = self.dispatcher.dispatch(
+        # Re-dispatch as a fresh attempt. Note: this is dispatch() (new row),
+        # not execute_pending() (existing row) — we want a clean attempt.
+        return self.dispatcher.dispatch(
             phone_id=phone_id,
             action_type=last_failed.action_type,
         )
-        return new_log

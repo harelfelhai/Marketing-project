@@ -236,17 +236,15 @@ class VerificationEngine:
         for phone_id in eligible_ids:
             try:
                 # Delegate quality assessment entirely to the injected strategy.
-                # The strategy returns (status, reason, metadata) — all opaque here.
-                verdict_status, verdict_reason, metadata = (
-                    self.strategy.evaluate_quality(phone_id)
-                )
+                # The strategy returns a typed VerificationVerdict — opaque here.
+                verdict = self.strategy.evaluate_quality(phone_id)
 
                 self.verification_service.update_verification_verdict(
                     phone_id=phone_id,
-                    status=verdict_status,
+                    status=verdict.status,
                     source="automated",
-                    reason=verdict_reason,
-                    extra_metadata=metadata,
+                    reason=verdict.reason,
+                    extra_metadata=verdict.metadata,
                 )
                 success_count += 1
 
