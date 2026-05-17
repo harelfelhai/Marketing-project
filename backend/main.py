@@ -67,8 +67,9 @@ def on_startup() -> None:
     """
     # Model imports must happen before create_db_and_tables() so that
     # SQLModel.metadata is populated with all table definitions.
-    # Add new model imports here as new models are introduced in M2.
-    # e.g.: from models.lead import Lead  # noqa: F401
+    # The `models` package re-exports every table class from its
+    # __init__.py, so a single import is enough.
+    import models  # noqa: F401  (side-effect import — registers tables)
 
     create_db_and_tables()
 
