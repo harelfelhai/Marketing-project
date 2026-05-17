@@ -74,15 +74,12 @@ def on_startup() -> None:
     create_db_and_tables()
 
 # ------------------------------------------------------------------
-# Routers
+# Routers — Milestone 4: v1 API
 # ------------------------------------------------------------------
-# Routers will be registered here as each milestone is completed.
-# Pattern:
-#   from routers import leads, campaigns, schema, dashboard
-#   app.include_router(leads.router,     prefix="/api/leads",     tags=["Leads"])
-#   app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Campaigns"])
-#   app.include_router(schema.router,    prefix="/api/schema",    tags=["Schema"])
-#   app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
+
+from app.api.v1.router import router as v1_router
+
+app.include_router(v1_router, prefix="/api/v1")
 
 # ------------------------------------------------------------------
 # Health Check
