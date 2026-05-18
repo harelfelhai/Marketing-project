@@ -48,6 +48,7 @@ from database import engine  # noqa: E402
 from models.action_log import ActionLog  # noqa: E402
 from models.entity import Entity  # noqa: E402
 from models.phone_number import PhoneNumber  # noqa: E402
+from models.pipeline_task import PipelineTask  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,9 @@ def _dt(days_ago: float = 0, hours_ago: float = 0) -> datetime:
 
 def _wipe(session: Session) -> None:
     """Delete all rows in dependency order (FK constraints respected)."""
-    session.exec(select(ActionLog)).all()  # load to allow delete
+    # PipelineTask first — has FKs to both PhoneNumber and ActionLog.
+    for task in session.exec(select(PipelineTask)).all():
+        session.delete(task)
     for log in session.exec(select(ActionLog)).all():
         session.delete(log)
     for phone in session.exec(select(PhoneNumber)).all():
@@ -357,7 +360,7 @@ def seed(reset: bool = False) -> None:
         # 5. Action logs
         # ----------------------------------------------------------------
         print("  Inserting action logs …")
-        log_count = 0
+        log_records: list[ActionLog] = []
         for phone_idx, action_type, log_status, hours_ago, extra in ACTION_LOG_SPECS:
             requested = _dt(hours_ago=hours_ago)
             executed  = requested + timedelta(minutes=2) if log_status != "scheduled_retry" else None
@@ -379,15 +382,112 @@ def seed(reset: bool = False) -> None:
                 updated_at=executed or requested,
             )
             session.add(log)
-            log_count += 1
+            session.flush()
+            log_records.append(log)
         session.commit()
-        print(f"    → {log_count} action logs created.")
+        print(f"    → {len(log_records)} action logs created.")
+
+        # ----------------------------------------------------------------
+        # 6. Pipeline tasks (Phase DX)
+        # ----------------------------------------------------------------
+        # Five representative tasks covering the three task_type tokens and
+        # the four lifecycle statuses, so the OperationsQueue UI has data
+        # to render across every filter sub-view.
+        print("  Inserting pipeline tasks …")
+        task_specs = [
+            # Automated hand-off: phone 1's failed action awaits human review.
+            dict(
+                phone_idx=1, source_log_idx=2, task_type="remediation_failure",
+                status="pending", requested_by="automation:retry_engine",
+                resolved_by=None, hours_ago=18.0,
+                extra={
+                    "failure_category": "provider_blocked",
+                    "suggested_remediation": "Escalate to carrier for unblock review.",
+                },
+            ),
+            # Automated hand-off: phone 8's quota-exceeded failure.
+            dict(
+                phone_idx=8, source_log_idx=10, task_type="remediation_failure",
+                status="assigned", requested_by="automation:retry_engine",
+                resolved_by=None, hours_ago=12.0,
+                extra={
+                    "failure_category": "quota_exceeded",
+                    "suggested_remediation": "Retry tomorrow after quota reset.",
+                },
+            ),
+            # Operator request: low-tier operator asking for a Senior Admin to
+            # authorize a manual action against phone 4.
+            dict(
+                phone_idx=4, source_log_idx=None, task_type="approval_required",
+                status="pending", requested_by="mock_operator_02",
+                resolved_by=None, hours_ago=6.0,
+                extra={
+                    "requested_action_type": "action_type_b",
+                    "operator_note": "Customer requested call-back outside of normal cadence.",
+                },
+            ),
+            # Pipeline suggestion: phone 9 surfaced as a verification candidate.
+            dict(
+                phone_idx=9, source_log_idx=None, task_type="manual_recommendation",
+                status="resolved", requested_by="automation:verification_engine",
+                resolved_by="mock_admin_01", hours_ago=4.0,
+                extra={
+                    "recommendation": "Flag for manual quality review.",
+                    "resolution_outcome": "resolved",
+                    "resolved_by": "mock_admin_01",
+                    "resolution_note": "Confirmed reachable; marked verified_good.",
+                },
+            ),
+            # Operator request that was rejected by the admin.
+            dict(
+                phone_idx=11, source_log_idx=14, task_type="approval_required",
+                status="rejected", requested_by="mock_operator_02",
+                resolved_by="mock_admin_01", hours_ago=2.0,
+                extra={
+                    "requested_action_type": "action_type_a",
+                    "operator_note": "One more retry attempt before abandoning.",
+                    "resolution_outcome": "rejected",
+                    "resolved_by": "mock_admin_01",
+                    "resolution_note": "Carrier intercept is permanent; do not retry.",
+                },
+            ),
+        ]
+
+        task_count = 0
+        for spec in task_specs:
+            requested = _dt(hours_ago=spec["hours_ago"])
+            resolved_at = (
+                requested + timedelta(hours=1)
+                if spec["status"] in {"resolved", "rejected"}
+                else None
+            )
+            task = PipelineTask(
+                phone_id=phone_records[spec["phone_idx"]].id,
+                source_action_log_id=(
+                    log_records[spec["source_log_idx"]].id
+                    if spec["source_log_idx"] is not None
+                    else None
+                ),
+                task_type=spec["task_type"],
+                status=spec["status"],
+                requested_by=spec["requested_by"],
+                resolved_by=spec["resolved_by"],
+                created_at=requested,
+                updated_at=resolved_at or requested,
+                resolved_at=resolved_at,
+                extra_data=spec["extra"],
+            )
+            session.add(task)
+            task_count += 1
+        session.commit()
+        print(f"    → {task_count} pipeline tasks created.")
 
         print()
         print("  Seed complete.")
-        print(f"    Entities   : {len(primary_records)} primary + {len(associated_records)} associated")
-        print(f"    Phones     : {len(phone_records)}")
-        print(f"    Action logs: {log_count}")
+        print(f"    Entities      : {len(primary_records)} primary + {len(associated_records)} associated")
+        print(f"    Phones        : {len(phone_records)}")
+        print(f"    Action logs   : {len(log_records)}")
+        print(f"    Pipeline tasks: {task_count}")
 
 
 # ---------------------------------------------------------------------------

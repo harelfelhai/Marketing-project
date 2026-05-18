@@ -17,5 +17,6 @@ If you add a new table model:
 from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.action_log import ActionLog
+from models.pipeline_task import PipelineTask
 
-__all__ = ["Entity", "PhoneNumber", "ActionLog"]
+__all__ = ["Entity", "PhoneNumber", "ActionLog", "PipelineTask"]

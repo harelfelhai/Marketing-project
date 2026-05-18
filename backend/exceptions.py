@@ -145,3 +145,46 @@ class PhoneNumberNotFoundError(Exception):
         super().__init__(
             f"PhoneNumber with identifier '{identifier}' was not found in the system."
         )
+
+
+class PipelineTaskNotFoundError(Exception):
+    """
+    Raised when a service method receives a `task_id` that does not exist in
+    the `pipeline_task` table.
+
+    Used by `PipelineTaskService.resolve_task()` and `get_task_with_join()`
+    to surface a clean 404 from the API layer instead of leaking an internal
+    `None` dereference.
+
+    Attributes:
+        task_id (int): The pipeline_task PK that could not be resolved.
+    """
+
+    def __init__(self, task_id: int) -> None:
+        self.task_id = task_id
+        super().__init__(
+            f"PipelineTask with id={task_id} was not found in the system."
+        )
+
+
+class TaskStateTransitionError(Exception):
+    """
+    Raised when `PipelineTaskService.resolve_task()` is called on a task that
+    is already in a terminal state ('resolved' or 'rejected').
+
+    Phase DX deliberately keeps the state machine minimal — once a task is
+    settled, it cannot be re-opened or re-settled. Callers must open a new
+    task instead.
+
+    Attributes:
+        task_id        (int): The pipeline_task PK that was being resolved.
+        current_status (str): The terminal status blocking the transition.
+    """
+
+    def __init__(self, task_id: int, current_status: str) -> None:
+        self.task_id = task_id
+        self.current_status = current_status
+        super().__init__(
+            f"PipelineTask id={task_id} is already in terminal status "
+            f"'{current_status}'. Open a new task instead of re-settling this one."
+        )

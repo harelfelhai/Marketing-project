@@ -3,7 +3,9 @@
 from exceptions import (
     ActionExecutionError,
     PhoneNumberNotFoundError,
+    PipelineTaskNotFoundError,
     TargetNotFoundError,
+    TaskStateTransitionError,
 )
 
 
@@ -50,3 +52,19 @@ class TestPhoneNumberNotFoundError:
     def test_str_identifier(self):
         exc = PhoneNumberNotFoundError(identifier="+15550000000")
         assert "+15550000000" in str(exc)
+
+
+class TestPipelineTaskNotFoundError:
+    def test_attributes_populated(self):
+        exc = PipelineTaskNotFoundError(task_id=7)
+        assert exc.task_id == 7
+        assert "7" in str(exc)
+
+
+class TestTaskStateTransitionError:
+    def test_attributes_populated(self):
+        exc = TaskStateTransitionError(task_id=9, current_status="resolved")
+        assert exc.task_id == 9
+        assert exc.current_status == "resolved"
+        assert "resolved" in str(exc)
+        assert "9" in str(exc)

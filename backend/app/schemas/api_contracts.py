@@ -651,3 +651,206 @@ class DashboardMetricsResponse(BaseModel):
             "the past — i.e. they are eligible for immediate pickup by RetryEngine."
         ),
     )
+
+
+# ===========================================================================
+# DOMAIN E — OPERATIONS TASK QUEUE (Phase DX)
+# ===========================================================================
+# Stateful work-order surface. The backend records and reads the queue; all
+# permission gating around resolution lives at the frontend boundary via the
+# auth seam (`MockAuthContext`) until Phase G activates.
+
+
+class PipelineTaskResponse(BaseModel):
+    """
+    Flat task row — same shape returned by list, detail, and write endpoints.
+
+    JOIN convenience fields (`phone_number`, `entity_id`, `entity_type`,
+    `client_id`) are populated by the service layer's JOIN with PhoneNumber
+    and Entity so the OperationsQueue can render a 5-column row without a
+    secondary lookup per task. The integer `client_id` stays opaque on the
+    wire; the frontend resolves it to a display name via clientRegistry.js.
+    """
+
+    id: int = Field(..., description="PipelineTask surrogate PK.")
+    phone_id: int = Field(..., description="FK to the PhoneNumber this task is about.")
+    source_action_log_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "FK to the originating ActionLog when the task was opened by the "
+            "automation layer in response to a specific failure. Null for "
+            "operator-opened tasks."
+        ),
+    )
+    task_type: str = Field(
+        ...,
+        description=(
+            "Task classification token. Current vocabulary: "
+            "'remediation_failure' | 'approval_required' | 'manual_recommendation'."
+        ),
+    )
+    status: str = Field(
+        ...,
+        description=(
+            "Lifecycle state. Current vocabulary: "
+            "'pending' | 'assigned' | 'resolved' | 'rejected'."
+        ),
+    )
+    requested_by: str = Field(
+        ...,
+        description="operator_id of the human or system that opened the task.",
+    )
+    resolved_by: Optional[str] = Field(
+        default=None,
+        description=(
+            "operator_id of the Senior Admin who terminally settled the task. "
+            "Null while status is 'pending' or 'assigned'."
+        ),
+    )
+    created_at: datetime = Field(..., description="UTC row-creation timestamp.")
+    updated_at: datetime = Field(..., description="UTC timestamp of the last state update.")
+    resolved_at: Optional[datetime] = Field(
+        default=None,
+        description="UTC timestamp set the moment the task entered a terminal state.",
+    )
+    extra_data: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Opaque JSON bucket for proprietary failure-category / requested-action "
+            "payload and resolution metadata. The OperationsQueue drawer renders "
+            "this via JsonMetadataExplorer."
+        ),
+    )
+
+    # ---- JOIN convenience fields (sourced from PhoneNumber ⟕ Entity) ----
+    phone_number: Optional[str] = Field(
+        default=None,
+        description="Echoed from PhoneNumber.phone_number via JOIN.",
+    )
+    entity_id: Optional[int] = Field(
+        default=None,
+        description="Echoed from PhoneNumber.entity_id via JOIN.",
+    )
+    entity_type: Optional[str] = Field(
+        default=None,
+        description="Echoed from Entity.entity_type via JOIN.",
+    )
+    client_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "Integer client partition identifier sourced from the owning Entity. "
+            "Opaque on the backend; frontend resolves the display name."
+        ),
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PipelineTaskListResponse(BaseModel):
+    """
+    Paginated envelope for GET /api/v1/tasks.
+
+    Mirrors the PhoneListResponse / ActionLogListResponse shape so the
+    frontend's `paginationAdapter.unwrapPage()` strips the envelope
+    identically across all three list endpoints.
+    """
+
+    items: List[PipelineTaskResponse] = Field(
+        ...,
+        description="PipelineTask rows for the current page.",
+    )
+    total: int = Field(
+        ...,
+        description="Total number of rows matching the applied filters.",
+    )
+    page: int = Field(..., description="1-based current page number.", ge=1)
+    page_size: int = Field(..., description="Number of records per page.", ge=1)
+
+
+class OpenTaskRequest(BaseModel):
+    """
+    Request body for POST /api/v1/tasks.
+
+    Opens a new pending task. The `requested_by` field carries the
+    operator_id from the frontend's auth seam (or an engine identifier
+    string for automation-opened tasks).
+
+    `source_action_log_id` is validated against `phone_id`: if the
+    referenced ActionLog exists, it must belong to the same phone or the
+    request is rejected as 422.
+    """
+
+    phone_id: int = Field(..., description="FK to the target PhoneNumber.")
+    task_type: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Task classification token. Free-form string (no enum at the API "
+            "boundary so new task_type values can be introduced without a "
+            "contract change)."
+        ),
+    )
+    requested_by: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "operator_id of the opener. For automated tasks this is an engine "
+            "identifier (e.g. 'automation:retry_engine')."
+        ),
+    )
+    source_action_log_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "Optional FK to the originating ActionLog. Required for "
+            "task_type='remediation_failure' by convention, but the backend "
+            "does not enforce per-type required fields."
+        ),
+    )
+    extra_data: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Opaque JSON payload — failure category tokens, requested-action "
+            "parameters, etc. Stored verbatim on the new task."
+        ),
+    )
+
+
+class ResolveTaskRequest(BaseModel):
+    """
+    Request body for POST /api/v1/tasks/{id}/resolve.
+
+    Terminally settles a task. `outcome` selects the terminal status
+    ('resolved' or 'rejected'). `operator_id` is mandatory — it is recorded
+    on the task as `resolved_by` and embedded into `extra_data.resolved_by`
+    for audit-trail redundancy.
+
+    // HOOK FOR ENTERPRISE AUTH — operator_id is a request-body field today.
+    // Phase G replaces it with a `get_current_operator` FastAPI dependency
+    // and the field is dropped from this schema. Frontend call sites pass
+    // it explicitly until then.
+    """
+
+    operator_id: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "operator_id of the Senior Admin settling this task. Recorded "
+            "verbatim on `pipeline_task.resolved_by`."
+        ),
+    )
+    outcome: str = Field(
+        ...,
+        pattern="^(resolved|rejected)$",
+        description=(
+            "Terminal status to write. Must be 'resolved' or 'rejected'. "
+            "Other terminal vocabulary may be added by relaxing this regex."
+        ),
+    )
+    resolution_note: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional free-text justification. Merged into `extra_data` under "
+            "the key 'resolution_note' rather than stored in a structured "
+            "column (§Privacy Contract)."
+        ),
+    )

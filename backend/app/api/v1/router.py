@@ -6,12 +6,13 @@ This module is the single registration point for the entire v1 API surface.
 here. Adding a new domain in the future requires only a new include_router
 call in this file.
 
-DOMAIN LAYOUT (11 endpoints total):
+DOMAIN LAYOUT (15 endpoints total):
     Domain A  — /schema/lead-form, /ingest
     Domain B  — /actions/trigger, /phones/{id} PATCH, /actions/retry-now/{id}
     Domain C  — /verification/verdict
     Domain D  — /phones, /phones/{id} GET, /actions/logs, /system/workers/run,
                 /dashboard/metrics
+    Domain E  — /tasks, /tasks/{id} GET, /tasks POST, /tasks/{id}/resolve (Phase DX)
 """
 
 from fastapi import APIRouter
@@ -23,6 +24,7 @@ from app.api.v1.endpoints import (
     phones,
     schema,
     system,
+    tasks,
     verification,
 )
 
@@ -42,3 +44,6 @@ router.include_router(verification.router, prefix="/verification", tags=["Verifi
 # Domain D — Queries, Monitoring & System Controls
 router.include_router(system.router, prefix="/system", tags=["System"])
 router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+
+# Domain E — Operations Task Queue (Phase DX)
+router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])

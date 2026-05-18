@@ -21,6 +21,7 @@ import models  # noqa: F401  — registers table metadata
 from app.api.deps import (
     get_action_data_trigger_service,
     get_action_dispatcher,
+    get_pipeline_task_service,
     get_retry_engine,
     get_user_action_service,
     get_verification_engine,
@@ -44,6 +45,7 @@ from services.dispatcher import (
     UserActionService,
 )
 from services.ingestion import IngestionService
+from services.tasks import PipelineTaskService
 from services.verification import VerificationEngine, VerificationService
 
 
@@ -124,6 +126,8 @@ def client():
         verification_window_days=7,
     )
 
+    task_svc = PipelineTaskService(session=test_session)
+
     # Override every dependency that touches the DB or external modules.
     app.dependency_overrides[get_session] = lambda: test_session
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_svc
@@ -133,6 +137,7 @@ def client():
     app.dependency_overrides[get_verification_service] = lambda: verification_svc
     app.dependency_overrides[get_retry_engine] = lambda: retry_eng
     app.dependency_overrides[get_verification_engine] = lambda: verification_eng
+    app.dependency_overrides[get_pipeline_task_service] = lambda: task_svc
 
     with TestClient(app) as tc:
         yield tc, test_session
@@ -529,3 +534,203 @@ class TestDashboardMetrics:
         assert body["phones_by_verification_status"].get("pending", 0) == 1
         assert body["retry_queue_depth"] == 0
         assert body["overdue_retries"] == 0
+
+
+# ===========================================================================
+# Domain E — Operations Task Queue (Phase DX)
+# ===========================================================================
+
+
+class TestTasksEndpoints:
+    """Integration tests for the four /api/v1/tasks endpoints."""
+
+    def _open_via_api(self, tc, phone_id, **overrides):
+        body = {
+            "phone_id": phone_id,
+            "task_type": "approval_required",
+            "requested_by": "mock_operator_02",
+        }
+        body.update(overrides)
+        return tc.post("/api/v1/tasks", json=body)
+
+    # ---- POST /tasks (open) ----
+
+    def test_open_minimal_returns_201_with_join_fields(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        r = self._open_via_api(tc, phone.id)
+        assert r.status_code == 201
+        body = r.json()
+        assert body["id"] > 0
+        assert body["phone_id"] == phone.id
+        assert body["status"] == "pending"
+        # JOIN fields populated:
+        assert body["phone_number"] == phone.phone_number
+        assert body["entity_id"] == phone.entity_id
+        assert body["entity_type"] == "target"
+        # extra_data null when omitted:
+        assert body["extra_data"] is None
+        assert body["resolved_by"] is None
+        assert body["resolved_at"] is None
+
+    def test_open_with_full_payload(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        r = self._open_via_api(
+            tc, phone.id,
+            task_type="remediation_failure",
+            extra_data={"failure_category": "provider_blocked"},
+        )
+        body = r.json()
+        assert body["task_type"] == "remediation_failure"
+        assert body["extra_data"] == {"failure_category": "provider_blocked"}
+
+    def test_open_unknown_phone_returns_404(self, client):
+        tc, _ = client
+        r = self._open_via_api(tc, phone_id=99999)
+        assert r.status_code == 404
+
+    def test_open_with_unknown_source_action_log_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        r = self._open_via_api(tc, phone.id, source_action_log_id=99999)
+        assert r.status_code == 422
+
+    def test_open_missing_required_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/tasks", json={"phone_id": 1})  # missing task_type, requested_by
+        assert r.status_code == 422
+
+    # ---- GET /tasks (list, filter-as-view) ----
+
+    def test_list_returns_pagination_envelope(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        self._open_via_api(tc, phone.id)
+        r = tc.get("/api/v1/tasks")
+        assert r.status_code == 200
+        body = r.json()
+        assert "items" in body and "total" in body and "page" in body and "page_size" in body
+        assert body["total"] == 1
+        assert body["items"][0]["phone_number"] == phone.phone_number
+
+    def test_list_filter_by_status(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        a = self._open_via_api(tc, phone.id, task_type="a").json()
+        self._open_via_api(tc, phone.id, task_type="b")
+        # Resolve one task so the status filter has something to discriminate.
+        tc.post(
+            f"/api/v1/tasks/{a['id']}/resolve",
+            json={"operator_id": "mock_admin_01", "outcome": "resolved"},
+        )
+        r = tc.get("/api/v1/tasks?status=pending")
+        body = r.json()
+        assert body["total"] == 1
+        assert body["items"][0]["status"] == "pending"
+
+    def test_list_filter_by_task_type(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        self._open_via_api(tc, phone.id, task_type="approval_required")
+        self._open_via_api(tc, phone.id, task_type="remediation_failure")
+        r = tc.get("/api/v1/tasks?task_type=approval_required")
+        body = r.json()
+        assert body["total"] == 1
+        assert body["items"][0]["task_type"] == "approval_required"
+
+    def test_list_pagesize_cap_enforced(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/tasks?page_size=501")
+        assert r.status_code == 422
+        r2 = tc.get("/api/v1/tasks?page_size=500")
+        assert r2.status_code == 200
+
+    # ---- GET /tasks/{id} ----
+
+    def test_get_returns_join_fields(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = self._open_via_api(tc, phone.id).json()
+        r = tc.get(f"/api/v1/tasks/{opened['id']}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["id"] == opened["id"]
+        assert body["phone_number"] == phone.phone_number
+
+    def test_get_unknown_returns_404(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/tasks/99999")
+        assert r.status_code == 404
+
+    # ---- POST /tasks/{id}/resolve ----
+
+    def test_resolve_writes_terminal_state(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = self._open_via_api(
+            tc, phone.id,
+            extra_data={"requested_action_type": "action_type_a"},
+        ).json()
+        r = tc.post(
+            f"/api/v1/tasks/{opened['id']}/resolve",
+            json={
+                "operator_id": "mock_admin_01",
+                "outcome": "resolved",
+                "resolution_note": "approved",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "resolved"
+        assert body["resolved_by"] == "mock_admin_01"
+        assert body["resolved_at"] is not None
+        # Resolution metadata merged with opener metadata (no overwrite):
+        assert body["extra_data"]["requested_action_type"] == "action_type_a"
+        assert body["extra_data"]["resolution_outcome"] == "resolved"
+        assert body["extra_data"]["resolution_note"] == "approved"
+
+    def test_resolve_unknown_id_returns_404(self, client):
+        tc, _ = client
+        r = tc.post(
+            "/api/v1/tasks/99999/resolve",
+            json={"operator_id": "op", "outcome": "resolved"},
+        )
+        assert r.status_code == 404
+
+    def test_resolve_terminal_task_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = self._open_via_api(tc, phone.id).json()
+        # First resolve succeeds.
+        first = tc.post(
+            f"/api/v1/tasks/{opened['id']}/resolve",
+            json={"operator_id": "adm", "outcome": "resolved"},
+        )
+        assert first.status_code == 200
+        # Second resolve is blocked.
+        second = tc.post(
+            f"/api/v1/tasks/{opened['id']}/resolve",
+            json={"operator_id": "adm", "outcome": "rejected"},
+        )
+        assert second.status_code == 422
+
+    def test_resolve_invalid_outcome_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = self._open_via_api(tc, phone.id).json()
+        r = tc.post(
+            f"/api/v1/tasks/{opened['id']}/resolve",
+            json={"operator_id": "adm", "outcome": "approved"},  # not in allowed regex
+        )
+        assert r.status_code == 422
+
+    def test_resolve_missing_operator_id_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = self._open_via_api(tc, phone.id).json()
+        r = tc.post(
+            f"/api/v1/tasks/{opened['id']}/resolve",
+            json={"outcome": "resolved"},
+        )
+        assert r.status_code == 422

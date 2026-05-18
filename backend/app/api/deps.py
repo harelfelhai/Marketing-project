@@ -35,6 +35,7 @@ from services.dispatcher import (
     RetryEngine,
     UserActionService,
 )
+from services.tasks import PipelineTaskService
 from services.verification import VerificationService
 
 
@@ -151,3 +152,31 @@ def get_verification_service(
         VerificationService: Ready to write one verification verdict.
     """
     return VerificationService(session=session)
+
+
+# ===========================================================================
+# PHASE DX — PIPELINE TASK QUEUE
+# ===========================================================================
+
+
+def get_pipeline_task_service(
+    session: Session = Depends(get_session),
+) -> PipelineTaskService:
+    """
+    Compose and return a `PipelineTaskService` for the four /tasks endpoints.
+
+    The PipelineTaskService is the single authoritative writer to the
+    `pipeline_task` table and the canonical owner of the JOIN with
+    PhoneNumber + Entity used by the read endpoints.
+
+    // HOOK FOR ENTERPRISE AUTH — when Phase G activates, this dependency
+    // will be composed with a `get_current_operator` dependency that
+    // replaces the request-body `operator_id` on /tasks/{id}/resolve.
+
+    Args:
+        session (Session): Per-request DB session.
+
+    Returns:
+        PipelineTaskService: Ready to open / resolve / list / fetch tasks.
+    """
+    return PipelineTaskService(session=session)
