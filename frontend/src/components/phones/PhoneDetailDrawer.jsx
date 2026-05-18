@@ -10,7 +10,10 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Zap, ExternalLink, ClipboardList } from 'lucide-react';
+import {
+  X, Zap, ExternalLink, ClipboardList,
+  Phone as PhoneIcon, User, Radio, Search, Diamond,
+} from 'lucide-react';
 
 import Badge                  from '../primitives/Badge';
 import Skeleton               from '../primitives/Skeleton';
@@ -21,18 +24,40 @@ import ManualActionModal      from './ManualActionModal';
 
 import { useMockData } from '../../contexts/MockDataContext';
 import {
-  verificationVariant, verificationLabel,
   priorityVariant, confidenceVariant, tierVariant,
+  isEnvelope, phoneAxisState, identityAxisState,
 } from '../../utils/classifyStatus';
 import { formatDateTime } from '../../utils/formatDate';
 import {
   ARIA_PHONE_DETAIL, ARIA_CLOSE_DRAWER,
   DRAWER_LABEL_CLIENT, DRAWER_LABEL_ENTITY, DRAWER_LABEL_INGESTED,
-  DRAWER_LABEL_UPDATED, DRAWER_VIA_SOURCE, DRAWER_BTN_TRIGGER,
+  DRAWER_LABEL_UPDATED, DRAWER_BTN_TRIGGER,
   PHONE_DRAWER_TASK_PILL, PHONE_DRAWER_TASK_PILL_ZERO,
-  SCORE_PRIORITY_LABEL, SCORE_CONFIDENCE_LABEL, SCORE_TIER_LABEL,
+  SCORE_PRIORITY_LABEL, SCORE_CONFIDENCE_LABEL,
   SCORE_TIER_VALUE, SCORE_TIER_UNKNOWN, SCORE_NOT_AUDITED,
+  DRAWER_TRUTH_SECTION_IDENTITY, DRAWER_TRUTH_SECTION_PHONE_LINE,
+  DRAWER_TRUTH_IDENTITY_VECTOR_A, DRAWER_TRUTH_IDENTITY_ENVELOPE,
+  DRAWER_TRUTH_SOURCE_MANUAL, DRAWER_TRUTH_SOURCE_AUTOMATED,
+  DRAWER_TRUTH_SOURCE_AWAITING, DRAWER_TRUTH_SOURCE_AMBIENT,
+  DRAWER_TRUTH_SOURCE_DISPROVED,
+  TRUTH_STATE_VERIFIED, TRUTH_STATE_PENDING, TRUTH_STATE_DISPROVED,
 } from '../../config/strings.he';
+
+const TRUTH_STATE_LABEL = {
+  good:    TRUTH_STATE_VERIFIED,
+  pending: TRUTH_STATE_PENDING,
+  failed:  TRUTH_STATE_DISPROVED,
+};
+const TRUTH_STATE_DOT_BG = {
+  good:    'bg-emerald-500',
+  pending: 'border border-slate-400 bg-white',
+  failed:  'bg-rose-500',
+};
+const TRUTH_STATE_BORDER = {
+  good:    'border-emerald-200 bg-emerald-50',
+  pending: 'border-slate-200 bg-slate-50',
+  failed:  'border-rose-200 bg-rose-50',
+};
 
 export default function PhoneDetailDrawer({ phoneId, onClose }) {
   const { phones, entities, clients, actionLogs, tasks, loading } = useMockData();
@@ -83,14 +108,6 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
                     {phone.classification_type}
                   </Badge>
                 )}
-                <Badge variant={verificationVariant(phone.verification_status)} size="sm">
-                  {verificationLabel(phone.verification_status)}
-                </Badge>
-                {phone.verification_source && (
-                  <span className="text-[11px] text-slate-400">
-                    {DRAWER_VIA_SOURCE(phone.verification_source)}
-                  </span>
-                )}
                 {/* Phase DX — cross-link pill to the Operations Cockpit.
                     Do NOT call onClose() here: PhoneGridPage's handleCloseDrawer
                     runs setSearchParams() which races the navigate() and
@@ -122,11 +139,17 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
             </button>
           </div>
 
+          {/* Phase DY-4 — Truth Panel: structured two-row identity +
+              phone-line summary. Replaces the legacy single verification
+              badge with an explicit two-axis read. Envelope rows render
+              the Identity row with a diamond + "ambient" source caption;
+              the Phone-line row label flips to "phone in network" copy. */}
+          <TruthPanel phone={phone} entity={entity} />
+
           {/* Phase DY — scoring block: three score badges + tier badge.
-              Sits between the verification badges and the quick-facts dl
-              so it reads as part of the row's executive summary, not as
-              another field deep in the metadata. */}
-          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              Sits below the Truth Panel so the structural truth read
+              precedes the numeric scores. */}
+          <div className="mt-3 flex items-center gap-1.5 flex-wrap">
             <Badge variant={priorityVariant(phone.priority_score)} size="xs">
               {SCORE_PRIORITY_LABEL}{' '}
               {phone.priority_score != null
@@ -272,5 +295,94 @@ function DrawerSkeleton({ onClose }) {
         </footer>
       </aside>
     </>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// TruthPanel (DY-4-B) — two-row identity + phone-line summary.
+// ---------------------------------------------------------------------------
+// Renders below the badges row in the drawer header. The shape adapts to
+// the entity_type:
+//   Vector A: 👤 Identity (named) + 📞 Phone line
+//   Vector B: 🔍 Identity (envelope, diamond) + 📡 Phone in network
+// Each row pairs an icon, a state pip (dot OR diamond), a primary line,
+// and a small source caption. Verbose by drawer-standard but exactly the
+// "executive summary" the operator needs at the top of the drawer.
+
+function TruthPanel({ phone, entity }) {
+  const envelope = isEnvelope(entity?.entity_type);
+  const phoneState    = phoneAxisState(phone.confidence_score);
+  const identityState = identityAxisState(entity?.entity_type, phone.verification_status);
+
+  // Identity row content varies by provenance.
+  const identityPrimary = envelope
+    ? DRAWER_TRUTH_IDENTITY_ENVELOPE
+    : DRAWER_TRUTH_IDENTITY_VECTOR_A(entity?.entity_type);
+
+  // Phone-line source caption — derived from verification_source and
+  // verified_at, with a sensible fallback for the unaudited state.
+  let phoneSource;
+  if (phone.verification_status === 'verified_bad') {
+    phoneSource = DRAWER_TRUTH_SOURCE_DISPROVED;
+  } else if (phone.verification_source === 'manual' && phone.verified_at) {
+    phoneSource = DRAWER_TRUTH_SOURCE_MANUAL(formatDateTime(phone.verified_at));
+  } else if (phone.verification_source === 'automated' && phone.verified_at) {
+    phoneSource = DRAWER_TRUTH_SOURCE_AUTOMATED(formatDateTime(phone.verified_at));
+  } else if (envelope) {
+    phoneSource = DRAWER_TRUTH_SOURCE_AMBIENT;
+  } else {
+    phoneSource = DRAWER_TRUTH_SOURCE_AWAITING;
+  }
+
+  // Identity row source caption — envelope is always "ambient · pending
+  // identification" until promoted; named entities echo phone source for
+  // simplicity (the operator-confirmed-and-named case is rare enough
+  // that more nuance isn't worth the visual weight).
+  const identitySource = envelope
+    ? DRAWER_TRUTH_SOURCE_AMBIENT
+    : phoneSource;
+
+  return (
+    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 space-y-2">
+      <TruthRow
+        icon={envelope ? Search : User}
+        sectionLabel={DRAWER_TRUTH_SECTION_IDENTITY}
+        state={identityState}
+        forceDiamond={envelope}
+        primary={identityPrimary}
+        source={identitySource}
+      />
+      <TruthRow
+        icon={envelope ? Radio : PhoneIcon}
+        sectionLabel={DRAWER_TRUTH_SECTION_PHONE_LINE}
+        state={phoneState}
+        primary={phone.phone_number}
+        source={phoneSource}
+      />
+    </div>
+  );
+}
+
+function TruthRow({ icon: Icon, sectionLabel, state, forceDiamond = false, primary, source }) {
+  return (
+    <div className={`rounded-sm border ${TRUTH_STATE_BORDER[state] || 'border-slate-200 bg-white'} px-2.5 py-1.5`}>
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+        <span className="text-[11px] text-slate-500 shrink-0">{sectionLabel}</span>
+        {forceDiamond ? (
+          <Diamond className="w-3 h-3 text-slate-400 shrink-0" aria-label={TRUTH_STATE_LABEL[state]} />
+        ) : (
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${TRUTH_STATE_DOT_BG[state] || ''}`}
+            aria-label={TRUTH_STATE_LABEL[state]}
+          />
+        )}
+        <span className="text-xs font-medium text-slate-800 truncate">{primary}</span>
+      </div>
+      {source && (
+        <div className="mt-0.5 ps-6 text-[10px] text-slate-400 truncate">{source}</div>
+      )}
+    </div>
   );
 }

@@ -399,6 +399,20 @@ export const TRUTH_STATE_VERIFIED        = 'מאומת';
 export const TRUTH_STATE_PENDING         = 'ממתין';
 export const TRUTH_STATE_DISPROVED       = 'הופרך';
 
+// Drawer Truth Panel (DY-4-B) — two-row identity + phone-line summary
+// rendered immediately under the phone number, replacing the legacy
+// single-badge verification row.
+export const DRAWER_TRUTH_SECTION_IDENTITY      = 'הזהות';
+export const DRAWER_TRUTH_SECTION_PHONE_LINE    = 'קו הטלפון';
+export const DRAWER_TRUTH_IDENTITY_VECTOR_A     = (entityType) =>
+  `אדם מזוהה · ${entityType || 'unknown'}`;
+export const DRAWER_TRUTH_IDENTITY_ENVELOPE     = 'מעטפת חברתית — זהות לא מאומתת';
+export const DRAWER_TRUTH_SOURCE_MANUAL         = (when) => `מאומת ידנית · ${when}`;
+export const DRAWER_TRUTH_SOURCE_AUTOMATED      = (when) => `מאומת אוטומטית · ${when}`;
+export const DRAWER_TRUTH_SOURCE_AWAITING       = 'ממתין לאישור מבצע';
+export const DRAWER_TRUTH_SOURCE_AMBIENT        = 'נמצא דרך סריקת סביבה';
+export const DRAWER_TRUTH_SOURCE_DISPROVED      = 'הופרך · לא רלוונטי';
+
 // ---------------------------------------------------------------------------
 // Task Detail Drawer (DX-4)
 // ---------------------------------------------------------------------------
