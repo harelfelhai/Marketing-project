@@ -31,6 +31,7 @@ export const ARIA_CLOSE_MODAL          = 'סגור חלון';
 export const ARIA_PHONE_DETAIL         = 'פרטי טלפון';
 export const ARIA_CLOSE_DRAWER         = 'סגור מגירה';
 export const ARIA_ENGINE_PROCESSING    = 'המנוע מעבד רשומות';
+export const ARIA_LOADING_CONTENT      = 'טוען תוכן';
 
 // ---------------------------------------------------------------------------
 // Pages

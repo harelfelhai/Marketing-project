@@ -11,6 +11,7 @@ import { RefreshCw, Loader2 } from 'lucide-react';
 
 import ErrorAccordionCell from './ErrorAccordionCell';
 import Badge              from '../primitives/Badge';
+import Skeleton           from '../primitives/Skeleton';
 import { retryNow }       from '../../api/actionsApi';
 import { useMockData }    from '../../contexts/MockDataContext';
 import { useUI }          from '../../contexts/UIContext';
@@ -32,7 +33,7 @@ export default function FailedActionsTable() {
   const { pushToast }   = useUI();
   const { operatorId }  = useAuth();
 
-  const { phones, entities, clients, actionLogs, engines } = mockDb;
+  const { phones, entities, clients, actionLogs, engines, loading } = mockDb;
 
   const anyExecuting = Object.values(engines).some((e) => e.executing);
   const failed = actionLogs.filter((l) => l.status === 'failed');
@@ -79,8 +80,13 @@ export default function FailedActionsTable() {
           </div>
         )}
 
-        <div className={anyExecuting ? 'opacity-50 pointer-events-none' : ''}>
-          {rows.length === 0 ? (
+        <div
+          className={anyExecuting ? 'opacity-50 pointer-events-none' : ''}
+          aria-busy={loading || undefined}
+        >
+          {loading ? (
+            <SkeletonFailedActions />
+          ) : rows.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-slate-400">
               {FAILED_TABLE_EMPTY}
             </div>
@@ -194,5 +200,54 @@ function Th({ children }) {
     <th className="px-4 py-2.5 text-start text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
       {children}
     </th>
+  );
+}
+
+function SkeletonFailedActions() {
+  return (
+    <table className="w-full table-fixed text-sm">
+      <colgroup>
+        <col className="w-[160px]" />
+        <col className="w-[140px]" />
+        <col className="w-[100px]" />
+        <col />
+        <col className="w-[160px]" />
+        <col className="w-[120px]" />
+      </colgroup>
+      <thead className="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <Th>{FAILED_TABLE_COL_PHONE}</Th>
+          <Th>{FAILED_TABLE_COL_CLIENT}</Th>
+          <Th>{FAILED_TABLE_COL_TYPE}</Th>
+          <Th>{FAILED_TABLE_COL_ERROR}</Th>
+          <Th>{FAILED_TABLE_COL_REQUESTED}</Th>
+          <Th>{FAILED_TABLE_COL_ACTION}</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <tr key={i} className="border-b border-slate-100 align-top">
+            <td className="px-4 py-3">
+              <Skeleton height={12} width="80%" />
+            </td>
+            <td className="px-4 py-3">
+              <Skeleton height={12} width="70%" />
+            </td>
+            <td className="px-4 py-3">
+              <Skeleton height={14} width={60} rounded="rounded-full" />
+            </td>
+            <td className="px-4 py-3">
+              <Skeleton height={12} width="90%" />
+            </td>
+            <td className="px-4 py-3">
+              <Skeleton height={10} width="60%" />
+            </td>
+            <td className="px-4 py-3">
+              <Skeleton height={28} width={90} rounded="rounded-md" />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

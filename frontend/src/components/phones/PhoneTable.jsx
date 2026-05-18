@@ -11,10 +11,13 @@ import { useMemo } from 'react';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import PhoneRow        from './PhoneRow';
+import Skeleton        from '../primitives/Skeleton';
 import {
   TABLE_HEADER_PHONE, TABLE_HEADER_ASSOCIATION, TABLE_HEADER_VERIFICATION,
   TABLE_HEADER_ACTIONS, TABLE_HEADER_UPDATED, TABLE_EMPTY_PHONES, TABLE_SHOWING,
 } from '../../config/strings.he';
+
+const SKELETON_ROW_COUNT = 8;
 
 function applyFilters(phones, entities, clients, actionLogs, filters) {
   const entityById = new Map(entities.map((e) => [e.id, e]));
@@ -51,7 +54,7 @@ function applyFilters(phones, entities, clients, actionLogs, filters) {
 }
 
 export default function PhoneTable({ selectedId, onSelect }) {
-  const { phones, entities, clients, actionLogs } = useMockData();
+  const { phones, entities, clients, actionLogs, loading } = useMockData();
   const { phoneFilters } = useUI();
 
   const rows = useMemo(
@@ -60,7 +63,7 @@ export default function PhoneTable({ selectedId, onSelect }) {
   );
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200">
+    <div className="bg-white rounded-lg border border-slate-200" aria-busy={loading || undefined}>
       <table className="w-full table-fixed">
         <colgroup>
           <col className="w-[180px]" />
@@ -79,7 +82,11 @@ export default function PhoneTable({ selectedId, onSelect }) {
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {loading ? (
+            Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+              <SkeletonRow key={i} />
+            ))
+          ) : rows.length === 0 ? (
             <tr>
               <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
                 {TABLE_EMPTY_PHONES}
@@ -102,9 +109,44 @@ export default function PhoneTable({ selectedId, onSelect }) {
       </table>
 
       <div className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
-        {TABLE_SHOWING(rows.length, phones.length)}
+        {loading ? ' ' : TABLE_SHOWING(rows.length, phones.length)}
       </div>
     </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-slate-100">
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <Skeleton height={12} width="80%" />
+          <Skeleton height={10} width="50%" />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <Skeleton height={12} width="70%" />
+          <Skeleton height={10} width="40%" />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <Skeleton height={14} width={80} rounded="rounded-full" />
+          <Skeleton height={10} width="55%" />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Skeleton height={20} width={20} rounded="rounded-full" />
+          <Skeleton height={20} width={20} rounded="rounded-full" />
+          <Skeleton height={20} width={20} rounded="rounded-full" />
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <Skeleton height={10} width="80%" />
+      </td>
+    </tr>
   );
 }
 
