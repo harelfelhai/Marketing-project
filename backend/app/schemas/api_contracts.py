@@ -282,6 +282,24 @@ class VerificationVerdictRequest(BaseModel):
     The verdict is written to the Phase 3 block of the PhoneNumber via
     VerificationService, which ensures the write is atomic and consistent
     with the automated verification path.
+
+    Phase DY-4 — TWO-AXIS contract.
+    -----------------------------------------------------------------
+    The legacy single-status flow (`status` + `reason`) is preserved
+    for backwards compatibility. Phase DY-4 callers MAY additionally
+    send `phone_axis`, `relation_axis`, and `identification` to express
+    feedback on the two independent truth axes (phone-to-person and
+    person-to-target) and to promote an envelope entity to a named
+    identity in the same atomic transaction.
+
+    Submission shapes supported:
+      A. Legacy single-axis:    { phone_id, status, reason, extra_metadata? }
+      B. Two-axis only:         { phone_id, phone_axis?, relation_axis?, ... }
+      C. Envelope identify:     { phone_id, identification: {...}, ... }
+      D. Combined:              any mix of A + B + C in one request
+
+    At least ONE of {status, phone_axis, relation_axis, identification}
+    must be present — an empty submission is rejected with 422.
     """
 
     phone_id: int = Field(
@@ -289,19 +307,20 @@ class VerificationVerdictRequest(BaseModel):
         description="PK of the PhoneNumber row being judged.",
         examples=[99],
     )
-    status: str = Field(
-        ...,
+
+    # ---- Legacy single-axis fields (kept for backwards compatibility) ----
+    status: Optional[str] = Field(
+        default=None,
         description=(
-            "The quality verdict to persist. "
-            "Example values: 'verified_good', 'verified_bad'. "
-            "Internal teams may introduce additional status values without schema changes."
+            "Legacy single-status verdict. Optional in the Phase DY-4 contract; "
+            "if provided, written to PhoneNumber.verification_status. "
+            "Example values: 'verified_good', 'verified_bad'."
         ),
         examples=["verified_good"],
     )
-    reason: str = Field(
-        ...,
-        description="Human-readable justification for the verdict.",
-        examples=["Confirmed active number via manual callback."],
+    reason: Optional[str] = Field(
+        default=None,
+        description="Human-readable justification for the verdict. Required when `status` is provided.",
     )
     extra_metadata: Optional[dict] = Field(
         default=None,
@@ -309,6 +328,63 @@ class VerificationVerdictRequest(BaseModel):
             "Optional structured metadata from the operator or tool that produced "
             "the verdict. Merged (non-destructively) into PhoneNumber.extra_data."
         ),
+    )
+
+    # ---- Phase DY-4 two-axis fields ----
+    phone_axis: Optional[str] = Field(
+        default=None,
+        pattern="^(confirm|refute)$",
+        description=(
+            "Phase DY-4 — phone-to-person axis feedback. "
+            "'confirm' → confidence_score=100. 'refute' → confidence_score=0. "
+            "Triggers ScoringService recalculation in the same transaction. "
+            "Leave null when the operator has no opinion on this axis."
+        ),
+        examples=["confirm"],
+    )
+    relation_axis: Optional[str] = Field(
+        default=None,
+        pattern="^(confirm|refute)$",
+        description=(
+            "Phase DY-4 — person-to-target axis feedback. "
+            "'confirm' → relation stays intact, verification_status='verified_good'. "
+            "'refute'  → target_entity_id set to NULL, verification_status='verified_bad'. "
+            "Leave null when the operator has no opinion on this axis."
+        ),
+        examples=["confirm"],
+    )
+    identification: Optional["EntityIdentification"] = Field(
+        default=None,
+        description=(
+            "Phase DY-4 — promote a social_envelope entity to a named identity. "
+            "Only applies when the owning entity is currently a 'social_envelope'. "
+            "All four fields are optional individually; if none are provided the "
+            "block has no effect."
+        ),
+    )
+
+
+class EntityIdentification(BaseModel):
+    """
+    Optional sub-block of `VerificationVerdictRequest` (Phase DY-4).
+
+    Captures the operator's identification of an envelope's owner. When
+    applied, the owning entity's `entity_type` is promoted from
+    `social_envelope` to the chosen `relation` (or 'identified_envelope'
+    when relation is left null — the "partial identification" state).
+    """
+
+    first_name: Optional[str] = Field(default=None, description="Owner's first name.")
+    last_name:  Optional[str] = Field(default=None, description="Owner's last name.")
+    relation:   Optional[str] = Field(
+        default=None,
+        description=(
+            "New entity_type token. When provided, the entity is promoted off "
+            "'social_envelope'. Common values: 'target', 'family', 'friend', "
+            "'colleague', 'spouse', 'unrelated'. When null, the entity is "
+            "promoted to 'identified_envelope' as a holding state."
+        ),
+        examples=["spouse"],
     )
 
 

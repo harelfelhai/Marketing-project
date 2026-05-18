@@ -929,3 +929,157 @@ class TestVerdictTriggersRecalc:
         # didn't change — the timestamp moves forward.
         assert reloaded.priority_updated_at is not None
         assert reloaded.priority_updated_at >= baseline_ts
+
+
+# ===========================================================================
+# Phase DY-4-C — Two-axis verdict endpoint dispatch
+# ===========================================================================
+
+
+def _seed_envelope_with_root(session, client_id=1):
+    """Seed a primary target + a social_envelope entity + its phone."""
+    root = Entity(
+        entity_type="target", relation_type="primary",
+        client_id=client_id, extra_data={"customer_tier": 1},
+    )
+    session.add(root); session.flush()
+    envelope = Entity(
+        entity_type="social_envelope", relation_type="associated",
+        target_entity_id=root.id, client_id=client_id,
+        extra_data={"envelope_id": "EP-API-001"},
+    )
+    session.add(envelope); session.flush()
+    phone = PhoneNumber(
+        entity_id=envelope.id,
+        phone_number="+15559999001",
+        ingestion_source="automated",
+        confidence_score=50.0,
+    )
+    session.add(phone); session.commit(); session.refresh(phone)
+    return phone, envelope
+
+
+class TestVerdictTwoAxisDispatch:
+    def test_legacy_payload_still_works(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, tier=1, confidence=60.0)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={"phone_id": phone.id, "status": "verified_good", "reason": "ok"},
+        )
+        assert r.status_code == 200
+        assert r.json()["verification_status"] == "verified_good"
+
+    def test_phone_axis_only_writes_confidence(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, tier=1, confidence=50.0)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={"phone_id": phone.id, "phone_axis": "confirm"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["confidence_score"] == 100.0
+        # Relation untouched.
+        assert body["verification_status"] == "pending"
+
+    def test_relation_axis_refute_severs_target(self, client):
+        tc, session = client
+        phone, envelope = _seed_envelope_with_root(session)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={
+                "phone_id": phone.id,
+                "relation_axis": "refute",
+                "reason": "Owner not connected to target",
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["verification_status"] == "verified_bad"
+        # Verify the entity's target_entity_id was severed.
+        session.expire_all()
+        e = session.get(Entity, envelope.id)
+        assert e.target_entity_id is None
+
+    def test_identification_promotes_envelope(self, client):
+        tc, session = client
+        phone, envelope = _seed_envelope_with_root(session)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={
+                "phone_id": phone.id,
+                "identification": {
+                    "first_name": "Mary",
+                    "last_name":  "Smith",
+                    "relation":   "spouse",
+                },
+            },
+        )
+        assert r.status_code == 200
+        session.expire_all()
+        e = session.get(Entity, envelope.id)
+        assert e.entity_type == "spouse"
+        assert e.extra_data["first_name"] == "Mary"
+
+    def test_partial_identification_holds_at_identified_envelope(self, client):
+        tc, session = client
+        phone, envelope = _seed_envelope_with_root(session)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={
+                "phone_id": phone.id,
+                "identification": {"first_name": "John", "last_name": "Doe"},
+            },
+        )
+        assert r.status_code == 200
+        session.expire_all()
+        e = session.get(Entity, envelope.id)
+        assert e.entity_type == "identified_envelope"
+
+    def test_empty_submission_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={"phone_id": phone.id},
+        )
+        assert r.status_code == 422
+
+    def test_combined_failure_type_I_shape(self, client):
+        """phone=confirm + relation=refute → confidence=100, status=verified_bad,
+        target_entity_id severed. Per spec: phone-asset preserved, relation dropped."""
+        tc, session = client
+        phone, envelope = _seed_envelope_with_root(session)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={
+                "phone_id": phone.id,
+                "phone_axis": "confirm",
+                "relation_axis": "refute",
+                "reason": "Phone valid; owner unrelated",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["confidence_score"] == 100.0
+        assert body["verification_status"] == "verified_bad"
+        session.expire_all()
+        e = session.get(Entity, envelope.id)
+        assert e.target_entity_id is None
+
+    def test_invalid_axis_value_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session)
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={"phone_id": phone.id, "phone_axis": "maybe"},
+        )
+        assert r.status_code == 422
+
+    def test_unknown_phone_returns_404(self, client):
+        tc, _ = client
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={"phone_id": 99999, "phone_axis": "confirm"},
+        )
+        assert r.status_code == 404

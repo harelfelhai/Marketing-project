@@ -30,9 +30,11 @@ describe('Phase DY-4-B — drawer Truth Panel for Vector A', () => {
     await user.click(rows[0]);
 
     const drawer = await screen.findByRole('dialog', { name: /פרטי טלפון/ });
-    // Both section labels are present in the Truth Panel.
+    // Both section labels are present in the Truth Panel. The phone-line
+    // label also appears in the DY-4-C VerdictSplitButtons form's axis
+    // row, so use getAllByText with a >=1 assertion instead of getByText.
     expect(within(drawer).getByText('הזהות')).toBeInTheDocument();
-    expect(within(drawer).getByText('קו הטלפון')).toBeInTheDocument();
+    expect(within(drawer).getAllByText('קו הטלפון').length).toBeGreaterThanOrEqual(1);
   });
 });
 

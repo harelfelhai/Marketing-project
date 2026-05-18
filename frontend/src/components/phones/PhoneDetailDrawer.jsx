@@ -201,18 +201,23 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
         </div>
 
         {/* ---------- Footer ---------- */}
-        <footer className="shrink-0 sticky bottom-0 bg-white border-t border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setActionModalOpen(true)}
-            className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
-          >
-            <Zap className="w-4 h-4" />
-            {DRAWER_BTN_TRIGGER}
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-          </button>
+        <footer className="shrink-0 sticky bottom-0 bg-white border-t border-slate-200 px-5 py-3 flex flex-col gap-3">
+          {/* Trigger-action button — kept above the verdict form so the
+              footer reads top-to-bottom: ad-hoc action → structured
+              verdict feedback. */}
+          <div className="flex justify-start">
+            <button
+              type="button"
+              onClick={() => setActionModalOpen(true)}
+              className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
+            >
+              <Zap className="w-4 h-4" />
+              {DRAWER_BTN_TRIGGER}
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          </div>
 
-          <VerdictSplitButtons phone={phone} />
+          <VerdictSplitButtons phone={phone} entity={entity} />
         </footer>
       </aside>
 

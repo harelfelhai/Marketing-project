@@ -3,36 +3,83 @@ import { mockDelay, MOCK_MODE, apiClient } from './client';
 /**
  * submitVerdict — record a manual verification verdict for a phone number.
  *
- * MOCK_MODE = false → POST /verification/verdict; triggers refetchPhoneById
- *                     (Phase D narrowed refetch — single GET /phones/{id}).
- * MOCK_MODE = true  → applies verdict to in-memory mock state.
+ * Phase DY-4 — TWO-AXIS payload shape.
  *
- * Backend VerificationVerdictRequest accepts {phone_id, status, reason, extra_metadata}.
- * There is no top-level operator_id field — attribution is routed into extra_metadata
- * so it is persisted in PhoneNumber.extra_data alongside the verdict.
+ * The legacy single-status call site (4 positional args) is preserved:
+ *     submitVerdict(phoneId, status, reason, operatorId, mockDb)
+ *
+ * The new call site accepts a single object with the full DY-4 contract:
+ *     submitVerdict(phoneId, {
+ *         phone_axis?:      'confirm' | 'refute',
+ *         relation_axis?:   'confirm' | 'refute',
+ *         identification?: { first_name?, last_name?, relation? },
+ *         reason?:          string,
+ *     }, operatorId, mockDb)
+ *
+ * Detection: if the SECOND argument is an object with NO `status` key
+ * (and at least one of phone_axis / relation_axis / identification), it
+ * is routed as DY-4. Otherwise (object with `status`, OR a plain string),
+ * the legacy shape is sent.
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
  * // HOOK FOR ENTERPRISE AUTH: operator_id stamped into extra_metadata below.
  */
-export async function submitVerdict(phoneId, status, reason, operatorId, mockDb) {
+export async function submitVerdict(phoneId, second, reasonOrOperator, operatorOrMockDb, mockDbMaybe) {
+  // Argument shape detection. The legacy signature has `second` as a
+  // status string; the DY-4 signature has it as a payload object.
+  const isObjectPayload = typeof second === 'object' && second !== null;
+
+  // Normalise to a unified `payload` and resolve operatorId/mockDb across
+  // both call shapes.
+  let payload;
+  let operatorId;
+  let mockDb;
+
+  if (isObjectPayload) {
+    payload    = second;
+    operatorId = reasonOrOperator;
+    mockDb     = operatorOrMockDb;
+  } else {
+    // Legacy: (phoneId, status, reason, operatorId, mockDb)
+    payload    = { status: second, reason: reasonOrOperator };
+    operatorId = operatorOrMockDb;
+    mockDb     = mockDbMaybe;
+  }
+
   if (!MOCK_MODE) {
-    const { data } = await apiClient.post('/verification/verdict', {
+    const body = {
       phone_id:       phoneId,
-      status,
-      reason,
       extra_metadata: operatorId ? { operator_id: operatorId } : undefined,
-    });
+    };
+    if (payload.status)         body.status         = payload.status;
+    if (payload.reason)         body.reason         = payload.reason;
+    if (payload.phone_axis)     body.phone_axis     = payload.phone_axis;
+    if (payload.relation_axis)  body.relation_axis  = payload.relation_axis;
+    if (payload.identification) body.identification = payload.identification;
+
+    const { data } = await apiClient.post('/verification/verdict', body);
     await mockDb.refetchPhoneById(phoneId);
     return data;
   }
 
+  // Mock-mode path. Two-axis writes are simulated by mutating the
+  // in-memory phone + entity to match what the backend would do.
   await mockDelay(450);
-  mockDb.applyVerdict(phoneId, status, reason, operatorId);
+  if (payload.status) {
+    // Legacy path — keep using the existing single-axis mock applier.
+    mockDb.applyVerdict(phoneId, payload.status, payload.reason, operatorId);
+  } else {
+    mockDb.applyTwoAxisVerdict?.(phoneId, payload, operatorId);
+  }
+  // Echo a payload approximating the backend's response shape.
   return {
     phone_id:            phoneId,
-    verification_status: status,
+    verification_status: payload.status
+      ?? (payload.relation_axis === 'confirm' ? 'verified_good'
+        : payload.relation_axis === 'refute'  ? 'verified_bad'
+        : undefined),
     verification_source: 'manual',
-    verification_reason: reason || null,
+    verification_reason: payload.reason || null,
     verified_at:         new Date().toISOString(),
   };
 }

@@ -20,6 +20,7 @@ from sqlmodel import Session, col, func, select
 from exceptions import PhoneNumberNotFoundError
 from interfaces.verification import BaseVerificationStrategy
 from models.action_log import ActionLog
+from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.types import utc_now
 
@@ -137,6 +138,137 @@ class VerificationService:
         # Phase DY scoring hook — recalc priority IN THE SAME TRANSACTION
         # so the verdict and the resulting priority change land
         # atomically (no race between two separate commits).
+        if self.scoring_service is not None:
+            self.scoring_service.recalculate_for_phone(phone_id, commit=False)
+
+        self.session.commit()
+        self.session.refresh(phone)
+        return phone
+
+    # ======================================================================
+    # Phase DY-4 — Two-axis verdict + envelope identification
+    # ======================================================================
+
+    def apply_two_axis_verdict(
+        self,
+        phone_id: int,
+        phone_axis: Optional[str]      = None,   # 'confirm' | 'refute' | None
+        relation_axis: Optional[str]   = None,   # 'confirm' | 'refute' | None
+        identification: Optional[dict] = None,   # {first_name, last_name, relation}
+        resolution_note: Optional[str] = None,
+        extra_metadata: Optional[dict] = None,
+    ) -> PhoneNumber:
+        """
+        Apply Phase DY-4 two-axis operator feedback in a single transaction.
+
+        Each parameter is independent — operators can submit feedback on
+        one axis only, both axes, only the identification block, or any
+        combination. At least one of the three must be provided; an empty
+        call raises ValueError (caller's responsibility to enforce 422).
+
+        Axis writes:
+            phone_axis='confirm'   → confidence_score = 100
+            phone_axis='refute'    → confidence_score = 0
+            relation_axis='confirm' → verification_status='verified_good'
+                                      verification_source='manual'
+                                      verification_reason from note or default
+                                      verified_at = now
+                                      (target_entity_id untouched — it was
+                                       already pointing at the right target)
+            relation_axis='refute' → verification_status='verified_bad'
+                                      target_entity_id = NULL on the owning
+                                      entity (severs the relation per the
+                                      user's spec: "disconnect the relation")
+                                      verified_at = now
+
+        Identification block (envelope-only):
+            When the owning entity is currently entity_type='social_envelope',
+            the block promotes it. Three states:
+              - relation provided        → entity_type = relation (e.g. 'spouse')
+              - relation null, name(s)   → entity_type = 'identified_envelope'
+              - block empty              → no entity mutation
+            Names are merged into entity.extra_data under
+            {first_name, last_name} keys (the structural columns stay
+            anonymous per the Secrets-Free Mandate).
+
+        Scoring is recalculated INSIDE the same transaction so all writes
+        + the priority refresh land atomically.
+
+        Returns:
+            PhoneNumber: The updated phone row, fully refreshed.
+
+        Raises:
+            PhoneNumberNotFoundError: phone_id does not exist.
+            ValueError: empty submission (no axis and no identification).
+        """
+        if phone_axis is None and relation_axis is None and not identification:
+            raise ValueError(
+                "apply_two_axis_verdict requires at least one of: "
+                "phone_axis, relation_axis, identification."
+            )
+
+        phone = self.session.get(PhoneNumber, phone_id)
+        if phone is None:
+            raise PhoneNumberNotFoundError(identifier=phone_id)
+
+        now = utc_now()
+
+        # ---- Phone axis ----
+        if phone_axis == "confirm":
+            phone.confidence_score = 100.0
+            phone.confidence_updated_at = now
+        elif phone_axis == "refute":
+            phone.confidence_score = 0.0
+            phone.confidence_updated_at = now
+
+        # ---- Relation axis ----
+        if relation_axis == "confirm":
+            phone.verification_status = "verified_good"
+            phone.verification_source = "manual"
+            phone.verification_reason = resolution_note or "Operator confirmed relation"
+            phone.verified_at = now
+        elif relation_axis == "refute":
+            phone.verification_status = "verified_bad"
+            phone.verification_source = "manual"
+            phone.verification_reason = resolution_note or "Operator severed relation"
+            phone.verified_at = now
+            # Sever the relation on the owning entity per spec Failure Type I.
+            entity = self.session.get(Entity, phone.entity_id)
+            if entity is not None:
+                entity.target_entity_id = None
+                self.session.add(entity)
+
+        # ---- Identification (envelope → named) ----
+        if identification:
+            entity = self.session.get(Entity, phone.entity_id)
+            if entity is not None and entity.entity_type == "social_envelope":
+                # Promote off social_envelope. When the operator supplied
+                # a `relation` token, use it; otherwise hold the entity in
+                # 'identified_envelope' until a later verdict tightens it.
+                new_type = identification.get("relation") or "identified_envelope"
+                entity.entity_type = new_type
+
+                # Merge name fields into extra_data (Secrets-Free Mandate —
+                # structural columns stay generic; proprietary identity
+                # bits live in extra_data).
+                merged = dict(entity.extra_data or {})
+                if identification.get("first_name"):
+                    merged["first_name"] = identification["first_name"]
+                if identification.get("last_name"):
+                    merged["last_name"] = identification["last_name"]
+                entity.extra_data = merged
+                self.session.add(entity)
+
+        # ---- extra_metadata merge into phone.extra_data ----
+        if extra_metadata:
+            merged_phone = dict(phone.extra_data or {})
+            merged_phone.update(extra_metadata)
+            phone.extra_data = merged_phone
+
+        self.session.add(phone)
+
+        # Recalculate priority inside the same transaction so confidence
+        # and entity_type changes propagate atomically.
         if self.scoring_service is not None:
             self.scoring_service.recalculate_for_phone(phone_id, commit=False)
 

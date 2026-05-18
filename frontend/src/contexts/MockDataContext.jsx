@@ -326,6 +326,67 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyTwoAxisVerdict (Phase DY-4-C, mock-mode only)
+  //
+  // Mirrors VerificationService.apply_two_axis_verdict on the backend.
+  // Mutates the in-memory phone (confidence_score / verification_*) and,
+  // when needed, the owning entity (target_entity_id severance for
+  // relation_axis=refute; entity_type promotion for identification).
+  // -------------------------------------------------------------------------
+  const applyTwoAxisVerdict = useCallback((phoneId, payload, operatorId) => {
+    setDb((prev) => {
+      const now = new Date().toISOString();
+      const phoneIdx = prev.phones.findIndex((p) => p.id === phoneId);
+      if (phoneIdx === -1) return prev;
+      const phone   = { ...prev.phones[phoneIdx] };
+      const ownerIdx = prev.entities.findIndex((e) => e.id === phone.entity_id);
+      const entity  = ownerIdx !== -1 ? { ...prev.entities[ownerIdx] } : null;
+
+      // Phone axis writes confidence_score.
+      if (payload.phone_axis === 'confirm') {
+        phone.confidence_score      = 100;
+        phone.confidence_updated_at = now;
+      } else if (payload.phone_axis === 'refute') {
+        phone.confidence_score      = 0;
+        phone.confidence_updated_at = now;
+        phone.priority_score        = 0;
+      }
+      // Relation axis writes verification_status + optionally severs.
+      if (payload.relation_axis === 'confirm') {
+        phone.verification_status = 'verified_good';
+        phone.verification_source = 'manual';
+        phone.verification_reason = payload.reason || 'Operator confirmed relation';
+        phone.verified_at         = now;
+      } else if (payload.relation_axis === 'refute') {
+        phone.verification_status = 'verified_bad';
+        phone.verification_source = 'manual';
+        phone.verification_reason = payload.reason || 'Operator severed relation';
+        phone.verified_at         = now;
+        if (entity) entity.target_entity_id = null;
+      }
+      // Identification — promotes envelope entity.
+      if (payload.identification && entity && entity.entity_type === 'social_envelope') {
+        const ident = payload.identification;
+        entity.entity_type = ident.relation || 'identified_envelope';
+        entity.extra_data  = {
+          ...(entity.extra_data || {}),
+          ...(ident.first_name ? { first_name: ident.first_name } : {}),
+          ...(ident.last_name  ? { last_name:  ident.last_name  } : {}),
+        };
+      }
+      // Operator attribution stamp (mirrors the backend's audit trail).
+      phone.extra_data  = { ...(phone.extra_data || {}), last_verdict_by: operatorId };
+      phone.updated_at  = now;
+
+      const phones   = [...prev.phones];
+      phones[phoneIdx] = phone;
+      const entities = [...prev.entities];
+      if (entity && ownerIdx !== -1) entities[ownerIdx] = entity;
+      return { ...prev, phones, entities };
+    });
+  }, []);
+
+  // -------------------------------------------------------------------------
   // applyRetryNow
   // -------------------------------------------------------------------------
   const applyRetryNow = useCallback((logId, operatorId) => {
@@ -521,6 +582,7 @@ export function MockDataProvider({ children }) {
     applyIngest,
     applyPatchPhone,
     applyVerdict,
+    applyTwoAxisVerdict,
     applyRetryNow,
     applyTriggerAction,
     applyWorkerRun,

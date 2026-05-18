@@ -46,41 +46,84 @@ def submit_verification_verdict(
     service: VerificationService = Depends(get_verification_service),
 ) -> IngestionResponse:
     """
-    Write a manual Phase 3 quality verdict to a PhoneNumber row.
+    Apply a manual operator verdict to a PhoneNumber row.
 
-    Delegates entirely to `VerificationService.update_verification_verdict()`,
-    which atomically updates:
-        - `verification_status`  → body.status
-        - `verification_source`  → "manual" (hardcoded for this endpoint)
-        - `verification_reason`  → body.reason
-        - `verified_at`          → utcnow()
-        - `extra_data`           → merged with body.extra_metadata (if provided)
+    Phase DY-4 — dual-path dispatch.
+    --------------------------------
+    The endpoint accepts two payload shapes in the SAME contract:
 
-    The `verification_source` is always "manual" for verdicts submitted through
-    this endpoint, distinguishing them from automated verdicts written by the
-    VerificationEngine background job.
+      Legacy single-axis (pre-DY-4 callers):
+        { phone_id, status, reason, extra_metadata? }
+        → routed to VerificationService.update_verification_verdict()
+          which writes verification_status / source / reason / verified_at
+          and triggers scoring recalc.
+
+      Two-axis (DY-4 callers):
+        { phone_id, phone_axis?, relation_axis?, identification?, ... }
+        → routed to VerificationService.apply_two_axis_verdict()
+          which writes confidence_score and/or relation severing and/or
+          envelope identification atomically.
+
+    The legacy path is triggered when `status` is provided AND no DY-4
+    fields are present. Any DY-4 field (phone_axis, relation_axis,
+    identification) routes to the new path. Mixed payloads (legacy
+    + DY-4 fields) prefer the DY-4 path — internally the legacy axis
+    is reconstructed from the two-axis fields.
+
+    Empty submissions (no status, no axes, no identification) raise 422.
 
     Args:
         body    (VerificationVerdictRequest): Validated verdict payload.
         service (VerificationService):        Injected via FastAPI Depends.
 
     Returns:
-        IngestionResponse: The updated PhoneNumber row with Phase 3 block populated.
+        IngestionResponse: The updated PhoneNumber row.
 
     Raises:
         HTTPException 404: phone_id not found.
+        HTTPException 422: empty submission.
     """
+    is_two_axis = (
+        body.phone_axis is not None
+        or body.relation_axis is not None
+        or body.identification is not None
+    )
+
     try:
-        updated_phone = service.update_verification_verdict(
-            phone_id=body.phone_id,
-            status=body.status,
-            source="manual",
-            reason=body.reason,
-            extra_metadata=body.extra_metadata,
-        )
+        if is_two_axis:
+            updated_phone = service.apply_two_axis_verdict(
+                phone_id=body.phone_id,
+                phone_axis=body.phone_axis,
+                relation_axis=body.relation_axis,
+                identification=body.identification.model_dump() if body.identification else None,
+                resolution_note=body.reason,
+                extra_metadata=body.extra_metadata,
+            )
+        elif body.status is not None:
+            # Legacy path. `reason` is required when status is supplied.
+            updated_phone = service.update_verification_verdict(
+                phone_id=body.phone_id,
+                status=body.status,
+                source="manual",
+                reason=body.reason or "",
+                extra_metadata=body.extra_metadata,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Empty verdict submission. Provide at least one of: "
+                    "status, phone_axis, relation_axis, identification."
+                ),
+            )
     except PhoneNumberNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 

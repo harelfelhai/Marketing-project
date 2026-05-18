@@ -414,6 +414,38 @@ export const DRAWER_TRUTH_SOURCE_AMBIENT        = 'נמצא דרך סריקת ס
 export const DRAWER_TRUTH_SOURCE_DISPROVED      = 'הופרך · לא רלוונטי';
 
 // ---------------------------------------------------------------------------
+// Phase DY-4-C — Forked verdict surface (two-axis grid + envelope identify)
+// ---------------------------------------------------------------------------
+
+export const VERDICT_FORM_HEADING_VECTOR_A   = 'משוב משימת אימות';
+export const VERDICT_FORM_HEADING_VECTOR_B   = 'משוב על מעטפת חברתית';
+export const VERDICT_FORM_AXIS_PHONE_LABEL   = 'קו הטלפון';
+export const VERDICT_FORM_AXIS_PHONE_NET     = 'הטלפון בסביבת היעד';
+export const VERDICT_FORM_AXIS_RELATION_LBL  = 'הקשר ליעד';
+export const VERDICT_AXIS_CONFIRM            = 'אשר';
+export const VERDICT_AXIS_REFUTE             = 'הפרך';
+export const VERDICT_REASON_PLACEHOLDER_V2   = 'הסבר קצר (אופציונלי)';
+export const VERDICT_BTN_SUBMIT_AXES         = 'שלח משוב';
+export const VERDICT_BTN_SUBMITTING_V2       = 'שולח…';
+export const VERDICT_TOAST_SUCCESS_AXES      = 'המשוב נקלט בהצלחה';
+export const VERDICT_TOAST_EMPTY_AXES        = 'בחר לפחות פעולה אחת לפני שליחה';
+
+// Envelope identify form
+export const IDENTIFY_FORM_HEADING           = 'זיהוי בעל הטלפון';
+export const IDENTIFY_FORM_FIRST_NAME        = 'שם פרטי';
+export const IDENTIFY_FORM_LAST_NAME         = 'שם משפחה';
+export const IDENTIFY_FORM_RELATION          = 'קשר ליעד';
+export const IDENTIFY_FORM_RELATION_NONE     = '— לא צוין (זיהוי חלקי) —';
+export const IDENTIFY_FORM_RELATION_OPTIONS  = [
+  { value: 'spouse',    label: 'בן/בת זוג' },
+  { value: 'family',    label: 'בן משפחה' },
+  { value: 'friend',    label: 'חבר' },
+  { value: 'colleague', label: 'עמית לעבודה' },
+  { value: 'unrelated', label: 'לא קשור (סגור משימה)' },
+];
+export const IDENTIFY_BTN_SAVE               = 'שמור זיהוי';
+
+// ---------------------------------------------------------------------------
 // Task Detail Drawer (DX-4)
 // ---------------------------------------------------------------------------
 
