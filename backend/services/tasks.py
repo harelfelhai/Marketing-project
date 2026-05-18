@@ -23,7 +23,7 @@ The service performs no permission check — the frontend's
 replace it with a `get_current_operator` FastAPI dependency.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import func, select as sa_select
@@ -171,7 +171,10 @@ class PipelineTaskService:
                 current_status=task.status,
             )
 
-        now = datetime.utcnow()
+        # Phase DX constraint #3: timezone-aware UTC. The column is
+        # DateTime(timezone=True); writing a naive datetime here would
+        # produce a value comparison hazard with the default_factory.
+        now = datetime.now(timezone.utc)
         task.status = outcome
         task.resolved_by = operator_id
         task.resolved_at = now

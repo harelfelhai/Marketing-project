@@ -35,7 +35,7 @@ GENERIC NOMENCLATURE INVARIANT
 
 import argparse
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Allow running from the backend/ directory without installing the package.
@@ -453,9 +453,12 @@ def seed(reset: bool = False) -> None:
             ),
         ]
 
+        # Phase DX constraint #3: PipelineTask timestamps are tz-aware UTC.
+        # We attach tzinfo to the legacy `_dt()` helper output so the seed
+        # writes match the column type (DateTime(timezone=True)).
         task_count = 0
         for spec in task_specs:
-            requested = _dt(hours_ago=spec["hours_ago"])
+            requested = _dt(hours_ago=spec["hours_ago"]).replace(tzinfo=timezone.utc)
             resolved_at = (
                 requested + timedelta(hours=1)
                 if spec["status"] in {"resolved", "rejected"}

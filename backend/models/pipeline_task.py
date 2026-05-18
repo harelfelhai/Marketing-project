@@ -32,11 +32,69 @@ swaps the auth seam. The backend does not enforce role policy on these
 columns — it only records what the caller passed in.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, DateTime, JSON
+from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, SQLModel
+
+
+# All three timestamps on this table are timezone-aware UTC per Phase DX
+# constraint #3 (Explicit UTC Timezones). The legacy tables — Entity,
+# PhoneNumber, ActionLog — still use naive datetime.utcnow() and are
+# scheduled for migration in a later phase. Until then, callers that
+# join Pipeline Task with those tables must be tolerant of mixed
+# tz-aware / tz-naive comparisons.
+
+
+def _utc_now() -> datetime:
+    """Return a timezone-aware UTC datetime. Used as default_factory."""
+    return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """
+    DateTime column type that guarantees tz-aware UTC values on the way out.
+
+    SQLAlchemy's `DateTime(timezone=True)` is honoured natively by PostgreSQL
+    (TIMESTAMPTZ), but SQLite's TEXT-backed storage strips the offset on
+    write and returns a naive datetime on read. That mismatch turns this
+    table's timestamps into a comparison hazard on dev (naive on read) vs
+    production (aware on read).
+
+    This TypeDecorator closes the gap by:
+        - On WRITE: requiring the inbound value to be tz-aware (or None);
+          converting to UTC before handing it to the underlying engine.
+        - On READ: reattaching `tzinfo=timezone.utc` if the engine returned
+          a naive value (the SQLite path) so the application layer always
+          sees the same tz-aware shape regardless of backend.
+
+    `cache_ok = True` is safe because the decorator has no parameters.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            # Caller passed a naive datetime — refuse it loudly rather than
+            # silently treating it as local-time.
+            raise ValueError(
+                "PipelineTask datetimes must be tz-aware (Phase DX constraint #3). "
+                "Use datetime.now(timezone.utc) instead of datetime.utcnow()."
+            )
+        return value.astimezone(timezone.utc)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            # SQLite read path — reattach UTC.
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 class PipelineTask(SQLModel, table=True):
@@ -165,27 +223,46 @@ class PipelineTask(SQLModel, table=True):
     )
 
     # ------------------------------------------------------------------
-    # Timestamps
+    # Timestamps — Phase DX constraint #3: explicit timezone-aware UTC.
     # ------------------------------------------------------------------
+    # Each column is backed by `UTCDateTime` (defined at the top of this
+    # file) which wraps `DateTime(timezone=True)` and guarantees tz-aware
+    # roundtrip on BOTH PostgreSQL (native TIMESTAMPTZ) and SQLite
+    # (offset stripped on write, reattached on read). Writes of naive
+    # datetimes are rejected loudly with a ValueError rather than silently
+    # treated as local-time.
 
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False,
-        description="UTC timestamp when this task was opened.",
+        default_factory=_utc_now,
+        sa_column=Column(
+            UTCDateTime(),
+            nullable=False,
+        ),
+        description="Timezone-aware UTC timestamp when this task was opened.",
     )
 
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False,
-        sa_column_kwargs={"onupdate": datetime.utcnow},
-        description="UTC timestamp of the most recent update (auto-managed).",
+        default_factory=_utc_now,
+        sa_column=Column(
+            UTCDateTime(),
+            nullable=False,
+            onupdate=_utc_now,
+        ),
+        description=(
+            "Timezone-aware UTC timestamp of the most recent update "
+            "(auto-managed by SQLAlchemy's onupdate hook)."
+        ),
     )
 
     resolved_at: Optional[datetime] = Field(
         default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=True,
+        ),
         description=(
-            "UTC timestamp set the moment status transitions to 'resolved' "
-            "or 'rejected'. NULL while still open."
+            "Timezone-aware UTC timestamp set the moment status transitions "
+            "to 'resolved' or 'rejected'. NULL while still open."
         ),
     )
 

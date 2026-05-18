@@ -237,6 +237,10 @@ def open_task(
         task = service.open_task(
             phone_id=body.phone_id,
             task_type=body.task_type,
+            # // HOOK FOR ENTERPRISE AUTH — `requested_by` is read verbatim
+            # // from the request body. Phase G replaces this with
+            # // `operator = Depends(get_current_operator)` and the line
+            # // becomes `requested_by=operator.id`.
             requested_by=body.requested_by,
             source_action_log_id=body.source_action_log_id,
             extra_data=body.extra_data,
@@ -292,6 +296,11 @@ def resolve_task(
     try:
         service.resolve_task(
             task_id=task_id,
+            # // HOOK FOR ENTERPRISE AUTH — `operator_id` is read verbatim
+            # // from the request body today. Phase G replaces this with
+            # // `operator = Depends(get_current_operator)` and the line
+            # // becomes `operator_id=operator.id`. The Pydantic Field on
+            # // ResolveTaskRequest.operator_id is the one place to remove.
             operator_id=body.operator_id,
             outcome=body.outcome,
             resolution_note=body.resolution_note,

@@ -790,6 +790,11 @@ class OpenTaskRequest(BaseModel):
             "contract change)."
         ),
     )
+    # // HOOK FOR ENTERPRISE AUTH — `requested_by` is a request-body field
+    # // today and carries the opener's operator_id verbatim. Phase G removes
+    # // this field from the schema and derives it from a
+    # // `get_current_operator` FastAPI dependency, so callers no longer have
+    # // to (and cannot) spoof it.
     requested_by: str = Field(
         ...,
         min_length=1,
@@ -830,6 +835,10 @@ class ResolveTaskRequest(BaseModel):
     // it explicitly until then.
     """
 
+    # // HOOK FOR ENTERPRISE AUTH — see class docstring above. This Field
+    # // declaration is the single source of truth for the operator_id wire
+    # // contract on the resolve endpoint; removing this Field in Phase G
+    # // is a one-line deletion + the matching read in tasks.py:resolve_task.
     operator_id: str = Field(
         ...,
         min_length=1,
