@@ -404,8 +404,24 @@ export const TRUTH_STATE_DISPROVED       = 'הופרך';
 // single-badge verification row.
 export const DRAWER_TRUTH_SECTION_IDENTITY      = 'הזהות';
 export const DRAWER_TRUTH_SECTION_PHONE_LINE    = 'קו הטלפון';
-export const DRAWER_TRUTH_IDENTITY_VECTOR_A     = (entityType) =>
-  `אדם מזוהה · ${entityType || 'unknown'}`;
+// Phase DY-4-D — the `identified_envelope` token represents a partial
+// identify (name supplied but no relation picked). We render it with a
+// dedicated Hebrew label rather than echoing the raw token so operators
+// never see internal vocabulary in the UI.
+export const DRAWER_TRUTH_IDENTITY_PARTIAL      = 'אדם מזוהה · זיהוי חלקי';
+
+// Phase DY-4-D — translate internal-only entity_type tokens into UI labels
+// so operators never see raw vocabulary. Named relation tokens (family,
+// friend, spouse, etc.) are already meaningful and pass through unchanged.
+export const ENTITY_TYPE_DISPLAY = (entityType) => {
+  if (entityType === 'identified_envelope') return 'זיהוי חלקי';
+  if (entityType === 'social_envelope')     return 'מעטפת חברתית';
+  return entityType || 'unknown';
+};
+export const DRAWER_TRUTH_IDENTITY_VECTOR_A     = (entityType) => {
+  if (entityType === 'identified_envelope') return DRAWER_TRUTH_IDENTITY_PARTIAL;
+  return `אדם מזוהה · ${entityType || 'unknown'}`;
+};
 export const DRAWER_TRUTH_IDENTITY_ENVELOPE     = 'מעטפת חברתית — זהות לא מאומתת';
 export const DRAWER_TRUTH_SOURCE_MANUAL         = (when) => `מאומת ידנית · ${when}`;
 export const DRAWER_TRUTH_SOURCE_AUTOMATED      = (when) => `מאומת אוטומטית · ${when}`;

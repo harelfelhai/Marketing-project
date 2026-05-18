@@ -341,17 +341,33 @@ export function MockDataProvider({ children }) {
       const phone   = { ...prev.phones[phoneIdx] };
       const ownerIdx = prev.entities.findIndex((e) => e.id === phone.entity_id);
       const entity  = ownerIdx !== -1 ? { ...prev.entities[ownerIdx] } : null;
+      const isEnvelopeAtStart = entity?.entity_type === 'social_envelope';
 
-      // Phone axis writes confidence_score.
+      // ---- Phone axis (envelope-aware DY-4-D propagation) ----
       if (payload.phone_axis === 'confirm') {
         phone.confidence_score      = 100;
         phone.confidence_updated_at = now;
+        if (isEnvelopeAtStart) {
+          // Phone-in-network = person-to-target for envelopes.
+          phone.verification_status = 'verified_good';
+          phone.verification_source = 'manual';
+          phone.verification_reason = payload.reason || 'Operator confirmed phone is in target network';
+          phone.verified_at         = now;
+        }
       } else if (payload.phone_axis === 'refute') {
         phone.confidence_score      = 0;
         phone.confidence_updated_at = now;
         phone.priority_score        = 0;
+        if (isEnvelopeAtStart) {
+          phone.verification_status = 'verified_bad';
+          phone.verification_source = 'manual';
+          phone.verification_reason = payload.reason || 'Operator rejected envelope placement';
+          phone.verified_at         = now;
+          if (entity) entity.target_entity_id = null;
+        }
       }
-      // Relation axis writes verification_status + optionally severs.
+
+      // ---- Relation axis (Vector A only; UI hides for envelopes) ----
       if (payload.relation_axis === 'confirm') {
         phone.verification_status = 'verified_good';
         phone.verification_source = 'manual';
@@ -364,16 +380,43 @@ export function MockDataProvider({ children }) {
         phone.verified_at         = now;
         if (entity) entity.target_entity_id = null;
       }
-      // Identification — promotes envelope entity.
-      if (payload.identification && entity && entity.entity_type === 'social_envelope') {
+
+      // ---- Identification (envelope → named / identified_envelope) ----
+      if (payload.identification && isEnvelopeAtStart && entity) {
         const ident = payload.identification;
-        entity.entity_type = ident.relation || 'identified_envelope';
-        entity.extra_data  = {
+        const rel   = ident.relation;
+        if (rel === 'unrelated') {
+          entity.entity_type        = 'unrelated';
+          phone.verification_status = 'verified_bad';
+          phone.verification_source = 'manual';
+          phone.verification_reason = payload.reason || 'Operator identified owner as unrelated';
+          phone.verified_at         = now;
+          entity.target_entity_id   = null;
+        } else if (rel) {
+          entity.entity_type        = rel;
+          phone.verification_status = 'verified_good';
+          phone.verification_source = 'manual';
+          phone.verification_reason = payload.reason || `Operator identified owner with relation '${rel}'`;
+          phone.verified_at         = now;
+        } else {
+          entity.entity_type = 'identified_envelope';
+          // Propagate verified_good iff the phone-in-network was previously
+          // OR concurrently confirmed (confidence_score >= 80 after this submit).
+          if (phone.confidence_score != null && phone.confidence_score >= 80) {
+            phone.verification_status = 'verified_good';
+            phone.verification_source = 'manual';
+            phone.verification_reason = payload.reason || 'Operator named owner; envelope previously confirmed';
+            phone.verified_at         = now;
+          }
+          // else: leave verification_status untouched.
+        }
+        entity.extra_data = {
           ...(entity.extra_data || {}),
           ...(ident.first_name ? { first_name: ident.first_name } : {}),
           ...(ident.last_name  ? { last_name:  ident.last_name  } : {}),
         };
       }
+
       // Operator attribution stamp (mirrors the backend's audit trail).
       phone.extra_data  = { ...(phone.extra_data || {}), last_verdict_by: operatorId };
       phone.updated_at  = now;

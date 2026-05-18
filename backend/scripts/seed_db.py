@@ -246,16 +246,18 @@ ASSOCIATED_PHONES = [
          ingestion_source="automated", ingestion_reason="Surfaced via social-cluster scrape.",
          ingested_at=_dt(days_ago=6), verified_at=None),
     # Second envelope: phone-in-network confirmed but owner unknown.
-    # The seed sets confidence_score directly so the row demonstrates the
-    # "📡 ● 🔍 ◇" state (operator confirmed envelope, identity pending).
+    # DY-4-D — for envelopes, confirming phone-in-network IS the
+    # person-to-target assertion. So this demo row carries BOTH:
+    #   confidence_score=100.0  (📡 ● in Truth Panel)
+    #   verification_status='verified_good' (the relation axis propagates)
+    # Identity stays unknown (entity_type='social_envelope', diamond glyph).
     dict(phone_number="+14155550902", classification_type=None,
-         verification_status="pending", verification_source=None,
-         verification_reason=None,
+         verification_status="verified_good",
+         verification_source="manual",
+         verification_reason="Operator confirmed phone is in target network",
          ingestion_source="automated", ingestion_reason="Surfaced via co-occurrence cluster.",
-         ingested_at=_dt(days_ago=5), verified_at=None,
-         # PhoneNumber.confidence_score is normally a column default; for
-         # the demo row we override it so the row shows the partially
-         # verified shape on first load.
+         ingested_at=_dt(days_ago=5),
+         verified_at=_dt(days_ago=4),
          confidence_score=100.0),
 ]
 

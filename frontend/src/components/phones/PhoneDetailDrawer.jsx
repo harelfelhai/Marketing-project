@@ -37,6 +37,7 @@ import {
   SCORE_TIER_VALUE, SCORE_TIER_UNKNOWN, SCORE_NOT_AUDITED,
   DRAWER_TRUTH_SECTION_IDENTITY, DRAWER_TRUTH_SECTION_PHONE_LINE,
   DRAWER_TRUTH_IDENTITY_VECTOR_A, DRAWER_TRUTH_IDENTITY_ENVELOPE,
+  ENTITY_TYPE_DISPLAY,
   DRAWER_TRUTH_SOURCE_MANUAL, DRAWER_TRUTH_SOURCE_AUTOMATED,
   DRAWER_TRUTH_SOURCE_AWAITING, DRAWER_TRUTH_SOURCE_AMBIENT,
   DRAWER_TRUTH_SOURCE_DISPROVED,
@@ -179,8 +180,11 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
             </div>
             <div className="flex items-center justify-between min-w-0">
               <dt className="text-slate-500">{DRAWER_LABEL_ENTITY}</dt>
-              <dd className="text-slate-800 truncate" title={`#${entity?.id} · ${entity?.entity_type}`}>
-                #{entity?.id} · {entity?.entity_type || '—'}
+              <dd
+                className="text-slate-800 truncate"
+                title={`#${entity?.id} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`}
+              >
+                #{entity?.id} · {ENTITY_TYPE_DISPLAY(entity?.entity_type)}
               </dd>
             </div>
             <div className="flex items-center justify-between min-w-0">

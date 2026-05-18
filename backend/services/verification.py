@@ -166,30 +166,49 @@ class VerificationService:
         combination. At least one of the three must be provided; an empty
         call raises ValueError (caller's responsibility to enforce 422).
 
-        Axis writes:
-            phone_axis='confirm'   → confidence_score = 100
-            phone_axis='refute'    → confidence_score = 0
+        Axis writes — Vector A (named entity):
+            phone_axis='confirm'    → confidence_score = 100
+            phone_axis='refute'     → confidence_score = 0
             relation_axis='confirm' → verification_status='verified_good'
-                                      verification_source='manual'
-                                      verification_reason from note or default
-                                      verified_at = now
-                                      (target_entity_id untouched — it was
-                                       already pointing at the right target)
-            relation_axis='refute' → verification_status='verified_bad'
-                                      target_entity_id = NULL on the owning
-                                      entity (severs the relation per the
-                                      user's spec: "disconnect the relation")
-                                      verified_at = now
+            relation_axis='refute'  → verification_status='verified_bad' +
+                                       target_entity_id severed
 
-        Identification block (envelope-only):
-            When the owning entity is currently entity_type='social_envelope',
-            the block promotes it. Three states:
-              - relation provided        → entity_type = relation (e.g. 'spouse')
-              - relation null, name(s)   → entity_type = 'identified_envelope'
-              - block empty              → no entity mutation
-            Names are merged into entity.extra_data under
-            {first_name, last_name} keys (the structural columns stay
-            anonymous per the Secrets-Free Mandate).
+        Axis writes — Vector B (social_envelope) — DY-4-D propagation:
+            For envelopes, the two axes COLLAPSE because the entity is just
+            a placeholder for "whoever owns this phone in the network".
+            Confirming phone-in-network is therefore also confirming
+            person-to-target. The service applies these implications
+            automatically:
+
+            phone_axis='confirm' on envelope:
+                → confidence_score = 100
+                → verification_status='verified_good' (propagated)
+            phone_axis='refute' on envelope:
+                → confidence_score = 0
+                → verification_status='verified_bad' (propagated)
+                → target_entity_id severed (the entire envelope assertion
+                  is refuted, not just the line)
+
+        Identification block (envelope-only) — DY-4-D propagation:
+            relation in {spouse, family, friend, …} (any non-'unrelated'):
+                → entity_type = relation
+                → verification_status='verified_good' (operator stated
+                  the relation, which is the person-to-target axis)
+            relation = 'unrelated':
+                → entity_type = 'unrelated'
+                → verification_status='verified_bad'
+                → target_entity_id severed
+            relation omitted (partial identify):
+                → entity_type = 'identified_envelope'
+                → IF confidence_score is already high (≥ 80, meaning
+                  phone-in-network was previously OR concurrently
+                  confirmed), verification_status='verified_good' is
+                  propagated — the previously-verified envelope status
+                  carries onto the now-named owner.
+                → ELSE verification_status stays at its current value
+                  (operator named someone but never audited the envelope).
+            Names are merged into entity.extra_data {first_name, last_name}
+            keys (Secrets-Free Mandate — structural columns stay generic).
 
         Scoring is recalculated INSIDE the same transaction so all writes
         + the priority refresh land atomically.
@@ -211,17 +230,47 @@ class VerificationService:
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
+        # Cache the owning entity once — we may need it for envelope
+        # propagation, relation severance, and identification promotion.
+        # `is_envelope_at_start` captures the state BEFORE this submission
+        # mutates entity_type, so phone_axis propagation triggers correctly
+        # even when the same submission also identifies the owner.
+        entity = self.session.get(Entity, phone.entity_id)
+        is_envelope_at_start = (
+            entity is not None and entity.entity_type == "social_envelope"
+        )
+
         now = utc_now()
 
-        # ---- Phone axis ----
+        # ---- Phone axis (with envelope-aware propagation) ----
         if phone_axis == "confirm":
             phone.confidence_score = 100.0
             phone.confidence_updated_at = now
+            if is_envelope_at_start:
+                # DY-4-D: phone-in-network = person-to-target for envelopes.
+                phone.verification_status = "verified_good"
+                phone.verification_source = "manual"
+                phone.verification_reason = (
+                    resolution_note or "Operator confirmed phone is in target network"
+                )
+                phone.verified_at = now
         elif phone_axis == "refute":
             phone.confidence_score = 0.0
             phone.confidence_updated_at = now
+            if is_envelope_at_start:
+                # DY-4-D: refuting envelope placement = refuting the whole
+                # assertion, including the implied relation-to-target.
+                phone.verification_status = "verified_bad"
+                phone.verification_source = "manual"
+                phone.verification_reason = (
+                    resolution_note or "Operator rejected envelope placement"
+                )
+                phone.verified_at = now
+                if entity is not None:
+                    entity.target_entity_id = None
+                    self.session.add(entity)
 
-        # ---- Relation axis ----
+        # ---- Relation axis (Vector A only; UI hides this for envelopes) ----
         if relation_axis == "confirm":
             phone.verification_status = "verified_good"
             phone.verification_source = "manual"
@@ -232,32 +281,65 @@ class VerificationService:
             phone.verification_source = "manual"
             phone.verification_reason = resolution_note or "Operator severed relation"
             phone.verified_at = now
-            # Sever the relation on the owning entity per spec Failure Type I.
-            entity = self.session.get(Entity, phone.entity_id)
             if entity is not None:
                 entity.target_entity_id = None
                 self.session.add(entity)
 
-        # ---- Identification (envelope → named) ----
-        if identification:
-            entity = self.session.get(Entity, phone.entity_id)
-            if entity is not None and entity.entity_type == "social_envelope":
-                # Promote off social_envelope. When the operator supplied
-                # a `relation` token, use it; otherwise hold the entity in
-                # 'identified_envelope' until a later verdict tightens it.
-                new_type = identification.get("relation") or "identified_envelope"
-                entity.entity_type = new_type
+        # ---- Identification (envelope → named / identified_envelope) ----
+        if identification and is_envelope_at_start and entity is not None:
+            ident_relation = identification.get("relation")
 
-                # Merge name fields into extra_data (Secrets-Free Mandate —
-                # structural columns stay generic; proprietary identity
-                # bits live in extra_data).
-                merged = dict(entity.extra_data or {})
-                if identification.get("first_name"):
-                    merged["first_name"] = identification["first_name"]
-                if identification.get("last_name"):
-                    merged["last_name"] = identification["last_name"]
-                entity.extra_data = merged
-                self.session.add(entity)
+            if ident_relation == "unrelated":
+                # Failure Type I via identify: name the owner AND mark
+                # unrelated. Matches relation_axis=refute semantics.
+                entity.entity_type = "unrelated"
+                phone.verification_status = "verified_bad"
+                phone.verification_source = "manual"
+                phone.verification_reason = (
+                    resolution_note or "Operator identified owner as unrelated"
+                )
+                phone.verified_at = now
+                entity.target_entity_id = None
+            elif ident_relation:
+                # Full identification — operator stated the relation, which
+                # is the person-to-target axis. DY-4-D: also verified_good.
+                entity.entity_type = ident_relation
+                phone.verification_status = "verified_good"
+                phone.verification_source = "manual"
+                phone.verification_reason = (
+                    resolution_note
+                    or f"Operator identified owner with relation '{ident_relation}'"
+                )
+                phone.verified_at = now
+            else:
+                # Partial identify — name only, no relation.
+                entity.entity_type = "identified_envelope"
+                # DY-4-D: propagate verified_good IF the envelope's phone-
+                # in-network was previously OR concurrently confirmed. The
+                # confidence_score check uses the value AFTER this submit's
+                # phone_axis writes.
+                current_conf = phone.confidence_score
+                if current_conf is not None and current_conf >= 80.0:
+                    phone.verification_status = "verified_good"
+                    phone.verification_source = "manual"
+                    phone.verification_reason = (
+                        resolution_note
+                        or "Operator named owner; envelope previously confirmed"
+                    )
+                    phone.verified_at = now
+                # else: verification_status untouched — operator named
+                # someone but never audited the envelope placement.
+
+            # Merge name fields into entity.extra_data (Secrets-Free Mandate —
+            # structural columns stay generic; proprietary identity bits
+            # live in extra_data).
+            merged = dict(entity.extra_data or {})
+            if identification.get("first_name"):
+                merged["first_name"] = identification["first_name"]
+            if identification.get("last_name"):
+                merged["last_name"] = identification["last_name"]
+            entity.extra_data = merged
+            self.session.add(entity)
 
         # ---- extra_metadata merge into phone.extra_data ----
         if extra_metadata:

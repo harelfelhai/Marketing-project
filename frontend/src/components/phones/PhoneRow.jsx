@@ -19,7 +19,7 @@ import { formatRelative } from '../../utils/formatDate';
 import {
   SCORE_PRIORITY_LABEL, SCORE_TIER_VALUE, SCORE_ROW_TOOLTIP,
   PROVENANCE_TITLE_VECTOR_A, PROVENANCE_TITLE_VECTOR_B,
-  ENVELOPE_LABEL,
+  ENVELOPE_LABEL, ENTITY_TYPE_DISPLAY,
   TRUTH_AXIS_PHONE_PERSON, TRUTH_AXIS_PERSON_TARGET,
   TRUTH_AXIS_PHONE_IN_NETWORK, TRUTH_AXIS_IDENTITY,
   TRUTH_STATE_VERIFIED, TRUTH_STATE_PENDING, TRUTH_STATE_DISPROVED,
@@ -122,9 +122,9 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
             ) : (
               <span
                 className="text-xs text-slate-500 truncate"
-                title={`Entity #${entity?.id} · ${entity?.entity_type || 'unknown'}`}
+                title={`Entity #${entity?.id} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`}
               >
-                Entity #{entity?.id} · {entity?.entity_type || 'unknown'}
+                Entity #{entity?.id} · {ENTITY_TYPE_DISPLAY(entity?.entity_type)}
               </span>
             )}
             {phone.customer_tier != null && (
