@@ -16,8 +16,9 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { buildInitialDb, deriveClientMetrics } from '../mock/mockData';
 import { MOCK_MODE } from '../api/client';
-import { listPhones, getPhoneDetail } from '../api/phonesApi';
-import { listActionLogs }              from '../api/actionsApi';
+import { listPhones, getPhoneDetail }     from '../api/phonesApi';
+import { listActionLogs }                  from '../api/actionsApi';
+import { listTasks, getTaskDetail }        from '../api/tasksApi';
 import { CLIENT_REGISTRY } from '../config/clientRegistry';
 
 const MockDataContext = createContext(null);
@@ -28,6 +29,7 @@ const EMPTY_DB = {
   entities:   [],
   phones:     [],
   actionLogs: [],
+  tasks:      [],
   engines:    {
     retry:        { executing: false, lastRunAt: null, lastProcessedCount: 0 },
     verification: { executing: false, lastRunAt: null, lastProcessedCount: 0 },
@@ -40,8 +42,13 @@ export function MockDataProvider({ children }) {
 
   // ---------------------------------------------------------------------------
   // Real-API boot hydration — fires once on mount when MOCK_MODE = false.
-  // Fetches phones + action logs, synthesizes entities, seeds clients from
-  // clientRegistry. Components stay unchanged — they read context as before.
+  // Fetches phones + action logs + tasks, synthesizes entities, seeds clients
+  // from clientRegistry. Components stay unchanged — they read context as before.
+  //
+  // Phase DX amendment to Phase D exit gate §6.2.3: the original "exactly two
+  // parallel requests" rule generalises to "exactly N parallel requests where
+  // N = independent top-level cache slices." With the tasks slice introduced,
+  // N is now 3.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (MOCK_MODE) return;
@@ -50,8 +57,9 @@ export function MockDataProvider({ children }) {
     Promise.all([
       listPhones({ pageSize: 200 }),
       listActionLogs({ pageSize: 500 }),
+      listTasks({ pageSize: 500 }),
     ])
-      .then(([phonesData, logsData]) => {
+      .then(([phonesData, logsData, tasksData]) => {
         // Synthesize entities from the phone JOIN data.
         // Each phone carries entity_id, entity_type, and client_id from the backend.
         const entityMap = new Map();
@@ -69,6 +77,7 @@ export function MockDataProvider({ children }) {
           ...prev,
           phones:     phonesData,
           actionLogs: logsData,
+          tasks:      tasksData,
           entities:   Array.from(entityMap.values()),
           clients:    CLIENT_REGISTRY,
         }));
@@ -77,7 +86,7 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // Expose raw state slices
-  const { clients, entities, phones, actionLogs, engines } = db;
+  const { clients, entities, phones, actionLogs, tasks, engines } = db;
 
   // ---------------------------------------------------------------------------
   // refetchPhones — re-hydrates phones + entities from the server.
@@ -206,6 +215,38 @@ export function MockDataProvider({ children }) {
     const fresh = await listActionLogs({ phone_id: phoneId });
     mergeLogsByPhoneId(phoneId, fresh);
   }, [mergeLogsByPhoneId]);
+
+  // ---------------------------------------------------------------------------
+  // Phase DX — Pipeline tasks cache slice.
+  //
+  // mergeTaskById   — replace-by-id or append a single task. Same merge
+  //                   primitive as mergePhoneById / spliceActionLog.
+  // refetchTasks    — wholesale; used by openTask (new server-assigned id).
+  // refetchTaskById — narrow refetch keyed by id; used by resolveTask.
+  // ---------------------------------------------------------------------------
+
+  const mergeTaskById = useCallback((task) => {
+    if (!task || task.id == null) return;
+    setDb((prev) => {
+      const exists = prev.tasks.some((t) => t.id === task.id);
+      const next = exists
+        ? prev.tasks.map((t) => (t.id === task.id ? task : t))
+        : [...prev.tasks, task];
+      return { ...prev, tasks: next };
+    });
+  }, []);
+
+  const refetchTasks = useCallback(async () => {
+    if (MOCK_MODE) return;
+    const fresh = await listTasks({ pageSize: 500 });
+    setDb((prev) => ({ ...prev, tasks: fresh }));
+  }, []);
+
+  const refetchTaskById = useCallback(async (id) => {
+    if (MOCK_MODE || id == null) return;
+    const fresh = await getTaskDetail(id);
+    mergeTaskById(fresh);
+  }, [mergeTaskById]);
 
   // -------------------------------------------------------------------------
   // applyIngest
@@ -354,6 +395,75 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyOpenTask  (mock-mode only; the real path uses refetchTasks)
+  //
+  // Synthesises a new pending task from the openTask payload. JOIN fields
+  // (phone_number, entity_id, entity_type, client_id) are filled by looking
+  // up the related phone/entity in the current cache so the mock shape
+  // matches the real-API JOIN exactly.
+  // -------------------------------------------------------------------------
+  const applyOpenTask = useCallback((payload) => {
+    setDb((prev) => {
+      const nextId = Math.max(...prev.tasks.map((t) => t.id), 0) + 1;
+      const now    = new Date().toISOString();
+      const phone  = prev.phones.find((p) => p.id === payload.phone_id);
+      const entity = phone ? prev.entities.find((e) => e.id === phone.entity_id) : null;
+
+      const newTask = {
+        id:                   nextId,
+        phone_id:             payload.phone_id,
+        source_action_log_id: payload.source_action_log_id ?? null,
+        task_type:            payload.task_type,
+        status:               'pending',
+        requested_by:         payload.requested_by,
+        resolved_by:          null,
+        created_at:           now,
+        updated_at:           now,
+        resolved_at:          null,
+        extra_data:           payload.extra_data ?? null,
+        // JOIN-shape echo so consumers see identical structure to real mode.
+        phone_number:         phone?.phone_number ?? null,
+        entity_id:            phone?.entity_id    ?? null,
+        entity_type:          entity?.entity_type ?? null,
+        client_id:            entity?.client_id   ?? null,
+      };
+      return { ...prev, tasks: [...prev.tasks, newTask] };
+    });
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // applyResolveTask  (mock-mode only; real path uses refetchTaskById)
+  //
+  // Writes the terminal state and merges resolution_outcome / resolved_by /
+  // resolution_note into extra_data — same shape the backend service produces.
+  // -------------------------------------------------------------------------
+  const applyResolveTask = useCallback((taskId, body) => {
+    setDb((prev) => ({
+      ...prev,
+      tasks: prev.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        const now = new Date().toISOString();
+        const merged = {
+          ...(t.extra_data || {}),
+          resolution_outcome: body.outcome,
+          resolved_by:        body.operator_id,
+        };
+        if (body.resolution_note != null) {
+          merged.resolution_note = body.resolution_note;
+        }
+        return {
+          ...t,
+          status:      body.outcome,
+          resolved_by: body.operator_id,
+          resolved_at: now,
+          updated_at:  now,
+          extra_data:  merged,
+        };
+      }),
+    }));
+  }, []);
+
+  // -------------------------------------------------------------------------
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
@@ -393,17 +503,19 @@ export function MockDataProvider({ children }) {
     entities,
     phones,
     actionLogs,
+    tasks,
     engines,
     loading,
     // Invalidation / refetch (real-API mode — no-op in mock mode)
     refetchPhones,
     refetchActionLogs,
-    // Phase D — narrowed refetches (real-API mode only; no-op in mock mode).
-    // Consumers should prefer these over refetchPhones/refetchActionLogs when
-    // the mutation scope is a single id. Both remain available; PR 3 swaps
-    // existing call sites in src/api/*.js.
+    refetchTasks,
+    // Phase D / DX — narrowed refetches (real-API mode only; no-op in mock mode).
+    // Consumers should prefer these over the wholesale refetches when the
+    // mutation scope is a single id.
     refetchPhoneById,
     refetchLogsForPhone,
+    refetchTaskById,
     spliceActionLog,
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
@@ -412,6 +524,8 @@ export function MockDataProvider({ children }) {
     applyRetryNow,
     applyTriggerAction,
     applyWorkerRun,
+    applyOpenTask,
+    applyResolveTask,
     setEngineExecuting,
     // Derived helpers
     getClientMetrics,

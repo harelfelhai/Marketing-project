@@ -714,6 +714,126 @@ export const SEED_FORM_SCHEMA = {
 // lose spinner state (per UI robustness mandate).
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Pipeline tasks  (Phase DX — Operations Task Queue mock seed)
+//
+// Five representative tasks covering all 3 task_types × 4 statuses so the
+// OperationsQueue UI has data to render across every filter sub-view in
+// mock mode. Shape matches PipelineTaskResponse exactly (snake_case keys
+// with JOIN convenience fields client_id / phone_number / entity_id /
+// entity_type already inlined).
+// ---------------------------------------------------------------------------
+
+export const SEED_TASKS = [
+  {
+    id: 1,
+    phone_id: 2,
+    source_action_log_id: null,
+    task_type: 'remediation_failure',
+    status: 'pending',
+    requested_by: 'automation:retry_engine',
+    resolved_by: null,
+    created_at: _daysAgo(0.75),
+    updated_at: _daysAgo(0.75),
+    resolved_at: null,
+    extra_data: {
+      failure_category: 'provider_blocked',
+      suggested_remediation: 'Escalate to carrier for unblock review.',
+    },
+    // JOIN convenience fields (inlined to match real-mode payload).
+    phone_number: '+14155550102',
+    entity_id:    2,
+    entity_type:  'target',
+    client_id:    'alpha',
+  },
+  {
+    id: 2,
+    phone_id: 9,
+    source_action_log_id: null,
+    task_type: 'remediation_failure',
+    status: 'assigned',
+    requested_by: 'automation:retry_engine',
+    resolved_by: null,
+    created_at: _daysAgo(0.5),
+    updated_at: _daysAgo(0.4),
+    resolved_at: null,
+    extra_data: {
+      failure_category: 'quota_exceeded',
+      suggested_remediation: 'Retry tomorrow after quota reset.',
+    },
+    phone_number: '+14155550109',
+    entity_id:    9,
+    entity_type:  'target',
+    client_id:    'beta',
+  },
+  {
+    id: 3,
+    phone_id: 17,
+    source_action_log_id: null,
+    task_type: 'approval_required',
+    status: 'pending',
+    requested_by: 'mock_operator_02',
+    resolved_by: null,
+    created_at: _daysAgo(0.25),
+    updated_at: _daysAgo(0.25),
+    resolved_at: null,
+    extra_data: {
+      requested_action_type: 'action_type_b',
+      operator_note: 'Customer requested call-back outside of normal cadence.',
+    },
+    phone_number: '+14155550117',
+    entity_id:    17,
+    entity_type:  'target',
+    client_id:    'gamma',
+  },
+  {
+    id: 4,
+    phone_id: 25,
+    source_action_log_id: null,
+    task_type: 'manual_recommendation',
+    status: 'resolved',
+    requested_by: 'automation:verification_engine',
+    resolved_by: 'mock_admin_01',
+    created_at: _daysAgo(0.18),
+    updated_at: _daysAgo(0.1),
+    resolved_at: _daysAgo(0.1),
+    extra_data: {
+      recommendation: 'Flag for manual quality review.',
+      resolution_outcome: 'resolved',
+      resolved_by: 'mock_admin_01',
+      resolution_note: 'Confirmed reachable; marked verified_good.',
+    },
+    phone_number: '+14155550125',
+    entity_id:    25,
+    entity_type:  'target',
+    client_id:    'delta',
+  },
+  {
+    id: 5,
+    phone_id: 33,
+    source_action_log_id: null,
+    task_type: 'approval_required',
+    status: 'rejected',
+    requested_by: 'mock_operator_02',
+    resolved_by: 'mock_admin_01',
+    created_at: _daysAgo(0.08),
+    updated_at: _daysAgo(0.05),
+    resolved_at: _daysAgo(0.05),
+    extra_data: {
+      requested_action_type: 'action_type_a',
+      operator_note: 'One more retry attempt before abandoning.',
+      resolution_outcome: 'rejected',
+      resolved_by: 'mock_admin_01',
+      resolution_note: 'Carrier intercept is permanent; do not retry.',
+    },
+    phone_number: '+14155550133',
+    entity_id:    33,
+    entity_type:  'target',
+    client_id:    'epsilon',
+  },
+];
+
+
 export const DEFAULT_ENGINE_STATES = {
   retry: {
     name: 'retry',
@@ -769,6 +889,7 @@ export function buildInitialDb() {
     entities:   structuredClone(SEED_ENTITIES),
     phones:     structuredClone(SEED_PHONES),
     actionLogs: structuredClone(SEED_ACTION_LOGS),
+    tasks:      structuredClone(SEED_TASKS),
     engines:    structuredClone(DEFAULT_ENGINE_STATES),
   };
 }
