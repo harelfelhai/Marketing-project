@@ -187,6 +187,11 @@ ASSOCIATED_SPEC = [
     (2, 3, "friend",  {"relationship": "close"}),
     (3, 4, "family",  {"relationship": "extended"}),
     (4, 5, "friend",  {"relationship": "close"}),
+    # Phase DY-4 — social_envelope entities (Vector B). Identity unknown
+    # at ingest time; the operator's audit can confirm the envelope
+    # placement, identify the owner, or refute the algorithm's surfacing.
+    (0, 1, "social_envelope", {"envelope_id": "EP-088", "scrape_source": "social_cluster_alpha"}),
+    (1, 2, "social_envelope", {"envelope_id": "EP-091", "scrape_source": "co_occurrence_beta"}),
 ]
 
 ASSOCIATED_PHONES = [
@@ -231,6 +236,27 @@ ASSOCIATED_PHONES = [
          verification_reason=None,
          ingestion_source="automated", ingestion_reason=None,
          ingested_at=_dt(days_ago=8), verified_at=None),
+
+    # Phase DY-4 envelopes — match the two ASSOCIATED_SPEC envelopes above.
+    # First envelope: raw / untouched (verification_status='pending',
+    # baseline confidence). Demonstrates the "📡 ◌ 🔍 ◇" row state.
+    dict(phone_number="+14155550901", classification_type=None,
+         verification_status="pending", verification_source=None,
+         verification_reason=None,
+         ingestion_source="automated", ingestion_reason="Surfaced via social-cluster scrape.",
+         ingested_at=_dt(days_ago=6), verified_at=None),
+    # Second envelope: phone-in-network confirmed but owner unknown.
+    # The seed sets confidence_score directly so the row demonstrates the
+    # "📡 ● 🔍 ◇" state (operator confirmed envelope, identity pending).
+    dict(phone_number="+14155550902", classification_type=None,
+         verification_status="pending", verification_source=None,
+         verification_reason=None,
+         ingestion_source="automated", ingestion_reason="Surfaced via co-occurrence cluster.",
+         ingested_at=_dt(days_ago=5), verified_at=None,
+         # PhoneNumber.confidence_score is normally a column default; for
+         # the demo row we override it so the row shows the partially
+         # verified shape on first load.
+         confidence_score=100.0),
 ]
 
 # Action log specs: (phone_index_in_all_phones, action_type, status, hours_ago_requested, extra_data)
@@ -380,7 +406,11 @@ def seed(reset: bool = False) -> None:
         # ----------------------------------------------------------------
         print("  Inserting associated phone numbers …")
         for entity, spec in zip(associated_records, ASSOCIATED_PHONES):
-            phone = PhoneNumber(
+            # Phase DY-4 — confidence_score is normally the column default
+            # (50.0). Specs that supply it override the default so envelope
+            # demo rows can land already showing the "confirmed in network"
+            # state on first load.
+            phone_kwargs = dict(
                 entity_id=entity.id,
                 phone_number=spec["phone_number"],
                 classification_type=spec["classification_type"],
@@ -394,6 +424,9 @@ def seed(reset: bool = False) -> None:
                 created_at=_to_utc(spec["ingested_at"]),
                 updated_at=_to_utc(spec.get("verified_at") or spec["ingested_at"]),
             )
+            if "confidence_score" in spec:
+                phone_kwargs["confidence_score"] = spec["confidence_score"]
+            phone = PhoneNumber(**phone_kwargs)
             session.add(phone)
             session.flush()
             phone_records.append(phone)

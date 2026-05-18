@@ -376,6 +376,30 @@ export const FILTER_SORT_LABEL_PRIORITY    = 'מיון: עדיפות';
 export const FILTER_SORT_LABEL_INGESTED_AT = 'מיון: סדר כניסה';
 
 // ---------------------------------------------------------------------------
+// Phase DY-4 — Two-axis truth & envelope (Vector B) vocabulary
+// ---------------------------------------------------------------------------
+
+// Provenance — title attributes for the row's left-edge pip.
+export const PROVENANCE_TITLE_VECTOR_A = 'מקור: ישות מזוהה';
+export const PROVENANCE_TITLE_VECTOR_B = 'מקור: סביבה חברתית — זהות לא מאומתת';
+
+// Envelope placeholder rendering — used in the entity column when the
+// row's entity_type is 'social_envelope'.
+export const ENVELOPE_LABEL              = (id) =>
+  id ? `מעטפת חברתית · ${id}` : 'מעטפת חברתית';
+export const ENVELOPE_TYPE_CAPTION       = 'social_envelope';
+export const ENVELOPE_OWNER_UNKNOWN      = 'בעלים לא מזוהה';
+
+// Truth axis micro-labels (rendered as title attributes on the dots).
+export const TRUTH_AXIS_PHONE_PERSON     = 'הטלפון שייך לאדם';
+export const TRUTH_AXIS_PERSON_TARGET    = 'האדם קשור ליעד';
+export const TRUTH_AXIS_PHONE_IN_NETWORK = 'הטלפון בסביבת היעד';
+export const TRUTH_AXIS_IDENTITY         = 'זהות בעל הטלפון';
+export const TRUTH_STATE_VERIFIED        = 'מאומת';
+export const TRUTH_STATE_PENDING         = 'ממתין';
+export const TRUTH_STATE_DISPROVED       = 'הופרך';
+
+// ---------------------------------------------------------------------------
 // Task Detail Drawer (DX-4)
 // ---------------------------------------------------------------------------
 

@@ -46,6 +46,12 @@ RELATION_WEIGHTS: dict[str, float] = {
     "colleague":  0.4,
     "associate":  0.3,
     "employee":   0.3,
+    # Phase DY-4 — Vector B social_envelope. Sits below all confirmed
+    # relations because it's the algorithm's guess at proximity (the
+    # identified owner could be anyone, including someone unrelated).
+    # Once the operator identifies the owner, the entity_type is promoted
+    # to a real relation token and gets that token's weight instead.
+    "social_envelope": 0.5,
 }
 UNKNOWN_RELATION_WEIGHT: float = 0.5
 """

@@ -7,28 +7,64 @@
  * Click selects the row → opens the detail drawer.
  */
 
+import { Diamond, Phone as PhoneIcon, User, Radio, Search } from 'lucide-react';
+
 import Badge from '../primitives/Badge';
 import ActionMiniPipeline from './ActionMiniPipeline';
 import {
-  verificationVariant, verificationLabel,
   priorityVariant, tierVariant,
+  isEnvelope, phoneAxisState, identityAxisState,
 } from '../../utils/classifyStatus';
 import { formatRelative } from '../../utils/formatDate';
 import {
   SCORE_PRIORITY_LABEL, SCORE_TIER_VALUE, SCORE_ROW_TOOLTIP,
+  PROVENANCE_TITLE_VECTOR_A, PROVENANCE_TITLE_VECTOR_B,
+  ENVELOPE_LABEL,
+  TRUTH_AXIS_PHONE_PERSON, TRUTH_AXIS_PERSON_TARGET,
+  TRUTH_AXIS_PHONE_IN_NETWORK, TRUTH_AXIS_IDENTITY,
+  TRUTH_STATE_VERIFIED, TRUTH_STATE_PENDING, TRUTH_STATE_DISPROVED,
 } from '../../config/strings.he';
 
+const TRUTH_STATE_LABEL = {
+  good:    TRUTH_STATE_VERIFIED,
+  pending: TRUTH_STATE_PENDING,
+  failed:  TRUTH_STATE_DISPROVED,
+};
+
+// Dot colour by state — keeps the dual-icon row visually quiet (no
+// fully colored Badge pills) so the existing layout doesn't get noisier.
+const TRUTH_STATE_DOT = {
+  good:    'bg-emerald-500',
+  pending: 'border border-slate-400',  // hollow
+  failed:  'bg-rose-500',
+};
+
 export default function PhoneRow({ phone, entity, client, logs, isSelected, onSelect }) {
-  // Phase DY — score-derived visuals. The priority badge inherits the
-  // existing Badge variant palette (good/pending/failed) so it composes
-  // with the rest of the row without introducing a new colour vocabulary.
-  // The whole row carries a tooltip with all three scores so an operator
-  // hovering anywhere on the row sees the rationale.
   const rowTooltip = SCORE_ROW_TOOLTIP(
     phone.priority_score,
     phone.confidence_score,
     phone.customer_tier,
   );
+
+  // Phase DY-4 — Vector A vs Vector B determines provenance + truth-axis
+  // shapes. The entity_type is the single source of truth; isEnvelope()
+  // wraps the comparison so the same check is testable in isolation.
+  const envelope = isEnvelope(entity?.entity_type);
+
+  // Provenance pip — emerald left border for Vector A, amber for Vector B.
+  // The first cell carries the pip so it visually anchors the row's start
+  // edge under RTL (the "start" side in RTL is the right; Tailwind's
+  // logical `border-s-*` flips automatically).
+  const pipClass = envelope
+    ? 'border-s-4 border-s-amber-400'
+    : 'border-s-4 border-s-emerald-400';
+  const pipTitle = envelope ? PROVENANCE_TITLE_VECTOR_B : PROVENANCE_TITLE_VECTOR_A;
+
+  // Two-axis truth states. Vector A reads from confidence_score +
+  // verification_status; Vector B reads only from confidence (the
+  // identity axis is always 'pending' until the envelope is identified).
+  const phoneState    = phoneAxisState(phone.confidence_score);
+  const identityState = identityAxisState(entity?.entity_type, phone.verification_status);
 
   return (
     <tr
@@ -38,8 +74,10 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
         isSelected ? 'bg-slate-50' : 'hover:bg-slate-50/60'
       }`}
     >
-      {/* Column 1 — Phone + classification + priority pill (stacked) */}
-      <td className="px-4 py-3 align-middle">
+      {/* Column 1 — Phone + classification + priority pill. The provenance
+          pip lives on the start edge of this cell so the row reads as
+          provenance-bar → phone-number, scannable in one glance. */}
+      <td className={`px-4 py-3 align-middle ${pipClass}`} title={pipTitle}>
         <div className="flex flex-col gap-1 min-w-0">
           <span className="font-mono text-sm font-semibold text-slate-900 truncate">
             {phone.phone_number}
@@ -61,7 +99,9 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
         </div>
       </td>
 
-      {/* Column 2 — Client + entity + tier (stacked) */}
+      {/* Column 2 — Client + entity + tier. Envelope rows replace the
+          standard entity caption with the diamond glyph + envelope_id so
+          "this isn't a named person yet" is unmistakable. */}
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col min-w-0 max-w-[180px] gap-1">
           <span
@@ -71,12 +111,22 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
             {client?.name || '—'}
           </span>
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-            <span
-              className="text-xs text-slate-500 truncate"
-              title={`Entity #${entity?.id} · ${entity?.entity_type || 'unknown'}`}
-            >
-              Entity #{entity?.id} · {entity?.entity_type || 'unknown'}
-            </span>
+            {envelope ? (
+              <span
+                className="inline-flex items-center gap-1 text-xs text-slate-500 italic truncate"
+                title={ENVELOPE_LABEL(entity?.extra_data?.envelope_id)}
+              >
+                <Diamond className="w-3 h-3 shrink-0" />
+                {ENVELOPE_LABEL(entity?.extra_data?.envelope_id)}
+              </span>
+            ) : (
+              <span
+                className="text-xs text-slate-500 truncate"
+                title={`Entity #${entity?.id} · ${entity?.entity_type || 'unknown'}`}
+              >
+                Entity #{entity?.id} · {entity?.entity_type || 'unknown'}
+              </span>
+            )}
             {phone.customer_tier != null && (
               <Badge variant={tierVariant(phone.customer_tier)} size="xs">
                 {SCORE_TIER_VALUE(phone.customer_tier)}
@@ -86,17 +136,25 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
         </div>
       </td>
 
-      {/* Column 3 — Verification status + source */}
+      {/* Column 3 — Two-axis truth dots. Vector A shows phone/person;
+          Vector B shows network/identity. Identity for envelopes uses
+          the diamond glyph (not a dot) to mark "unknown" as a distinct
+          state from "pending verification". */}
       <td className="px-4 py-3 align-middle">
-        <div className="flex flex-col gap-1 items-start">
-          <Badge variant={verificationVariant(phone.verification_status)} size="sm">
-            {verificationLabel(phone.verification_status)}
-          </Badge>
-          {phone.verification_source && (
-            <span className="text-[10px] text-slate-400 uppercase tracking-wide">
-              via {phone.verification_source}
-            </span>
-          )}
+        <div className="flex flex-col gap-1.5">
+          <TruthAxis
+            icon={envelope ? Radio : PhoneIcon}
+            state={phoneState}
+            title={envelope ? TRUTH_AXIS_PHONE_IN_NETWORK : TRUTH_AXIS_PHONE_PERSON}
+          />
+          <TruthAxis
+            icon={envelope ? Search : User}
+            state={identityState}
+            title={envelope ? TRUTH_AXIS_IDENTITY : TRUTH_AXIS_PERSON_TARGET}
+            // Envelopes always show diamond on the identity axis until
+            // promoted to a named entity — distinct from "pending".
+            forceDiamond={envelope}
+          />
         </div>
       </td>
 
@@ -115,5 +173,25 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
         </div>
       </td>
     </tr>
+  );
+}
+
+
+function TruthAxis({ icon: Icon, state, title, forceDiamond = false }) {
+  // forceDiamond renders a diamond glyph instead of a coloured dot when
+  // the state is intrinsically unknown (envelope identity axis). For all
+  // other cases the dot colour communicates the state per TRUTH_STATE_DOT.
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] text-slate-500"
+      title={`${title} · ${TRUTH_STATE_LABEL[state] || ''}`}
+    >
+      <Icon className="w-3 h-3 shrink-0" />
+      {forceDiamond ? (
+        <Diamond className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+      ) : (
+        <span className={`w-2 h-2 rounded-full shrink-0 ${TRUTH_STATE_DOT[state]}`} />
+      )}
+    </span>
   );
 }

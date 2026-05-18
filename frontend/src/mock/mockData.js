@@ -100,6 +100,17 @@ export const SEED_ENTITIES = [
   { id: 38, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'east'  } },
   { id: 39, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'west'  } },
   { id: 40, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'south' } },
+
+  // Phase DY-4 — social_envelope entities (Vector B). target_entity_id
+  // points at the owning primary so the row sits inside that client's
+  // queue. Identity unknown at ingest; the operator's audit either
+  // confirms placement, identifies the owner, or refutes the surfacing.
+  { id: 88, entity_type: 'social_envelope', client_id: 'alpha',
+    target_entity_id: 1,
+    extra_data: { envelope_id: 'EP-088', scrape_source: 'social_cluster_alpha' } },
+  { id: 91, entity_type: 'social_envelope', client_id: 'beta',
+    target_entity_id: 9,
+    extra_data: { envelope_id: 'EP-091', scrape_source: 'co_occurrence_beta' } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -471,6 +482,38 @@ export const SEED_PHONES = [
     verification_reason: null, verified_at: null,
     created_at: _daysAgo(2), updated_at: _daysAgo(2),
     extra_data: { priority: 'medium', campaign: 'Q2-2026' },
+  },
+
+  // Phase DY-4 — Vector B envelope phones. Identity unknown; the
+  // owning entity is a 'social_envelope' placeholder. buildInitialDb()
+  // injects customer_tier + priority_score via the same path as named
+  // entities, so these rows participate in the priority sort normally.
+
+  // EP-088 — raw envelope, untouched. Demonstrates "📡 ◌ 🔍 ◇".
+  {
+    id: 88, entity_id: 88, phone_number: '+15559000088',
+    classification_type: null, ingestion_source: 'automated',
+    ingestion_reason: 'Surfaced via social-cluster scrape.',
+    ingested_at: _daysAgo(6),
+    verification_status: 'pending', verification_source: null,
+    verification_reason: null, verified_at: null,
+    created_at: _daysAgo(6), updated_at: _daysAgo(6),
+    extra_data: { source_cluster: 'cluster-44' },
+    // confidence omitted → uses _seededConfidence() default
+  },
+  // EP-091 — phone-in-network confirmed but owner unknown.
+  // Demonstrates "📡 ● 🔍 ◇" — your specific scenario.
+  {
+    id: 91, entity_id: 91, phone_number: '+15559000091',
+    classification_type: null, ingestion_source: 'automated',
+    ingestion_reason: 'Surfaced via co-occurrence cluster.',
+    ingested_at: _daysAgo(5),
+    verification_status: 'pending', verification_source: null,
+    verification_reason: null, verified_at: null,
+    created_at: _daysAgo(5), updated_at: _daysAgo(4),
+    extra_data: { source_cluster: 'cluster-71', operator_note: 'Confirmed phone is in target network; identity pending.' },
+    confidence_score: 100,   // operator-confirmed envelope placement
+    confidence_updated_at: _daysAgo(4),
   },
 ];
 
@@ -935,8 +978,14 @@ export function buildInitialDb() {
   // visible, predictable ordering.
   const phones = structuredClone(SEED_PHONES).map((p) => {
     const entity = entities.find((e) => e.id === p.entity_id);
-    const tier   = entity?.extra_data?.customer_tier ?? null;
-    const confidence = p.confidence_score ?? _seededConfidence(p.id);
+    // For envelopes we walk one hop up to the root for tier; for any
+    // entity with no target_entity_id, the entity IS the root.
+    const root   = entity?.target_entity_id != null
+      ? entities.find((e) => e.id === entity.target_entity_id) || entity
+      : entity;
+    const tier         = root?.extra_data?.customer_tier ?? null;
+    const relationType = entity?.entity_type ?? 'target';
+    const confidence   = p.confidence_score ?? _seededConfidence(p.id);
     return {
       ...p,
       // Flat JOIN convenience fields — mock equivalents of the backend's
@@ -950,7 +999,11 @@ export function buildInitialDb() {
       confidence_updated_at: p.confidence_updated_at ?? null,
       // Mock priority — mirrors the hybrid formula coefficients from
       // backend modules/mock_scoring.py (α=0.6, β=0.4) for visual parity.
-      priority_score:        _mockComputePriority(confidence, 'target', tier),
+      // Envelope rows get a LOWER relation_weight (0.5 — same as the
+      // backend's _MOCK_RELATION_WEIGHTS for social_envelope, see
+      // backend/modules/mock_scoring.py) so envelope priorities sit
+      // below named-entity priorities all else being equal.
+      priority_score:        _mockComputePriority(confidence, relationType, tier),
       priority_updated_at:   p.priority_updated_at ?? _nowIso(),
     };
   });
@@ -973,7 +1026,12 @@ export function buildInitialDb() {
 // running real mode never hit this code path.
 // ---------------------------------------------------------------------------
 
-const _MOCK_RELATION_WEIGHTS = { target: 1.0, family: 0.7, friend: 0.5, colleague: 0.4 };
+const _MOCK_RELATION_WEIGHTS = {
+  target: 1.0, family: 0.7, friend: 0.5, colleague: 0.4,
+  // Phase DY-4 — envelope sits below all confirmed relations because
+  // it is the algorithm's guess at proximity, not a known link.
+  social_envelope: 0.5,
+};
 const _MOCK_TIER_WEIGHTS     = { 1: 1.0, 2: 0.7, 3: 0.4 };
 const _MOCK_ALPHA            = 0.6;
 const _MOCK_BETA             = 0.4;

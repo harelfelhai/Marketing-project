@@ -126,3 +126,47 @@ export function tierVariant(tier) {
   if (tier === 2) return 'pending';
   return 'info';
 }
+
+// ---------------------------------------------------------------------------
+// Phase DY-4 — Vector B (social_envelope) detection + two-axis truth states
+// ---------------------------------------------------------------------------
+// Vector A rows (named entity) carry two axes:
+//   - Phone-to-person (📞) backed by confidence_score
+//   - Person-to-target (👤) backed by entity_type + target_entity_id intact
+// Vector B rows (entity_type='social_envelope') carry a different pair:
+//   - Phone-in-network (📡) — same column (confidence_score) but the
+//     question the operator answers is "is this phone in target's network?"
+//   - Identity (🔍)         — owner unknown until the inline form is used.
+
+export function isEnvelope(entityType) {
+  return entityType === 'social_envelope';
+}
+
+/**
+ * Phone-axis truth state — variant for the dot/badge.
+ * Returns 'good' when confidence_score is high (operator-affirmed),
+ * 'failed' when low (operator-refuted), 'pending' otherwise.
+ *
+ * Cutoffs deliberately wide so the visual state doesn't flicker between
+ * adjacent scoring runs that move the value by a few points.
+ */
+export function phoneAxisState(confidenceScore) {
+  if (confidenceScore == null) return 'pending';
+  if (confidenceScore >= 80) return 'good';
+  if (confidenceScore <= 10) return 'failed';
+  return 'pending';
+}
+
+/**
+ * Identity / relation axis state. For Vector A rows this is "is the
+ * person actually related to target?" For Vector B (envelope) rows
+ * this collapses to "do we know who the owner is yet?" — envelopes
+ * are always 'pending' on the identity axis until the operator fills
+ * the Identify form (which promotes the entity off 'social_envelope').
+ */
+export function identityAxisState(entityType, verificationStatus) {
+  if (isEnvelope(entityType)) return 'pending';   // diamond
+  if (verificationStatus === 'verified_good') return 'good';
+  if (verificationStatus === 'verified_bad')  return 'failed';
+  return 'pending';
+}
