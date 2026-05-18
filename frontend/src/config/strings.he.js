@@ -371,6 +371,10 @@ export const SCORE_ROW_TOOLTIP      = (priority, confidence, tier) =>
     tier != null ? `דרגה ${tier}` : 'דרגה לא ידועה'
   }`;
 
+// Sort toggle (DY-3) — labels for the PhoneFilterBar dropdown.
+export const FILTER_SORT_LABEL_PRIORITY    = 'מיון: עדיפות';
+export const FILTER_SORT_LABEL_INGESTED_AT = 'מיון: סדר כניסה';
+
 // ---------------------------------------------------------------------------
 // Task Detail Drawer (DX-4)
 // ---------------------------------------------------------------------------

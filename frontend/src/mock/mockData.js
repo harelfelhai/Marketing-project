@@ -939,9 +939,12 @@ export function buildInitialDb() {
     const confidence = p.confidence_score ?? _seededConfidence(p.id);
     return {
       ...p,
-      // Flat JOIN convenience field — mock equivalent of the backend's
-      // server-side root-entity traversal. The frontend (PhoneRow,
-      // PhoneDetailDrawer) reads phone.customer_tier directly.
+      // Flat JOIN convenience fields — mock equivalents of the backend's
+      // server-side root-entity traversal. Frontend consumers (PhoneRow,
+      // PhoneDetailDrawer, ClientCard) read these off the phone row
+      // directly without needing to walk the entity graph themselves.
+      client_id:             entity?.client_id      ?? null,
+      entity_type:           entity?.entity_type    ?? null,
       customer_tier:         tier,
       confidence_score:      confidence,
       confidence_updated_at: p.confidence_updated_at ?? null,

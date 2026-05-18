@@ -19,7 +19,15 @@ import {
 
 const SKELETON_ROW_COUNT = 8;
 
-function applyFilters(phones, entities, clients, actionLogs, filters) {
+/**
+ * applyFilters — pure filter + sort function exposed for unit-testability.
+ *
+ * Mirrors the TaskTable.applyFilters pattern (DX-T2): the function is a
+ * NAMED export so tests can exercise the filter / sort matrix without
+ * mounting the React tree. The component still uses it via the same
+ * call signature; production bundle is unaffected.
+ */
+export function applyFilters(phones, entities, clients, actionLogs, filters) {
   const entityById = new Map(entities.map((e) => [e.id, e]));
   const clientById = new Map(clients.map((c) => [c.id, c]));
   const logsByPhone = actionLogs.reduce((acc, l) => {
@@ -34,7 +42,7 @@ function applyFilters(phones, entities, clients, actionLogs, filters) {
     return { phone, entity, client, logs };
   });
 
-  return rows.filter(({ phone, entity, client }) => {
+  const filtered = rows.filter(({ phone, entity, client }) => {
     if (filters.clientId           && entity?.client_id           !== filters.clientId)           return false;
     if (filters.verificationStatus && phone.verification_status   !== filters.verificationStatus) return false;
     if (filters.ingestionSource    && phone.ingestion_source      !== filters.ingestionSource)    return false;
@@ -51,6 +59,32 @@ function applyFilters(phones, entities, clients, actionLogs, filters) {
     }
     return true;
   });
+
+  // Phase DY — client-side re-sort. The data in `db.phones` was fetched
+  // with the backend's default ordering (priority DESC); switching the
+  // toggle re-sorts the in-memory rows without a network round-trip.
+  // Same NULLS-LAST + id-DESC tiebreaker as the backend's ORDER BY so
+  // mock-mode and real-mode produce identical visible ordering.
+  const sortBy = filters.sortBy || 'priority';
+  if (sortBy === 'ingested_at') {
+    filtered.sort((a, b) => {
+      const da = new Date(a.phone.ingested_at).getTime();
+      const db = new Date(b.phone.ingested_at).getTime();
+      if (da !== db) return db - da;
+      return b.phone.id - a.phone.id;
+    });
+  } else {
+    filtered.sort((a, b) => {
+      const aHas = a.phone.priority_score != null;
+      const bHas = b.phone.priority_score != null;
+      if (aHas !== bHas) return aHas ? -1 : 1;                   // NULLS LAST
+      if (aHas && bHas && a.phone.priority_score !== b.phone.priority_score) {
+        return b.phone.priority_score - a.phone.priority_score;  // DESC
+      }
+      return b.phone.id - a.phone.id;                            // tiebreaker
+    });
+  }
+  return filtered;
 }
 
 export default function PhoneTable({ selectedId, onSelect }) {

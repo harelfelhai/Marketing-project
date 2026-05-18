@@ -16,6 +16,10 @@ const DEFAULT_FILTERS = {
   ingestionSource:    '',
   classificationType: '',
   search:             '',
+  // Phase DY — table sort order. 'priority' (default) shows the
+  // prioritised review queue with NULLS LAST + id tiebreaker;
+  // 'ingested_at' preserves the legacy chronological view.
+  sortBy:             'priority',
 };
 
 // Phase DX — Operations Queue filter shape; mirrors TaskFilterBar controls.

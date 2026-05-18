@@ -16,7 +16,13 @@ import {
   FILTER_ALL_SOURCES, FILTER_SOURCE_API, FILTER_SOURCE_MANUAL,
   FILTER_SOURCE_IMPORT, FILTER_SOURCE_PARTNER, FILTER_ALL_CLASSIFICATIONS,
   FILTER_BTN_CLEAR,
+  FILTER_SORT_LABEL_PRIORITY, FILTER_SORT_LABEL_INGESTED_AT,
 } from '../../config/strings.he';
+
+const SORT_OPTIONS = [
+  { value: 'priority',     label: FILTER_SORT_LABEL_PRIORITY },
+  { value: 'ingested_at',  label: FILTER_SORT_LABEL_INGESTED_AT },
+];
 
 const VERIFICATION_OPTIONS = [
   { value: '',              label: FILTER_ALL_STATUSES },
@@ -105,6 +111,17 @@ export default function PhoneFilterBar() {
         <option value="">{FILTER_ALL_CLASSIFICATIONS}</option>
         {CLASSIFICATION_TYPES.map((t) => (
           <option key={t} value={t}>{t.toUpperCase()}</option>
+        ))}
+      </select>
+
+      {/* Sort (Phase DY-3) */}
+      <select
+        value={phoneFilters.sortBy || 'priority'}
+        onChange={(e) => updatePhoneFilters({ sortBy: e.target.value })}
+        className={selectClass}
+      >
+        {SORT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
 
