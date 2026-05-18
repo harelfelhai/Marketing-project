@@ -61,19 +61,40 @@ def _dt(days_ago: float = 0, hours_ago: float = 0) -> datetime:
 
 
 def _wipe(session: Session) -> None:
-    """Delete all rows in dependency order (FK constraints respected)."""
+    """
+    Delete all rows in strict dependency order (FK constraints respected).
+
+    Without `relationship()` definitions on our models, SQLAlchemy's
+    unit-of-work cannot infer the FK dependency graph at commit time and
+    may reorder DELETE statements alphabetically. That breaks the
+    entity → phone_number → action_log → pipeline_task chain on SQLite
+    with `PRAGMA foreign_keys=ON`.
+
+    Fix: `session.flush()` after each table's batch of deletes so the
+    SQL hits the DB in source-code order, not in SQLAlchemy's
+    auto-selected order.
+    """
     # PipelineTask first — has FKs to both PhoneNumber and ActionLog.
     for task in session.exec(select(PipelineTask)).all():
         session.delete(task)
+    session.flush()
+
     for log in session.exec(select(ActionLog)).all():
         session.delete(log)
+    session.flush()
+
     for phone in session.exec(select(PhoneNumber)).all():
         session.delete(phone)
-    # Associated entities first (have target_entity_id FK), then primaries.
+    session.flush()
+
+    # Associated entities first (have target_entity_id FK to other entities),
+    # then primaries — same flush-per-batch pattern.
     associated = [e for e in session.exec(select(Entity)).all() if e.target_entity_id is not None]
     primaries  = [e for e in session.exec(select(Entity)).all() if e.target_entity_id is None]
     for e in associated:
         session.delete(e)
+    session.flush()
+
     for e in primaries:
         session.delete(e)
     session.commit()
