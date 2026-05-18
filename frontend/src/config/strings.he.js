@@ -335,6 +335,7 @@ export const TASK_FILTER_ALL_TYPES          = 'כל סוגי המשימות';
 export const TASK_FILTER_BTN_CLEAR          = 'נקה סינון';
 export const TASK_FILTER_PHONE_CHIP         = (id) => `מסונן לטלפון #${id}`;
 export const TASK_FILTER_CLIENT_CHIP        = (id) => `מסונן ללקוח #${id}`;
+export const TASK_FILTER_OPEN_ONLY_CHIP     = 'משימות פתוחות בלבד';
 
 // 5-column table headers
 export const TASK_TABLE_COL_TYPE      = 'סוג משימה';

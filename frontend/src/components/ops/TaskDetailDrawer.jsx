@@ -66,8 +66,11 @@ export default function TaskDetailDrawer({ taskId, onClose }) {
 
   const handleOpenPhone = () => {
     if (task.phone_id != null) {
+      // Do NOT call onClose() — navigating away unmounts this drawer
+      // naturally. Calling onClose() here would race the navigate() and
+      // (on pages that mutate URL params in their close handler) yank us
+      // back. Same pattern as PhoneDetailDrawer's task-pill cross-link.
       navigate(`/phones?phone_id=${task.phone_id}`);
-      onClose();
     }
   };
 

@@ -86,13 +86,14 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
                     {DRAWER_VIA_SOURCE(phone.verification_source)}
                   </span>
                 )}
-                {/* Phase DX — cross-link pill to the Operations Cockpit */}
+                {/* Phase DX — cross-link pill to the Operations Cockpit.
+                    Do NOT call onClose() here: PhoneGridPage's handleCloseDrawer
+                    runs setSearchParams() which races the navigate() and
+                    yanks us back to /phones. The drawer unmounts naturally
+                    when the route changes. */}
                 <button
                   type="button"
-                  onClick={() => {
-                    navigate(`/operations?phone_id=${phoneId}`);
-                    onClose();
-                  }}
+                  onClick={() => navigate(`/operations?phone_id=${phoneId}`)}
                   className={`inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-full border transition-colors ${
                     taskCount > 0
                       ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'

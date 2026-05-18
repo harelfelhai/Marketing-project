@@ -49,7 +49,9 @@ export default function ClientCard({ client }) {
   const openTasks = metrics.openTasks ?? 0;
   const handleTasksClick = (e) => {
     e.stopPropagation();
-    navigate(`/operations?client_id=${client.id}`);
+    // open=true narrows the destination view to pending+assigned tasks so
+    // the badge's "N משימות פתוחות" label matches what lands on screen.
+    navigate(`/operations?client_id=${client.id}&open=true`);
   };
 
   return (

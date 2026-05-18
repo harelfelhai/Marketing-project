@@ -19,15 +19,17 @@ const DEFAULT_FILTERS = {
 };
 
 // Phase DX — Operations Queue filter shape; mirrors TaskFilterBar controls.
-// `phoneId` and `clientId` have no dedicated UI control — they are seeded
-// from URL params (cross-link from PhoneDetailDrawer / ClientCard) and
-// cleared via the reset button. Surfaced visually as chips in TaskFilterBar.
+// `phoneId`, `clientId`, `openOnly` have no dedicated UI control — they are
+// seeded from URL params (cross-links from PhoneDetailDrawer / ClientCard)
+// and cleared via the reset button. Surfaced visually as chips in
+// TaskFilterBar.
 const DEFAULT_TASK_FILTERS = {
   status:   '',
   taskType: '',
   search:   '',
   phoneId:  null,
   clientId: null,
+  openOnly: false,
 };
 
 export function UIProvider({ children }) {

@@ -35,28 +35,30 @@ import {
 export default function OperationsQueuePage() {
   const [selectedId, setSelectedId]   = useState(null);
   const [searchParams]                = useSearchParams();
-  const { seedTaskPhoneFilter, seedTaskClientFilter } = useUI();
+  const {
+    seedTaskPhoneFilter,
+    seedTaskClientFilter,
+    updateTaskFilters,
+  } = useUI();
 
-  // Phase DX cross-links — seed persistent task filters from URL params.
-  // Same numeric-coercion guard as PhoneGridPage's client_id seeder (§5.1):
-  // URL params are always strings; task.phone_id / task.client_id are
-  // integers in real mode.
+  // Phase DX cross-links — URL is authoritative for the phone_id /
+  // client_id / open filters. Every URL change resets all three
+  // (presence → seeded value; absence → cleared). This prevents the
+  // "double-stacked filter" bug where navigating to /operations?phone_id=N
+  // would keep a stale client_id filter from a previous cross-link.
+  //
+  // Numeric coercion guard same as PhoneGridPage §5.1: URL params are
+  // strings, IDs in real mode are integers.
   useEffect(() => {
-    const rawPhone = searchParams.get('phone_id');
-    if (rawPhone) {
-      const parsed = Number(rawPhone);
-      seedTaskPhoneFilter(
-        Number.isFinite(parsed) && rawPhone.trim() !== '' ? parsed : rawPhone
-      );
-    }
-    const rawClient = searchParams.get('client_id');
-    if (rawClient) {
-      const parsed = Number(rawClient);
-      seedTaskClientFilter(
-        Number.isFinite(parsed) && rawClient.trim() !== '' ? parsed : rawClient
-      );
-    }
-  }, [searchParams, seedTaskPhoneFilter, seedTaskClientFilter]);
+    const coerceId = (raw) => {
+      if (raw == null || raw === '') return null;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : raw;
+    };
+    seedTaskPhoneFilter(coerceId(searchParams.get('phone_id')));
+    seedTaskClientFilter(coerceId(searchParams.get('client_id')));
+    updateTaskFilters({ openOnly: searchParams.get('open') === 'true' });
+  }, [searchParams, seedTaskPhoneFilter, seedTaskClientFilter, updateTaskFilters]);
 
   return (
     <RequireRole

@@ -45,6 +45,12 @@ function applyFilters(tasks, filters) {
     if (filters.clientId != null && String(t.client_id) !== String(filters.clientId)) {
       return false;
     }
+    // openOnly is seeded from /operations?open=true (ClientCard open-task
+    // badge). Restricts the view to non-terminal statuses so the badge's
+    // "N משימות פתוחות" promise matches what the table actually shows.
+    if (filters.openOnly && t.status !== 'pending' && t.status !== 'assigned') {
+      return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [

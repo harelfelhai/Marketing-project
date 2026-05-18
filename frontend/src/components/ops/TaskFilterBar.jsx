@@ -18,6 +18,7 @@ import {
   TASK_FILTER_BTN_CLEAR,
   TASK_FILTER_PHONE_CHIP,
   TASK_FILTER_CLIENT_CHIP,
+  TASK_FILTER_OPEN_ONLY_CHIP,
 } from '../../config/strings.he';
 
 const STATUS_OPTIONS = ['pending', 'assigned', 'resolved', 'rejected'];
@@ -31,7 +32,8 @@ export default function TaskFilterBar() {
     taskFilters.taskType ||
     taskFilters.search   ||
     taskFilters.phoneId  != null ||
-    taskFilters.clientId != null;
+    taskFilters.clientId != null ||
+    taskFilters.openOnly;
 
   const selectClass =
     'h-9 px-3 text-sm rounded-md border border-slate-300 bg-white text-slate-800 ' +
@@ -85,6 +87,11 @@ export default function TaskFilterBar() {
       {taskFilters.clientId != null && (
         <span className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md border border-sky-200 bg-sky-50 text-sky-800">
           {TASK_FILTER_CLIENT_CHIP(taskFilters.clientId)}
+        </span>
+      )}
+      {taskFilters.openOnly && (
+        <span className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800">
+          {TASK_FILTER_OPEN_ONLY_CHIP}
         </span>
       )}
 
