@@ -467,8 +467,8 @@ export function MockDataProvider({ children }) {
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
-    (clientId) => deriveClientMetrics(clientId, phones, actionLogs, entities),
-    [phones, actionLogs, entities]
+    (clientId) => deriveClientMetrics(clientId, phones, actionLogs, entities, tasks),
+    [phones, actionLogs, entities, tasks]
   );
 
   const getEntityById = useCallback(

@@ -40,6 +40,11 @@ function applyFilters(tasks, filters) {
     if (filters.phoneId != null && String(t.phone_id) !== String(filters.phoneId)) {
       return false;
     }
+    // clientId is seeded from /operations?client_id=N cross-link from
+    // ClientCard (Phase DX-5). Same String(...) coercion as §5.1.
+    if (filters.clientId != null && String(t.client_id) !== String(filters.clientId)) {
+      return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [

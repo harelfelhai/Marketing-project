@@ -17,6 +17,7 @@ import {
   TASK_FILTER_ALL_TYPES,
   TASK_FILTER_BTN_CLEAR,
   TASK_FILTER_PHONE_CHIP,
+  TASK_FILTER_CLIENT_CHIP,
 } from '../../config/strings.he';
 
 const STATUS_OPTIONS = ['pending', 'assigned', 'resolved', 'rejected'];
@@ -29,7 +30,8 @@ export default function TaskFilterBar() {
     taskFilters.status   ||
     taskFilters.taskType ||
     taskFilters.search   ||
-    taskFilters.phoneId  != null;
+    taskFilters.phoneId  != null ||
+    taskFilters.clientId != null;
 
   const selectClass =
     'h-9 px-3 text-sm rounded-md border border-slate-300 bg-white text-slate-800 ' +
@@ -73,11 +75,16 @@ export default function TaskFilterBar() {
         ))}
       </select>
 
-      {/* Cross-link chip: shown when the filter was seeded from
-          /operations?phone_id=N. No dedicated UI control — clear via reset. */}
+      {/* Cross-link chips: shown when the filter was seeded from a URL param.
+          No dedicated UI control — clear via the reset button. */}
       {taskFilters.phoneId != null && (
         <span className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md border border-amber-200 bg-amber-50 text-amber-800">
           {TASK_FILTER_PHONE_CHIP(taskFilters.phoneId)}
+        </span>
+      )}
+      {taskFilters.clientId != null && (
+        <span className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md border border-sky-200 bg-sky-50 text-sky-800">
+          {TASK_FILTER_CLIENT_CHIP(taskFilters.clientId)}
         </span>
       )}
 

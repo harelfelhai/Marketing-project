@@ -38,6 +38,18 @@ export default function PhoneGridPage() {
     // operators may have set it manually via the dropdown.
   }, [searchParams, seedClientFilter]);
 
+  // Phase DX cross-link landing — when arriving from TaskDetailDrawer's
+  // "פתח כרטיס טלפון" link with ?phone_id=N, auto-open the matching
+  // drawer. Numeric coercion same as §5.1.
+  useEffect(() => {
+    const raw = searchParams.get('phone_id');
+    if (raw) {
+      const parsed = Number(raw);
+      const id = Number.isFinite(parsed) && raw.trim() !== '' ? parsed : null;
+      if (id != null) setSelectedId(id);
+    }
+  }, [searchParams]);
+
   // Closing the drawer should also drop ?phone_id from the URL if present.
   // (We don't currently sync selectedId to the URL but the hook is here
   // for future deep-linking work.)

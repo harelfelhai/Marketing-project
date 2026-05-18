@@ -856,7 +856,13 @@ export const DEFAULT_ENGINE_STATES = {
 // Called by MockDataContext and consumed by ClientCard.
 // ---------------------------------------------------------------------------
 
-export function deriveClientMetrics(clientId, phones, actionLogs, entities = SEED_ENTITIES) {
+export function deriveClientMetrics(
+  clientId,
+  phones,
+  actionLogs,
+  entities = SEED_ENTITIES,
+  tasks    = [],
+) {
   const clientPhones = phones.filter((p) => {
     // Real-API mode: client_id is embedded directly on the phone (from the JOIN).
     if (p.client_id != null) return String(p.client_id) === String(clientId);
@@ -875,7 +881,17 @@ export function deriveClientMetrics(clientId, phones, actionLogs, entities = SEE
     (l) => l.status === 'failed' && phoneIds.has(l.phone_id)
   ).length;
 
-  return { total, pending, good, bad, failed };
+  // Phase DX — open task count for this client (pending + assigned).
+  // Each task carries client_id from the backend JOIN so we filter directly
+  // without re-resolving through phones/entities — matches the real-mode
+  // shape produced by taskAdapter.enrichTask.
+  const openTasks = tasks.filter(
+    (t) =>
+      (t.status === 'pending' || t.status === 'assigned') &&
+      String(t.client_id) === String(clientId),
+  ).length;
+
+  return { total, pending, good, bad, failed, openTasks };
 }
 
 // ---------------------------------------------------------------------------

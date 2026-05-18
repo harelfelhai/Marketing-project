@@ -33,23 +33,30 @@ import {
 } from '../config/strings.he';
 
 export default function OperationsQueuePage() {
-  const [selectedId, setSelectedId] = useState(null);
-  const [searchParams]              = useSearchParams();
-  const { seedTaskPhoneFilter }     = useUI();
+  const [selectedId, setSelectedId]   = useState(null);
+  const [searchParams]                = useSearchParams();
+  const { seedTaskPhoneFilter, seedTaskClientFilter } = useUI();
 
-  // Phase DX cross-link — seed the persistent phoneId task filter from the
-  // ?phone_id=N URL param. Same numeric-coercion guard as PhoneGridPage's
-  // client_id seeder (§5.1): URL params are always strings, task.phone_id
-  // is an integer in real mode.
+  // Phase DX cross-links — seed persistent task filters from URL params.
+  // Same numeric-coercion guard as PhoneGridPage's client_id seeder (§5.1):
+  // URL params are always strings; task.phone_id / task.client_id are
+  // integers in real mode.
   useEffect(() => {
-    const raw = searchParams.get('phone_id');
-    if (raw) {
-      const parsed = Number(raw);
+    const rawPhone = searchParams.get('phone_id');
+    if (rawPhone) {
+      const parsed = Number(rawPhone);
       seedTaskPhoneFilter(
-        Number.isFinite(parsed) && raw.trim() !== '' ? parsed : raw
+        Number.isFinite(parsed) && rawPhone.trim() !== '' ? parsed : rawPhone
       );
     }
-  }, [searchParams, seedTaskPhoneFilter]);
+    const rawClient = searchParams.get('client_id');
+    if (rawClient) {
+      const parsed = Number(rawClient);
+      seedTaskClientFilter(
+        Number.isFinite(parsed) && rawClient.trim() !== '' ? parsed : rawClient
+      );
+    }
+  }, [searchParams, seedTaskPhoneFilter, seedTaskClientFilter]);
 
   return (
     <RequireRole

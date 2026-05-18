@@ -235,6 +235,10 @@ export const CLIENT_CARD_GOOD          = 'תקין';
 export const CLIENT_CARD_BAD           = 'פסול';
 export const CLIENT_CARD_DECIDED       = (n) => `${n} שנפסקו`;
 export const CLIENT_CARD_QUALITY_SLA   = 'איכות מול SLA';
+// Phase DX — open-task badge on each client card.
+export const CLIENT_CARD_OPEN_TASKS    = (n) => `${n} משימות פתוחות`;
+export const CLIENT_CARD_NO_OPEN_TASKS = 'אין משימות פתוחות';
+export const CLIENT_CARD_OPEN_TASKS_TITLE = (n) => `${n} משימות פתוחות עבור לקוח זה — לחץ לפתיחת מרכז המשימות.`;
 
 // ---------------------------------------------------------------------------
 // Failed Actions Table
@@ -330,6 +334,7 @@ export const TASK_FILTER_ALL_STATUSES       = 'כל הסטטוסים';
 export const TASK_FILTER_ALL_TYPES          = 'כל סוגי המשימות';
 export const TASK_FILTER_BTN_CLEAR          = 'נקה סינון';
 export const TASK_FILTER_PHONE_CHIP         = (id) => `מסונן לטלפון #${id}`;
+export const TASK_FILTER_CLIENT_CHIP        = (id) => `מסונן ללקוח #${id}`;
 
 // 5-column table headers
 export const TASK_TABLE_COL_TYPE      = 'סוג משימה';
