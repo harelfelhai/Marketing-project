@@ -18,6 +18,12 @@ export async function listPhones(filters = {}, mockDb) {
     if (filters.verificationStatus) params.verification_status = filters.verificationStatus;
     if (filters.ingestionSource)    params.ingestion_source    = filters.ingestionSource;
     if (filters.classificationType) params.classification_type = filters.classificationType;
+    // Phase DY — sort_by toggles between 'priority' (default, the
+    // prioritised review queue) and 'ingested_at' (legacy chronological
+    // ordering). Backend default is already 'priority' so omitting the
+    // param produces the same result; we pass it through explicitly only
+    // when the caller asks for the legacy ordering.
+    if (filters.sortBy)             params.sort_by             = filters.sortBy;
 
     const { data } = await apiClient.get('/phones', { params });
     const { items } = unwrapPage(data);
@@ -40,7 +46,18 @@ export async function listPhones(filters = {}, mockDb) {
   let results = mockDb.phones.map((phone) => {
     const entity = mockDb.entities.find((e) => e.id === phone.entity_id) || {};
     const client = mockDb.clients.find((c) => c.id === entity.client_id) || {};
-    return { ...phone, entity_type: entity.entity_type, client_id: entity.client_id, client_name: client.name };
+    // Phase DY — customer_tier is a flat JOIN convenience field on the
+    // response. Mock mode mirrors the backend's server-side traversal by
+    // reading it directly from the owning entity's extra_data (every
+    // seeded entity is a root target in the mock graph, so there's no
+    // multi-hop traversal needed here).
+    return {
+      ...phone,
+      entity_type:    entity.entity_type,
+      client_id:      entity.client_id,
+      client_name:    client.name,
+      customer_tier:  entity.extra_data?.customer_tier ?? null,
+    };
   });
 
   if (filters.clientId)           results = results.filter((p) => p.client_id === filters.clientId);
@@ -54,6 +71,30 @@ export async function listPhones(filters = {}, mockDb) {
       String(p.entity_id).includes(q) ||
       (p.client_name || '').toLowerCase().includes(q)
     );
+  }
+
+  // Phase DY — apply the same ordering rules as the backend so mock-mode
+  // tests and real-mode UX show identical row ordering:
+  //   priority (default)  → priority_score DESC, NULLS LAST, id DESC
+  //   ingested_at         → ingested_at DESC, id DESC
+  const sortBy = filters.sortBy || 'priority';
+  if (sortBy === 'priority') {
+    results.sort((a, b) => {
+      const aHas = a.priority_score != null;
+      const bHas = b.priority_score != null;
+      if (aHas !== bHas) return aHas ? -1 : 1;       // NULLS LAST
+      if (aHas && bHas && a.priority_score !== b.priority_score) {
+        return b.priority_score - a.priority_score;  // DESC
+      }
+      return b.id - a.id;                             // tiebreaker
+    });
+  } else {
+    results.sort((a, b) => {
+      const da = new Date(a.ingested_at).getTime();
+      const db = new Date(b.ingested_at).getTime();
+      if (da !== db) return db - da;
+      return b.id - a.id;
+    });
   }
   return results;
 }
@@ -80,6 +121,9 @@ export async function getPhoneDetail(id, mockDb) {
   const logs   = mockDb.actionLogs.filter((l) => l.phone_id === id);
   return {
     ...phone,
+    // Phase DY — customer_tier flattened from the owning entity's JSON
+    // (mock equivalent of the backend's root-entity JOIN).
+    customer_tier:   entity.extra_data?.customer_tier ?? null,
     entity:          { ...entity, client_name: client.name },
     action_timeline: logs.sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at)),
   };

@@ -97,3 +97,32 @@ export function taskTypeVariant(taskType) {
 export function taskTypeLabel(taskType) {
   return TASK_TYPE_LABELS[taskType] || taskType || 'לא ידוע';
 }
+
+// ---------------------------------------------------------------------------
+// Phase DY — priority & confidence score classification
+// ---------------------------------------------------------------------------
+// Maps the numeric scores from the backend (0..100 by convention) onto
+// the existing Badge variant taxonomy so the UI inherits the same colour
+// palette as verification / action / task badges. Cutoffs are deliberately
+// generous so scores spanning the boundary don't flicker.
+
+export function priorityVariant(score) {
+  if (score == null || Number.isNaN(score)) return 'gray';
+  if (score >= 60) return 'good';     // emerald — high priority
+  if (score >= 30) return 'pending';  // amber  — medium
+  return 'failed';                    // rose   — low / suppressed
+}
+
+export function confidenceVariant(score) {
+  if (score == null || Number.isNaN(score)) return 'gray';
+  if (score >= 75) return 'good';
+  if (score >= 40) return 'pending';
+  return 'failed';
+}
+
+export function tierVariant(tier) {
+  if (tier == null) return 'gray';
+  if (tier === 1) return 'good';
+  if (tier === 2) return 'pending';
+  return 'info';
+}

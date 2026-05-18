@@ -20,13 +20,18 @@ import VerdictSplitButtons    from './VerdictSplitButtons';
 import ManualActionModal      from './ManualActionModal';
 
 import { useMockData } from '../../contexts/MockDataContext';
-import { verificationVariant, verificationLabel } from '../../utils/classifyStatus';
+import {
+  verificationVariant, verificationLabel,
+  priorityVariant, confidenceVariant, tierVariant,
+} from '../../utils/classifyStatus';
 import { formatDateTime } from '../../utils/formatDate';
 import {
   ARIA_PHONE_DETAIL, ARIA_CLOSE_DRAWER,
   DRAWER_LABEL_CLIENT, DRAWER_LABEL_ENTITY, DRAWER_LABEL_INGESTED,
   DRAWER_LABEL_UPDATED, DRAWER_VIA_SOURCE, DRAWER_BTN_TRIGGER,
   PHONE_DRAWER_TASK_PILL, PHONE_DRAWER_TASK_PILL_ZERO,
+  SCORE_PRIORITY_LABEL, SCORE_CONFIDENCE_LABEL, SCORE_TIER_LABEL,
+  SCORE_TIER_VALUE, SCORE_TIER_UNKNOWN, SCORE_NOT_AUDITED,
 } from '../../config/strings.he';
 
 export default function PhoneDetailDrawer({ phoneId, onClose }) {
@@ -115,6 +120,30 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
             >
               <X className="w-5 h-5" />
             </button>
+          </div>
+
+          {/* Phase DY — scoring block: three score badges + tier badge.
+              Sits between the verification badges and the quick-facts dl
+              so it reads as part of the row's executive summary, not as
+              another field deep in the metadata. */}
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            <Badge variant={priorityVariant(phone.priority_score)} size="xs">
+              {SCORE_PRIORITY_LABEL}{' '}
+              {phone.priority_score != null
+                ? Math.round(phone.priority_score)
+                : '—'}
+            </Badge>
+            <Badge variant={confidenceVariant(phone.confidence_score)} size="xs">
+              {SCORE_CONFIDENCE_LABEL}{' '}
+              {phone.confidence_score != null
+                ? Math.round(phone.confidence_score)
+                : SCORE_NOT_AUDITED}
+            </Badge>
+            <Badge variant={tierVariant(phone.customer_tier)} size="xs">
+              {phone.customer_tier != null
+                ? SCORE_TIER_VALUE(phone.customer_tier)
+                : SCORE_TIER_UNKNOWN}
+            </Badge>
           </div>
 
           {/* Quick facts row */}

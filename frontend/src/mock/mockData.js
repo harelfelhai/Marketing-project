@@ -22,6 +22,21 @@ export const SEED_CLIENTS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Phase DY — customer_tier mapping (mock parity with backend seed_db.py).
+// Lives here rather than in clientRegistry because mock-mode tests need it
+// without touching the registry seam. In real mode, customer_tier is read
+// from the backend response (server-side JOIN); this map is mock-only.
+// ---------------------------------------------------------------------------
+
+export const CLIENT_TIER_MAP = {
+  alpha:   1,
+  beta:    2,
+  gamma:   1,
+  delta:   3,
+  epsilon: 2,
+};
+
+// ---------------------------------------------------------------------------
 // Classification types  (// HOOK FOR ENTERPRISE LABELS)
 // ---------------------------------------------------------------------------
 
@@ -900,12 +915,81 @@ export function deriveClientMetrics(
 // ---------------------------------------------------------------------------
 
 export function buildInitialDb() {
+  // Phase DY — inject customer_tier into every entity's extra_data so
+  // mock-mode renders parity with the backend's JSON-pivot storage.
+  // Done at build time rather than embedded in each SEED_ENTITIES entry
+  // so the table above stays scannable and the tier mapping is the
+  // single source of truth (CLIENT_TIER_MAP).
+  const entities = structuredClone(SEED_ENTITIES).map((e) => ({
+    ...e,
+    extra_data: {
+      ...(e.extra_data || {}),
+      customer_tier: CLIENT_TIER_MAP[e.client_id] ?? null,
+    },
+  }));
+
+  // Phase DY — inject scoring fields into every phone. Real mode receives
+  // these from the backend response (column defaults + scoring service).
+  // Mock mode computes a deterministic priority from the row's confidence
+  // and the owning entity's tier so the UI's priority sort produces
+  // visible, predictable ordering.
+  const phones = structuredClone(SEED_PHONES).map((p) => {
+    const entity = entities.find((e) => e.id === p.entity_id);
+    const tier   = entity?.extra_data?.customer_tier ?? null;
+    const confidence = p.confidence_score ?? _seededConfidence(p.id);
+    return {
+      ...p,
+      // Flat JOIN convenience field — mock equivalent of the backend's
+      // server-side root-entity traversal. The frontend (PhoneRow,
+      // PhoneDetailDrawer) reads phone.customer_tier directly.
+      customer_tier:         tier,
+      confidence_score:      confidence,
+      confidence_updated_at: p.confidence_updated_at ?? null,
+      // Mock priority — mirrors the hybrid formula coefficients from
+      // backend modules/mock_scoring.py (α=0.6, β=0.4) for visual parity.
+      priority_score:        _mockComputePriority(confidence, 'target', tier),
+      priority_updated_at:   p.priority_updated_at ?? _nowIso(),
+    };
+  });
+
   return {
     clients:    structuredClone(SEED_CLIENTS),
-    entities:   structuredClone(SEED_ENTITIES),
-    phones:     structuredClone(SEED_PHONES),
+    entities,
+    phones,
     actionLogs: structuredClone(SEED_ACTION_LOGS),
     tasks:      structuredClone(SEED_TASKS),
     engines:    structuredClone(DEFAULT_ENGINE_STATES),
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase DY — mock scoring helpers (mirror backend modules/mock_scoring.py).
+// Lookup tables here are intentionally a subset of the backend's tables —
+// just enough to drive visible mock-mode priority ordering. Internal teams
+// running real mode never hit this code path.
+// ---------------------------------------------------------------------------
+
+const _MOCK_RELATION_WEIGHTS = { target: 1.0, family: 0.7, friend: 0.5, colleague: 0.4 };
+const _MOCK_TIER_WEIGHTS     = { 1: 1.0, 2: 0.7, 3: 0.4 };
+const _MOCK_ALPHA            = 0.6;
+const _MOCK_BETA             = 0.4;
+const _MOCK_UNKNOWN_REL      = 0.5;
+const _MOCK_UNKNOWN_TIER     = 0.5;
+
+function _mockComputePriority(confidence, relationType, tier) {
+  const rel  = relationType != null ? (_MOCK_RELATION_WEIGHTS[relationType] ?? _MOCK_UNKNOWN_REL) : _MOCK_UNKNOWN_REL;
+  const tw   = tier != null ? (_MOCK_TIER_WEIGHTS[tier] ?? _MOCK_UNKNOWN_TIER) : _MOCK_UNKNOWN_TIER;
+  return Number(confidence) * (_MOCK_ALPHA * rel + _MOCK_BETA * tw);
+}
+
+// Deterministic confidence per phone id so the seed produces a stable
+// spread across mock loads. Spans 30..95 in 5-point steps cycled mod 14.
+function _seededConfidence(phoneId) {
+  const STEPS = [85, 70, 60, 90, 45, 95, 30, 80, 55, 65, 75, 40, 50, 35];
+  return STEPS[(phoneId - 1) % STEPS.length];
+}
+
+function _nowIso() {
+  return new Date().toISOString();
 }

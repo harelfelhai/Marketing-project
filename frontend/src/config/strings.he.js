@@ -357,6 +357,21 @@ export const TASK_ROW_ENTITY_LINE   = (id, type) => `ישות #${id} · ${type}`
 export const PERMISSION_DENIED_NOTICE = 'אין לך הרשאה לצפות בתוכן זה. פנה למנהל מערכת.';
 
 // ---------------------------------------------------------------------------
+// Phase DY — Scoring (priority + confidence + tier)
+// ---------------------------------------------------------------------------
+
+export const SCORE_PRIORITY_LABEL   = 'עדיפות';
+export const SCORE_CONFIDENCE_LABEL = 'אמינות';
+export const SCORE_TIER_LABEL       = 'דרגת לקוח';
+export const SCORE_TIER_VALUE       = (n) => `דרגה ${n}`;
+export const SCORE_TIER_UNKNOWN     = 'דרגה לא ידועה';
+export const SCORE_NOT_AUDITED      = 'לא נבדק';
+export const SCORE_ROW_TOOLTIP      = (priority, confidence, tier) =>
+  `עדיפות ${priority?.toFixed(0) ?? '—'} · אמינות ${confidence?.toFixed(0) ?? '—'} · ${
+    tier != null ? `דרגה ${tier}` : 'דרגה לא ידועה'
+  }`;
+
+// ---------------------------------------------------------------------------
 // Task Detail Drawer (DX-4)
 // ---------------------------------------------------------------------------
 
