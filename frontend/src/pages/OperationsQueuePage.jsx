@@ -18,11 +18,14 @@
  * preserves the operator's view.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
-import TaskFilterBar  from '../components/ops/TaskFilterBar';
-import TaskTable      from '../components/ops/TaskTable';
-import RequireRole    from '../components/primitives/RequireRole';
+import TaskFilterBar    from '../components/ops/TaskFilterBar';
+import TaskTable        from '../components/ops/TaskTable';
+import TaskDetailDrawer from '../components/ops/TaskDetailDrawer';
+import RequireRole      from '../components/primitives/RequireRole';
+import { useUI }        from '../contexts/UIContext';
 import {
   PAGE_OPERATIONS_TITLE,
   PAGE_OPERATIONS_SUB,
@@ -30,9 +33,23 @@ import {
 } from '../config/strings.he';
 
 export default function OperationsQueuePage() {
-  // DX-3 holds the id but the drawer is wired in DX-4; for now this is a
-  // visual selection only.
   const [selectedId, setSelectedId] = useState(null);
+  const [searchParams]              = useSearchParams();
+  const { seedTaskPhoneFilter }     = useUI();
+
+  // Phase DX cross-link — seed the persistent phoneId task filter from the
+  // ?phone_id=N URL param. Same numeric-coercion guard as PhoneGridPage's
+  // client_id seeder (§5.1): URL params are always strings, task.phone_id
+  // is an integer in real mode.
+  useEffect(() => {
+    const raw = searchParams.get('phone_id');
+    if (raw) {
+      const parsed = Number(raw);
+      seedTaskPhoneFilter(
+        Number.isFinite(parsed) && raw.trim() !== '' ? parsed : raw
+      );
+    }
+  }, [searchParams, seedTaskPhoneFilter]);
 
   return (
     <RequireRole
@@ -52,7 +69,7 @@ export default function OperationsQueuePage() {
         <TaskFilterBar />
         <TaskTable selectedId={selectedId} onSelect={setSelectedId} />
 
-        {/* DX-4 will mount <TaskDetailDrawer phoneId={selectedId} onClose=…/> here. */}
+        <TaskDetailDrawer taskId={selectedId} onClose={() => setSelectedId(null)} />
       </section>
     </RequireRole>
   );

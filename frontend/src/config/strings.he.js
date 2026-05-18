@@ -329,6 +329,7 @@ export const TASK_FILTER_SEARCH_PLACEHOLDER = 'חיפוש לפי טלפון, ס�
 export const TASK_FILTER_ALL_STATUSES       = 'כל הסטטוסים';
 export const TASK_FILTER_ALL_TYPES          = 'כל סוגי המשימות';
 export const TASK_FILTER_BTN_CLEAR          = 'נקה סינון';
+export const TASK_FILTER_PHONE_CHIP         = (id) => `מסונן לטלפון #${id}`;
 
 // 5-column table headers
 export const TASK_TABLE_COL_TYPE      = 'סוג משימה';
@@ -348,3 +349,58 @@ export const TASK_ROW_ENTITY_LINE   = (id, type) => `ישות #${id} · ${type}`
 
 // Permission gate fallback (used when RequireRole denies)
 export const PERMISSION_DENIED_NOTICE = 'אין לך הרשאה לצפות בתוכן זה. פנה למנהל מערכת.';
+
+// ---------------------------------------------------------------------------
+// Task Detail Drawer (DX-4)
+// ---------------------------------------------------------------------------
+
+export const ARIA_TASK_DETAIL        = 'פרטי משימה';
+export const ARIA_CLOSE_TASK_DRAWER  = 'סגור פרטי משימה';
+
+export const TASK_DRAWER_LABEL_PHONE       = 'טלפון';
+export const TASK_DRAWER_LABEL_CLIENT      = 'לקוח';
+export const TASK_DRAWER_LABEL_ENTITY      = 'ישות';
+export const TASK_DRAWER_LABEL_CREATED     = 'נפתח';
+export const TASK_DRAWER_LABEL_UPDATED     = 'עודכן';
+export const TASK_DRAWER_LABEL_RESOLVED    = 'טופל';
+export const TASK_DRAWER_LABEL_REQUESTED   = 'מבקש';
+export const TASK_DRAWER_LABEL_RESOLVER    = 'מטפל';
+
+export const TASK_DRAWER_SECTION_PAYLOAD   = 'מטא-דאטה';
+export const TASK_DRAWER_SECTION_SOURCE    = 'פעולת מקור';
+export const TASK_DRAWER_SECTION_TIMELINE  = 'היסטוריית טלפון';
+
+export const TASK_DRAWER_EMPTY_PAYLOAD     = 'אין מטא-דאטה.';
+export const TASK_DRAWER_NO_SOURCE_LOG     = 'משימה זו נפתחה ע"י משתמש — אין פעולה מקורית.';
+export const TASK_DRAWER_OPEN_PHONE        = 'פתח כרטיס טלפון';
+export const TASK_DRAWER_TERMINAL_NOTICE   = (status) =>
+  status === 'resolved' ? 'משימה זו טופלה — לא ניתן לחזור עליה.'
+                        : 'משימה זו נדחתה — לא ניתן לחזור עליה.';
+
+export const TASK_DRAWER_BTN_RESOLVE  = 'אישור וטיפול';
+export const TASK_DRAWER_BTN_REJECT   = 'דחייה';
+
+// ---------------------------------------------------------------------------
+// Resolve Task Modal (DX-4)
+// ---------------------------------------------------------------------------
+
+export const RESOLVE_MODAL_TITLE_RESOLVE    = 'אישור משימה';
+export const RESOLVE_MODAL_TITLE_REJECT     = 'דחיית משימה';
+export const RESOLVE_MODAL_NOTE_LABEL       = 'הערת טיפול';
+export const RESOLVE_MODAL_NOTE_PLACEHOLDER = 'הסבר קצר על ההחלטה (חובה)';
+export const RESOLVE_MODAL_NOTE_REQUIRED    = 'יש להזין הערת טיפול לפני סיום.';
+export const RESOLVE_MODAL_BTN_CANCEL       = 'ביטול';
+export const RESOLVE_MODAL_BTN_CONFIRM      = (outcome) =>
+  outcome === 'resolved' ? 'אישור וטיפול' : 'דחה משימה';
+export const RESOLVE_MODAL_BTN_SUBMITTING   = 'שולח…';
+
+export const RESOLVE_TOAST_SUCCESS = (outcome) =>
+  outcome === 'resolved' ? 'המשימה אושרה ונסגרה.' : 'המשימה נדחתה ונסגרה.';
+export const RESOLVE_TOAST_ERROR   = (msg) => `שגיאה בטיפול במשימה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Cross-link pill on PhoneDetailDrawer header
+// ---------------------------------------------------------------------------
+
+export const PHONE_DRAWER_TASK_PILL = (n) => `${n} משימות`;
+export const PHONE_DRAWER_TASK_PILL_ZERO = 'אין משימות';

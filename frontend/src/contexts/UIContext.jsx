@@ -19,10 +19,14 @@ const DEFAULT_FILTERS = {
 };
 
 // Phase DX — Operations Queue filter shape; mirrors TaskFilterBar controls.
+// `phoneId` has no dedicated UI control — it is seeded from the
+// /operations?phone_id=N URL param (cross-link from PhoneDetailDrawer)
+// and cleared via the reset button.
 const DEFAULT_TASK_FILTERS = {
   status:   '',
   taskType: '',
   search:   '',
+  phoneId:  null,
 };
 
 export function UIProvider({ children }) {
@@ -65,6 +69,15 @@ export function UIProvider({ children }) {
     setTaskFilters(DEFAULT_TASK_FILTERS);
   }, []);
 
+  // Seed the phone_id filter from a URL param (no-op for null/empty values).
+  // Same pattern as seedClientFilter on phoneFilters.
+  const seedTaskPhoneFilter = useCallback((phoneId) => {
+    setTaskFilters((prev) => ({
+      ...prev,
+      phoneId: phoneId == null || phoneId === '' ? null : phoneId,
+    }));
+  }, []);
+
   // -------------------------------------------------------------------------
   // Toast queue
   // -------------------------------------------------------------------------
@@ -97,6 +110,7 @@ export function UIProvider({ children }) {
     taskFilters,
     updateTaskFilters,
     resetTaskFilters,
+    seedTaskPhoneFilter,
     // Toasts
     toasts,
     pushToast,

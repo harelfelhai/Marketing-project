@@ -9,7 +9,8 @@
  */
 
 import { useState } from 'react';
-import { X, Zap, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Zap, ExternalLink, ClipboardList } from 'lucide-react';
 
 import Badge                  from '../primitives/Badge';
 import Skeleton               from '../primitives/Skeleton';
@@ -25,11 +26,13 @@ import {
   ARIA_PHONE_DETAIL, ARIA_CLOSE_DRAWER,
   DRAWER_LABEL_CLIENT, DRAWER_LABEL_ENTITY, DRAWER_LABEL_INGESTED,
   DRAWER_LABEL_UPDATED, DRAWER_VIA_SOURCE, DRAWER_BTN_TRIGGER,
+  PHONE_DRAWER_TASK_PILL, PHONE_DRAWER_TASK_PILL_ZERO,
 } from '../../config/strings.he';
 
 export default function PhoneDetailDrawer({ phoneId, onClose }) {
-  const { phones, entities, clients, actionLogs, loading } = useMockData();
-  const [actionModalOpen, setActionModalOpen]     = useState(false);
+  const { phones, entities, clients, actionLogs, tasks, loading } = useMockData();
+  const navigate                                = useNavigate();
+  const [actionModalOpen, setActionModalOpen]   = useState(false);
 
   if (phoneId == null) return null;
 
@@ -43,6 +46,8 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
   const entity = entities.find((e) => e.id === phone.entity_id) || null;
   const client = entity ? clients.find((c) => c.id === entity.client_id) || null : null;
   const logs   = actionLogs.filter((l) => l.phone_id === phoneId);
+  // Phase DX cross-link — tasks attached to this phone (any status).
+  const taskCount = tasks.filter((t) => t.phone_id === phoneId).length;
 
   return (
     <>
@@ -81,6 +86,24 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
                     {DRAWER_VIA_SOURCE(phone.verification_source)}
                   </span>
                 )}
+                {/* Phase DX — cross-link pill to the Operations Cockpit */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate(`/operations?phone_id=${phoneId}`);
+                    onClose();
+                  }}
+                  className={`inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-full border transition-colors ${
+                    taskCount > 0
+                      ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  <ClipboardList className="w-3 h-3" />
+                  {taskCount > 0
+                    ? PHONE_DRAWER_TASK_PILL(taskCount)
+                    : PHONE_DRAWER_TASK_PILL_ZERO}
+                </button>
               </div>
             </div>
             <button

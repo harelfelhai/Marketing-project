@@ -35,6 +35,11 @@ function applyFilters(tasks, filters) {
   return tasks.filter((t) => {
     if (filters.status   && t.status    !== filters.status)   return false;
     if (filters.taskType && t.task_type !== filters.taskType) return false;
+    // phoneId is seeded from the /operations?phone_id=N cross-link from
+    // PhoneDetailDrawer; cleared via the filter-bar reset button.
+    if (filters.phoneId != null && String(t.phone_id) !== String(filters.phoneId)) {
+      return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [
