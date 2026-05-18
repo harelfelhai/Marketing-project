@@ -295,9 +295,23 @@ class EntitySummary(BaseModel):
     """
 
     id: int = Field(..., description="Entity surrogate PK.")
+    client_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "Integer client partition identifier. Frontend maps this to a display name. "
+            "Null for entities not yet assigned to a client partition."
+        ),
+    )
+    relation_type: str = Field(
+        ...,
+        description=(
+            "Structural relation category: 'primary' (direct target) or "
+            "'associated' (perimeter circle-of-trust contact)."
+        ),
+    )
     entity_type: str = Field(
         ...,
-        description="Relationship classification (e.g. 'target', 'family', 'friend').",
+        description="Sub-classification within the relation_type (e.g. 'family', 'friend').",
     )
     target_entity_id: Optional[int] = Field(
         default=None,
@@ -363,8 +377,9 @@ class PhoneSummary(BaseModel):
     """
     Compact PhoneNumber row returned as an item in PhoneListResponse.
 
-    Includes `entity_type` sourced from the JOIN with Entity so the
-    operator grid shows relationship context without a secondary request.
+    Includes `entity_type` and `client_id` sourced from the JOIN with Entity
+    so the operator grid shows client partition and relationship context without
+    a secondary request.
     `extra_data` is intentionally excluded from the list view to prevent
     mass proprietary data exposure in large result sets.
     """
@@ -372,6 +387,10 @@ class PhoneSummary(BaseModel):
     id: int = Field(..., description="PhoneNumber surrogate PK.")
     phone_number: str = Field(..., description="The stored phone number string.")
     entity_id: int = Field(..., description="FK to the owning Entity.")
+    client_id: Optional[int] = Field(
+        default=None,
+        description="Integer client partition identifier sourced from the owning Entity.",
+    )
     entity_type: str = Field(
         ...,
         description="Relationship classification of the owning Entity.",

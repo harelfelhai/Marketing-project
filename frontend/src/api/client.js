@@ -1,14 +1,18 @@
 /**
  * client.js — shared API utilities: mock delay, mode flag, error normalizer.
  *
- * MOCK_MODE controls whether api/*.js functions hit mock state or real HTTP.
- * Flip to false (or read from import.meta.env.VITE_MOCK_MODE) to go live.
+ * MOCK_MODE drives whether api/*.js functions hit in-memory mock state or
+ * real HTTP. It reads from the VITE_USE_REAL_API env var so the toggle
+ * requires no code change — only a .env file update.
  *
- * // HOOK FOR REAL API: set MOCK_MODE = false and ensure vite.config.js proxy
- * // is pointing to the correct backend URL.
+ * .env.example ships with VITE_USE_REAL_API=false (mock mode default).
+ * Set VITE_USE_REAL_API=true in .env.local to point at the live backend.
+ *
+ * // HOOK FOR REAL API: set VITE_USE_REAL_API=true in .env.local and ensure
+ * // vite.config.js proxy is pointing to the correct backend URL.
  */
 
-export const MOCK_MODE = true;
+export const MOCK_MODE = import.meta.env.VITE_USE_REAL_API !== 'true';
 
 /**
  * Simulate network latency in mock mode.

@@ -89,6 +89,14 @@ def list_phones(
         default=None,
         description="Filter by the system classification label on the PhoneNumber row.",
     ),
+    client_id: Optional[int] = Query(
+        default=None,
+        description=(
+            "Filter by integer client partition identifier. "
+            "Matches against Entity.client_id. "
+            "Example: pass 1 to return only phones for the first client partition."
+        ),
+    ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     page_size: int = Query(default=20, ge=1, le=200, description="Records per page (max 200)."),
     session: Session = Depends(get_session),
@@ -108,6 +116,7 @@ def list_phones(
         ingestion_source    (Optional[str]): Filter on PhoneNumber.ingestion_source.
         entity_type         (Optional[str]): Filter on Entity.entity_type (requires JOIN).
         classification_type (Optional[str]): Filter on PhoneNumber.classification_type.
+        client_id           (Optional[int]): Filter on Entity.client_id (requires JOIN).
         page                (int):           1-based page number.
         page_size           (int):           Records per page.
         session             (Session):       Injected DB session.
@@ -115,10 +124,10 @@ def list_phones(
     Returns:
         PhoneListResponse: Paginated items with total count.
     """
-    # Build the base JOIN. We always join Entity so entity_type is always
-    # available in the result set without conditional logic in the response builder.
+    # Build the base JOIN. We always join Entity so entity_type and client_id
+    # are available in the result set without conditional logic in the response builder.
     base = (
-        sa_select(PhoneNumber, Entity.entity_type)
+        sa_select(PhoneNumber, Entity.entity_type, Entity.client_id)
         .join(Entity, PhoneNumber.entity_id == Entity.id)
     )
     count_base = (
@@ -136,6 +145,8 @@ def list_phones(
         filters.append(Entity.entity_type == entity_type)
     if classification_type is not None:
         filters.append(PhoneNumber.classification_type == classification_type)
+    if client_id is not None:
+        filters.append(Entity.client_id == client_id)
 
     for f in filters:
         base = base.where(f)
@@ -151,6 +162,7 @@ def list_phones(
             id=phone.id,
             phone_number=phone.phone_number,
             entity_id=phone.entity_id,
+            client_id=cid,
             entity_type=etype,
             classification_type=phone.classification_type,
             verification_status=phone.verification_status,
@@ -159,7 +171,7 @@ def list_phones(
             ingested_at=phone.ingested_at,
             created_at=phone.created_at,
         )
-        for phone, etype in rows
+        for phone, etype, cid in rows
     ]
 
     return PhoneListResponse(items=items, total=total, page=page, page_size=page_size)

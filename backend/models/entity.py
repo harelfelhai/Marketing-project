@@ -16,13 +16,16 @@ the structural relationship — never the secret payload.
 
 INTERNAL HOOK POINTS
 --------------------
-- `entity_type`: stored as a free-form string so internal teams can add
-  new relationship classifications (e.g. "colleague", "partner") without
-  any database migration. Validate / normalise these values in your
-  proprietary IngestionEngine, not at the model layer.
-- `extra_data`: this is where ALL sensitive personal payload data lives
-  in production. Examples (NOT exhaustive, NOT enforced):
-      { "full_name": ..., "address": ..., "internal_tags": [...] }
+- `client_id`: integer FK to the owning client partition. The integer (1, 2,
+  3 …) is a structural index key — it carries no confidential information.
+  Human-readable client names live exclusively in the frontend config layer
+  (`src/config/clientRegistry.js`). The backend never stores names.
+- `relation_type`: explicit enum-like string ('primary' | 'associated').
+  'primary' marks the direct marketing target; 'associated' marks perimeter
+  contacts (family, friends, colleagues). Indexed for fast sub-set queries.
+- `entity_type`: free-form sub-classification within a relation_type bucket
+  (e.g. 'family', 'friend'). Internal teams extend this at runtime.
+- `extra_data`: ALL sensitive personal payload data lives here.
 """
 
 from datetime import datetime
@@ -61,12 +64,66 @@ class Entity(SQLModel, table=True):
     """Surrogate primary key. Auto-assigned by the database on insert."""
 
     # ------------------------------------------------------------------
-    # Relationship Classification
+    # Client Partition
+    # ------------------------------------------------------------------
+
+    client_id: Optional[int] = Field(
+        default=None,
+        index=True,
+        description=(
+            "Integer identifier of the owning client partition (e.g. 1, 2, 3). "
+            "Human-readable names are mapped exclusively in the frontend config; "
+            "the backend stores only the opaque integer."
+        ),
+    )
+    """
+    First-class indexed FK to the logical client partition.
+
+    The integer is structural — it enables fast per-client filtering in SQL
+    without exposing any proprietary client name in the open-source schema.
+    The frontend `clientRegistry.js` maps integers to display names.
+
+    NULL means the entity has not yet been assigned to a client partition
+    (e.g. seeded before client assignment was implemented).
+    """
+
+    # ------------------------------------------------------------------
+    # Relation Classification
+    # ------------------------------------------------------------------
+
+    relation_type: str = Field(
+        default="primary",
+        index=True,
+        description=(
+            "Structural relation category. "
+            "'primary' = direct marketing target. "
+            "'associated' = perimeter contact in the target's circle of trust."
+        ),
+    )
+    """
+    Explicit two-value enum stored as a string for extensibility.
+
+    Values (current):
+        - 'primary'    : The individual who is the direct subject of the
+                          marketing pipeline for this client partition.
+        - 'associated' : A perimeter contact (family member, friend, etc.)
+                          linked to a primary target via `target_entity_id`.
+
+    Indexed to support fast queries like "give me all primary targets for
+    client 3" or "give me all associated contacts for a given primary".
+
+    INTERNAL HOOK: Internal teams may introduce additional relation_type values
+    (e.g. 'secondary', 'colleague') by extending the ingestion pipeline. No
+    migration is required — the column is a free-form indexed string.
+    """
+
+    # ------------------------------------------------------------------
+    # Relationship Classification (sub-type)
     # ------------------------------------------------------------------
 
     entity_type: str = Field(
         index=True,
-        description="Relationship classification (e.g. 'target', 'family', 'friend').",
+        description="Sub-classification within the relation_type (e.g. 'family', 'friend').",
     )
     """
     Free-form classification string describing this entity's role relative
