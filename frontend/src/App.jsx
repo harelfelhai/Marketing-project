@@ -2,17 +2,15 @@
  * App.jsx — Top-level layout and route table.
  *
  * Renders the AppShell (header + nav + content slot) and wires the four
- * primary routes via React Router v6. The ToastStack is mounted once at
- * the application root so toasts survive route changes.
- *
- * Page bodies are placeholders in Phase 2 — they'll be replaced with real
- * page components in later phases.
+ * primary routes via React Router v6. Portal-mounted globals (ToastStack,
+ * IngestionModal) are mounted here once so they survive all route changes.
  */
 
 import { Routes, Route } from 'react-router-dom';
 
-import AppShell from './components/layout/AppShell';
-import ToastStack from './components/primitives/Toast';
+import AppShell       from './components/layout/AppShell';
+import ToastStack     from './components/primitives/Toast';
+import IngestionModal from './components/ingestion/IngestionModal';
 
 import ClientHubPage from './pages/ClientHubPage';
 import PhoneGridPage from './pages/PhoneGridPage';
@@ -28,12 +26,13 @@ export default function App() {
           <Route path="/phones"    element={<PhoneGridPage />} />
           <Route path="/ops"       element={<SystemOpsPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          {/* Fallback — route any unknown path back to the Client Hub. */}
+          {/* Fallback — any unknown path returns to Client Hub. */}
           <Route path="*"          element={<ClientHubPage />} />
         </Routes>
       </AppShell>
 
-      {/* Portal-mounted toasts — outside AppShell so they overlay all content. */}
+      {/* Global portals — rendered outside AppShell to overlay all content. */}
+      <IngestionModal />
       <ToastStack />
     </>
   );

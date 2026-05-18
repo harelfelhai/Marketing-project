@@ -1,24 +1,46 @@
 /**
- * SystemOpsPage — placeholder for Phase 2.
+ * SystemOpsPage — engine cockpit + health strip + failed-action recovery.
  */
 
-import Badge from '../components/primitives/Badge';
+import EngineControlCard  from '../components/ops/EngineControlCard';
+import PipelineHealthStrip from '../components/ops/PipelineHealthStrip';
+import FailedActionsTable  from '../components/ops/FailedActionsTable';
 
 export default function SystemOpsPage() {
   return (
-    <section className="space-y-4">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">System Ops</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Engine controls, pipeline health, and failed-action recovery.
-          </p>
-        </div>
-        <Badge variant="gray">placeholder</Badge>
+    <section className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-900">System Ops</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Engine controls, pipeline health, and failed-action recovery.
+        </p>
       </header>
 
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
-        System Ops Placeholder — engine cockpit and failed-actions log arrive later.
+      {/* Engine Cockpit */}
+      <div>
+        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">
+          Engine Cockpit
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <EngineControlCard engineName="retry" />
+          <EngineControlCard engineName="verification" />
+        </div>
+      </div>
+
+      {/* Pipeline Health */}
+      <div>
+        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">
+          Pipeline Health
+        </h2>
+        <PipelineHealthStrip />
+      </div>
+
+      {/* Failed Actions */}
+      <div>
+        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">
+          Failed Action Recovery
+        </h2>
+        <FailedActionsTable />
       </div>
     </section>
   );
