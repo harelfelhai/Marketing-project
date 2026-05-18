@@ -736,9 +736,12 @@ export const DEFAULT_ENGINE_STATES = {
 // Called by MockDataContext and consumed by ClientCard.
 // ---------------------------------------------------------------------------
 
-export function deriveClientMetrics(clientId, phones, actionLogs) {
+export function deriveClientMetrics(clientId, phones, actionLogs, entities = SEED_ENTITIES) {
   const clientPhones = phones.filter((p) => {
-    const entity = SEED_ENTITIES.find((e) => e.id === p.entity_id);
+    // Real-API mode: client_id is embedded directly on the phone (from the JOIN).
+    if (p.client_id != null) return String(p.client_id) === String(clientId);
+    // Mock mode: resolve via entity lookup.
+    const entity = entities.find((e) => e.id === p.entity_id);
     return entity?.client_id === clientId;
   });
 

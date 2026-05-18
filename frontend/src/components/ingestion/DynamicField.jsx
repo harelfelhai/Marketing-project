@@ -41,7 +41,7 @@ export default function DynamicField({ field, value, onChange, error }) {
       <select {...shared} className={`${baseInput} ${bordClass} pe-8`}>
         <option value="">{DYNAMIC_SELECT_DEFAULT}</option>
         {(field.options || []).map((opt) => (
-          <option key={opt} value={opt}>{opt}</option>
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
     );

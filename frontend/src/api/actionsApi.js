@@ -1,13 +1,36 @@
-import { mockDelay } from './client';
+import { mockDelay, MOCK_MODE, apiClient } from './client';
+import { unwrapPage } from './adapters/paginationAdapter';
+
+/**
+ * listActionLogs — paginated action audit log with optional filters.
+ *
+ * MOCK_MODE = false → GET /actions/logs with query params.
+ * MOCK_MODE = true  → filters from mockDb.actionLogs.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
+ */
+export async function listActionLogs(filters = {}, mockDb) {
+  if (!MOCK_MODE) {
+    const params = { page_size: filters.pageSize || 500 };
+    if (filters.status)   params.status   = filters.status;
+    if (filters.phone_id) params.phone_id = filters.phone_id;
+
+    const { data } = await apiClient.get('/actions/logs', { params });
+    const { items } = unwrapPage(data);
+    return items;
+  }
+
+  await mockDelay(250);
+  let logs = [...(mockDb?.actionLogs || [])];
+  if (filters.status)   logs = logs.filter((l) => l.status   === filters.status);
+  if (filters.phone_id) logs = logs.filter((l) => l.phone_id === filters.phone_id);
+  return logs.sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at));
+}
 
 /**
  * triggerManualAction — dispatch an action for a phone number.
  *
- * @param {object} body    - { phone_id, action_type, operator_id }
- * @param {object} mockDb  - MockDataContext value
- *
- * // HOOK FOR REAL API:
- * //   return axios.post('/api/v1/actions/trigger', body).then(r => r.data)
+ * // HOOK FOR REAL API: POST /api/v1/actions/trigger — wired in Phase C.
  */
 export async function triggerManualAction(body, mockDb) {
   await mockDelay(600);
@@ -36,34 +59,10 @@ export async function triggerManualAction(body, mockDb) {
 /**
  * retryNow — force a retry on a specific failed action log.
  *
- * // HOOK FOR REAL API:
- * //   return axios.post(`/api/v1/actions/retry-now/${logId}`, { operator_id }).then(r => r.data)
+ * // HOOK FOR REAL API: POST /api/v1/actions/retry-now/{logId} — wired in Phase C.
  */
 export async function retryNow(logId, operatorId, mockDb) {
   await mockDelay(700);
   mockDb.applyRetryNow(logId, operatorId);
   return { log_id: logId, status: 'sent', message: 'Retry dispatched successfully' };
-}
-
-/**
- * listActionLogs — fetch the unified action audit log.
- *
- * @param {object} filters  - { status, phone_id }
- * @param {object} mockDb   - MockDataContext value
- *
- * // HOOK FOR REAL API:
- * //   return axios.get('/api/v1/actions/logs', { params: filters }).then(r => r.data)
- */
-export async function listActionLogs(filters = {}, mockDb) {
-  await mockDelay(250);
-  let logs = [...mockDb.actionLogs];
-
-  if (filters.status) {
-    logs = logs.filter((l) => l.status === filters.status);
-  }
-  if (filters.phone_id) {
-    logs = logs.filter((l) => l.phone_id === filters.phone_id);
-  }
-
-  return logs.sort((a, b) => new Date(b.requested_at) - new Date(a.requested_at));
 }

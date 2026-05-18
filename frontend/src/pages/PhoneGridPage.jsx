@@ -26,8 +26,14 @@ export default function PhoneGridPage() {
   // Seed the persistent filter from ?client_id on mount (and any subsequent
   // change). Filter state lives in UIContext so it survives nav.
   useEffect(() => {
-    const cid = searchParams.get('client_id');
-    if (cid) seedClientFilter(cid);
+    const raw = searchParams.get('client_id');
+    if (raw) {
+      // Real-API mode uses integer client_ids; URL params are always strings.
+      // Parse to number when the param is purely numeric so filter comparisons
+      // against integer entity.client_id values succeed without coercion.
+      const parsed = Number(raw);
+      seedClientFilter(Number.isFinite(parsed) && raw.trim() !== '' ? parsed : raw);
+    }
     // We intentionally do NOT clear the filter when the param is absent —
     // operators may have set it manually via the dropdown.
   }, [searchParams, seedClientFilter]);

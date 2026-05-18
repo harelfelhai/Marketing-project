@@ -23,44 +23,49 @@
 /** @type {ClientConfig[]} */
 export const CLIENT_REGISTRY = [
   {
-    id:          1,
-    name:        'Client Alpha',      // HOOK FOR ENTERPRISE LABELS
-    shortName:   'Alpha',
-    slaHours:    6,
-    slaTargetPct: 95,
-    color:       'text-sky-600',
+    id:                1,
+    name:              'Client Alpha',      // HOOK FOR ENTERPRISE LABELS
+    shortName:         'Alpha',
+    slaHours:          6,
+    slaTargetPct:      95,
+    sla_threshold_pct: 95,
+    color:             'text-sky-600',
   },
   {
-    id:          2,
-    name:        'Client Beta',       // HOOK FOR ENTERPRISE LABELS
-    shortName:   'Beta',
-    slaHours:    8,
-    slaTargetPct: 90,
-    color:       'text-violet-600',
+    id:                2,
+    name:              'Client Beta',       // HOOK FOR ENTERPRISE LABELS
+    shortName:         'Beta',
+    slaHours:          8,
+    slaTargetPct:      90,
+    sla_threshold_pct: 90,
+    color:             'text-violet-600',
   },
   {
-    id:          3,
-    name:        'Client Gamma',      // HOOK FOR ENTERPRISE LABELS
-    shortName:   'Gamma',
-    slaHours:    4,
-    slaTargetPct: 98,
-    color:       'text-emerald-600',
+    id:                3,
+    name:              'Client Gamma',      // HOOK FOR ENTERPRISE LABELS
+    shortName:         'Gamma',
+    slaHours:          4,
+    slaTargetPct:      98,
+    sla_threshold_pct: 98,
+    color:             'text-emerald-600',
   },
   {
-    id:          4,
-    name:        'Client Delta',      // HOOK FOR ENTERPRISE LABELS
-    shortName:   'Delta',
-    slaHours:    12,
-    slaTargetPct: 85,
-    color:       'text-amber-600',
+    id:                4,
+    name:              'Client Delta',      // HOOK FOR ENTERPRISE LABELS
+    shortName:         'Delta',
+    slaHours:          12,
+    slaTargetPct:      85,
+    sla_threshold_pct: 85,
+    color:             'text-amber-600',
   },
   {
-    id:          5,
-    name:        'Client Epsilon',    // HOOK FOR ENTERPRISE LABELS
-    shortName:   'Epsilon',
-    slaHours:    6,
-    slaTargetPct: 92,
-    color:       'text-rose-600',
+    id:                5,
+    name:              'Client Epsilon',    // HOOK FOR ENTERPRISE LABELS
+    shortName:         'Epsilon',
+    slaHours:          6,
+    slaTargetPct:      92,
+    sla_threshold_pct: 92,
+    color:             'text-rose-600',
   },
 ];
 

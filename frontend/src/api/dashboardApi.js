@@ -1,42 +1,45 @@
-import { mockDelay } from './client';
+import { mockDelay, MOCK_MODE, apiClient } from './client';
 
 /**
- * getDashboardMetrics — aggregate counts matching the backend DashboardMetricsResponse.
+ * getDashboardMetrics — aggregated pipeline counts.
  *
- * Derived entirely from MockDataContext state — no extra network call needed.
+ * MOCK_MODE = false → GET /dashboard/metrics (flat response, no adapter needed).
+ * MOCK_MODE = true  → derived from mockDb state (same field names as backend).
  *
- * @param {object} mockDb  - MockDataContext value
- *
- * // HOOK FOR REAL API:
- * //   return axios.get('/api/v1/dashboard/metrics').then(r => r.data)
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
  */
 export async function getDashboardMetrics(mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.get('/dashboard/metrics');
+    return data;
+  }
+
   await mockDelay(300);
 
   const { phones, actionLogs } = mockDb;
   const now = new Date();
 
-  const phonesByStatus = phones.reduce((acc, p) => {
+  const phones_by_verification_status = phones.reduce((acc, p) => {
     acc[p.verification_status] = (acc[p.verification_status] || 0) + 1;
     return acc;
   }, {});
 
-  const actionsByStatus = actionLogs.reduce((acc, l) => {
+  const actions_by_status = actionLogs.reduce((acc, l) => {
     acc[l.status] = (acc[l.status] || 0) + 1;
     return acc;
   }, {});
 
-  const retryQueue = actionLogs.filter((l) => l.status === 'scheduled_retry');
-  const overdueRetries = retryQueue.filter(
+  const retryQueue     = actionLogs.filter((l) => l.status === 'scheduled_retry');
+  const overdue_retries = retryQueue.filter(
     (l) => l.retry_after && new Date(l.retry_after) < now
   ).length;
 
   return {
-    total_phones:                 phones.length,
-    phones_by_verification_status: phonesByStatus,
-    total_actions:                actionLogs.length,
-    actions_by_status:            actionsByStatus,
-    retry_queue_depth:            retryQueue.length,
-    overdue_retries:              overdueRetries,
+    total_phones:                  phones.length,
+    phones_by_verification_status,
+    total_actions:                 actionLogs.length,
+    actions_by_status,
+    retry_queue_depth:             retryQueue.length,
+    overdue_retries,
   };
 }
