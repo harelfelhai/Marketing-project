@@ -32,69 +32,19 @@ swaps the auth seam. The backend does not enforce role policy on these
 columns — it only records what the caller passed in.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, JSON
-from sqlalchemy.types import TypeDecorator
+from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
+
+from models.types import UTCDateTime, utc_now as _utc_now
 
 
 # All three timestamps on this table are timezone-aware UTC per Phase DX
-# constraint #3 (Explicit UTC Timezones). The legacy tables — Entity,
-# PhoneNumber, ActionLog — still use naive datetime.utcnow() and are
-# scheduled for migration in a later phase. Until then, callers that
-# join Pipeline Task with those tables must be tolerant of mixed
-# tz-aware / tz-naive comparisons.
-
-
-def _utc_now() -> datetime:
-    """Return a timezone-aware UTC datetime. Used as default_factory."""
-    return datetime.now(timezone.utc)
-
-
-class UTCDateTime(TypeDecorator):
-    """
-    DateTime column type that guarantees tz-aware UTC values on the way out.
-
-    SQLAlchemy's `DateTime(timezone=True)` is honoured natively by PostgreSQL
-    (TIMESTAMPTZ), but SQLite's TEXT-backed storage strips the offset on
-    write and returns a naive datetime on read. That mismatch turns this
-    table's timestamps into a comparison hazard on dev (naive on read) vs
-    production (aware on read).
-
-    This TypeDecorator closes the gap by:
-        - On WRITE: requiring the inbound value to be tz-aware (or None);
-          converting to UTC before handing it to the underlying engine.
-        - On READ: reattaching `tzinfo=timezone.utc` if the engine returned
-          a naive value (the SQLite path) so the application layer always
-          sees the same tz-aware shape regardless of backend.
-
-    `cache_ok = True` is safe because the decorator has no parameters.
-    """
-
-    impl = DateTime(timezone=True)
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            # Caller passed a naive datetime — refuse it loudly rather than
-            # silently treating it as local-time.
-            raise ValueError(
-                "PipelineTask datetimes must be tz-aware (Phase DX constraint #3). "
-                "Use datetime.now(timezone.utc) instead of datetime.utcnow()."
-            )
-        return value.astimezone(timezone.utc)
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            # SQLite read path — reattach UTC.
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+# constraint #3 (Explicit UTC Timezones). The shared UTCDateTime decorator
+# lives in `models/types.py` (promoted from this file by DY-1 so PhoneNumber
+# can adopt the same contract).
 
 
 class PipelineTask(SQLModel, table=True):
@@ -257,7 +207,7 @@ class PipelineTask(SQLModel, table=True):
     resolved_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(
-            DateTime(timezone=True),
+            UTCDateTime(),
             nullable=True,
         ),
         description=(

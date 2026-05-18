@@ -11,7 +11,7 @@ dispatcher at the right moment.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import Session, select
 
@@ -19,12 +19,14 @@ from exceptions import TargetNotFoundError
 from interfaces.ingestion import BaseIngestionRoutingEngine
 from models.entity import Entity
 from models.phone_number import PhoneNumber
+from models.types import utc_now
 from schemas.ingestion import IngestionPayload
 
 # TYPE_CHECKING guard avoids a circular import at runtime while still
 # providing accurate type hints for IDE navigation and static analysis.
 if TYPE_CHECKING:
     from services.dispatcher import ActionDispatcher
+    from services.scoring   import ScoringService
 
 
 class IngestionService:
@@ -56,23 +58,32 @@ class IngestionService:
         session: Session,
         routing_engine: BaseIngestionRoutingEngine,
         dispatcher: "ActionDispatcher",
+        scoring_service: Optional["ScoringService"] = None,
     ) -> None:
         """
         Initialise the service with its required dependencies.
 
         Args:
-            session        (Session):                     Active SQLModel DB session.
-                                                           Shared with the caller; do NOT
-                                                           close it inside this class.
-            routing_engine (BaseIngestionRoutingEngine): The injected routing engine.
-                                                           Determines post-ingestion action.
-            dispatcher     (ActionDispatcher):            The Phase 2 dispatcher, used only
-                                                           if the routing engine returns an
-                                                           action token.
+            session         (Session):                     Active SQLModel DB session.
+                                                            Shared with the caller; do NOT
+                                                            close it inside this class.
+            routing_engine  (BaseIngestionRoutingEngine):  The injected routing engine.
+                                                            Determines post-ingestion action.
+            dispatcher      (ActionDispatcher):            The Phase 2 dispatcher, used only
+                                                            if the routing engine returns an
+                                                            action token.
+            scoring_service (Optional[ScoringService]):    Phase DY scoring hook. When
+                                                            provided, every newly-inserted
+                                                            PhoneNumber gets an initial
+                                                            priority_score computed BEFORE
+                                                            the routing engine fires. When
+                                                            None, scoring is skipped (used
+                                                            by legacy tests).
         """
         self.session = session
         self.routing_engine = routing_engine
         self.dispatcher = dispatcher
+        self.scoring_service = scoring_service
 
     def ingest_circle_member(self, payload: IngestionPayload) -> PhoneNumber:
         """
@@ -162,11 +173,21 @@ class IngestionService:
             phone_number=payload.phone_number,
             ingestion_source=payload.ingestion_source,
             ingestion_reason=payload.ingestion_reason,
-            ingested_at=datetime.utcnow(),
+            ingested_at=utc_now(),
             # Pass through the opaque proprietary blob — do not inspect.
             extra_data=payload.phone_extra,
         )
         self.session.add(new_phone)
+        self.session.flush()  # assign new_phone.id without committing
+
+        # Phase DY — compute initial priority for the new phone INSIDE
+        # the same transaction so the row is inserted with a meaningful
+        # priority_score rather than the column default of 0.0.
+        # confidence_score is already its configured baseline (column
+        # default in models/phone_number.py).
+        if self.scoring_service is not None:
+            self.scoring_service.recalculate_for_phone(new_phone.id, commit=False)
+
         self.session.commit()
         self.session.refresh(new_phone)
 

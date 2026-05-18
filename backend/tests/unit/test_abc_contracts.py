@@ -18,10 +18,16 @@ import pytest
 
 from interfaces.dispatcher import BaseActionHandler
 from interfaces.ingestion import BaseIngestionRoutingEngine
+from interfaces.scoring import BaseScoringStrategy
 from interfaces.verification import BaseVerificationStrategy
 
 # Force import of the mock modules so their subclasses are registered.
-from modules import mock_dispatcher, mock_feedback, mock_ingestion  # noqa: F401
+from modules import (  # noqa: F401
+    mock_dispatcher,
+    mock_feedback,
+    mock_ingestion,
+    mock_scoring,
+)
 
 
 class TestABCsRefuseInstantiation:
@@ -36,6 +42,10 @@ class TestABCsRefuseInstantiation:
     def test_base_verification_strategy(self):
         with pytest.raises(TypeError):
             BaseVerificationStrategy()  # type: ignore[abstract]
+
+    def test_base_scoring_strategy(self):
+        with pytest.raises(TypeError):
+            BaseScoringStrategy()  # type: ignore[abstract]
 
 
 def _discover_concrete_subclasses(abc_cls: Type) -> list:
@@ -61,6 +71,7 @@ def _discover_concrete_subclasses(abc_cls: Type) -> list:
         (BaseIngestionRoutingEngine, "determine_immediate_action"),
         (BaseActionHandler, "execute"),
         (BaseVerificationStrategy, "evaluate_quality"),
+        (BaseScoringStrategy, "compute_priority"),
     ],
 )
 def test_every_concrete_subclass_is_instantiable(abc_cls, method_name):
@@ -79,6 +90,7 @@ def test_every_concrete_subclass_is_instantiable(abc_cls, method_name):
         (BaseIngestionRoutingEngine, "determine_immediate_action"),
         (BaseActionHandler, "execute"),
         (BaseVerificationStrategy, "evaluate_quality"),
+        (BaseScoringStrategy, "compute_priority"),
     ],
 )
 def test_subclass_method_signature_matches_abc(abc_cls, method_name):

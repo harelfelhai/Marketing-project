@@ -20,10 +20,11 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select as sa_select
+from sqlalchemy import func, nullslast, select as sa_select
+from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
 
-from app.api.deps import get_action_data_trigger_service
+from app.api.deps import get_action_data_trigger_service, get_scoring_service
 from app.schemas.api_contracts import (
     ActionLogResponse,
     EntitySummary,
@@ -39,7 +40,9 @@ from exceptions import PhoneNumberNotFoundError
 from models.action_log import ActionLog
 from models.entity import Entity
 from models.phone_number import PhoneNumber
+from models.types import utc_now
 from services.dispatcher import ActionDataTriggerService
+from services.scoring import ScoringService
 
 router = APIRouter()
 
@@ -97,19 +100,36 @@ def list_phones(
             "Example: pass 1 to return only phones for the first client partition."
         ),
     ),
+    sort_by: str = Query(
+        default="priority",
+        pattern="^(priority|ingested_at)$",
+        description=(
+            "Ordering key. 'priority' (default, Phase DY) sorts by "
+            "priority_score DESC with NULLS LAST and `id DESC` as a "
+            "tiebreaker so paginated cursors stay stable across requests. "
+            "'ingested_at' preserves the legacy chronological ordering."
+        ),
+    ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     page_size: int = Query(default=20, ge=1, le=200, description="Records per page (max 200)."),
     session: Session = Depends(get_session),
 ) -> PhoneListResponse:
     """
-    Paginated phone number listing with JOIN-based entity_type filter.
+    Paginated phone number listing with JOIN-based entity_type filter and
+    Phase DY priority sorting.
 
-    Constructs a single JOIN query (PhoneNumber ⟕ Entity) so that:
-        - `entity_type` filtering is applied in SQL without a second round-trip.
-        - The `PhoneSummary.entity_type` field is populated from the JOIN result.
+    Constructs a JOIN graph:
+        PhoneNumber  ⟕  Entity (immediate owner)
+                     LEFT-OUTER-⟕  Entity AS RootEntity (parent target,
+                                    NULL when the immediate entity IS
+                                    the root primary target).
 
-    The count query mirrors the data query's WHERE clauses exactly to ensure
-    the `total` figure is always consistent with the returned items.
+    This lets the response builder extract `customer_tier` server-side
+    from whichever entity is the root (immediate when target_entity_id
+    is None; parent otherwise), avoiding a per-row second round-trip.
+
+    The count query mirrors the data query's WHERE clauses exactly so
+    `total` always matches the returned items.
 
     Args:
         verification_status (Optional[str]): Filter on PhoneNumber.verification_status.
@@ -117,6 +137,7 @@ def list_phones(
         entity_type         (Optional[str]): Filter on Entity.entity_type (requires JOIN).
         classification_type (Optional[str]): Filter on PhoneNumber.classification_type.
         client_id           (Optional[int]): Filter on Entity.client_id (requires JOIN).
+        sort_by             (str):           'priority' (default) or 'ingested_at'.
         page                (int):           1-based page number.
         page_size           (int):           Records per page.
         session             (Session):       Injected DB session.
@@ -124,11 +145,19 @@ def list_phones(
     Returns:
         PhoneListResponse: Paginated items with total count.
     """
-    # Build the base JOIN. We always join Entity so entity_type and client_id
-    # are available in the result set without conditional logic in the response builder.
+    # Alias for the root-entity self-join (Phase DY).
+    RootEntity = aliased(Entity)
+
     base = (
-        sa_select(PhoneNumber, Entity.entity_type, Entity.client_id)
+        sa_select(
+            PhoneNumber,
+            Entity.entity_type,
+            Entity.client_id,
+            Entity.extra_data.label("immediate_extra"),
+            RootEntity.extra_data.label("root_extra"),
+        )
         .join(Entity, PhoneNumber.entity_id == Entity.id)
+        .outerjoin(RootEntity, Entity.target_entity_id == RootEntity.id)
     )
     count_base = (
         sa_select(func.count(PhoneNumber.id))
@@ -152,27 +181,58 @@ def list_phones(
         base = base.where(f)
         count_base = count_base.where(f)
 
+    # Ordering — Phase DY default is priority DESC with NULLS LAST and an
+    # `id DESC` tiebreaker so pagination stays deterministic when many
+    # rows share the same priority (common when scores are coarse).
+    # `nullslast()` is the SQLAlchemy portable form: emits NULLS LAST on
+    # Postgres natively and synthesises the equivalent CASE on SQLite.
+    if sort_by == "priority":
+        ordering = [nullslast(PhoneNumber.priority_score.desc()), PhoneNumber.id.desc()]
+    else:  # 'ingested_at'
+        ordering = [PhoneNumber.ingested_at.desc(), PhoneNumber.id.desc()]
+
     total: int = session.execute(count_base).scalar_one()
 
     offset = (page - 1) * page_size
-    rows = session.execute(base.order_by(PhoneNumber.ingested_at.desc()).offset(offset).limit(page_size)).all()
+    rows = session.execute(
+        base.order_by(*ordering).offset(offset).limit(page_size)
+    ).all()
 
-    items = [
-        PhoneSummary(
-            id=phone.id,
-            phone_number=phone.phone_number,
-            entity_id=phone.entity_id,
-            client_id=cid,
-            entity_type=etype,
-            classification_type=phone.classification_type,
-            verification_status=phone.verification_status,
-            verification_source=phone.verification_source,
-            ingestion_source=phone.ingestion_source,
-            ingested_at=phone.ingested_at,
-            created_at=phone.created_at,
+    items = []
+    for phone, etype, cid, immediate_extra, root_extra in rows:
+        # Root entity's extra_data — falls back to the immediate entity
+        # when the LEFT JOIN produced NULL (i.e. the immediate entity
+        # IS the root). Tier is extracted into a structured int field.
+        effective_extra = root_extra if root_extra is not None else immediate_extra
+        customer_tier = None
+        if effective_extra is not None:
+            raw_tier = effective_extra.get("customer_tier")
+            if raw_tier is not None:
+                try:
+                    customer_tier = int(raw_tier)
+                except (TypeError, ValueError):
+                    customer_tier = None
+
+        items.append(
+            PhoneSummary(
+                id=phone.id,
+                phone_number=phone.phone_number,
+                entity_id=phone.entity_id,
+                client_id=cid,
+                entity_type=etype,
+                classification_type=phone.classification_type,
+                verification_status=phone.verification_status,
+                verification_source=phone.verification_source,
+                ingestion_source=phone.ingestion_source,
+                ingested_at=phone.ingested_at,
+                created_at=phone.created_at,
+                confidence_score=phone.confidence_score,
+                confidence_updated_at=phone.confidence_updated_at,
+                priority_score=phone.priority_score,
+                priority_updated_at=phone.priority_updated_at,
+                customer_tier=customer_tier,
+            )
         )
-        for phone, etype, cid in rows
-    ]
 
     return PhoneListResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -195,10 +255,12 @@ def get_phone_detail(
     """
     Fetch a PhoneNumber row and join its Entity + ActionLog history.
 
-    Three sequential queries:
+    Four sequential queries:
         1. PhoneNumber by PK — raises 404 if not found.
         2. Entity by phone.entity_id — always exists due to FK constraint.
-        3. ActionLog rows for phone_id, ordered most-recent-first.
+        3. Optional root Entity via target_entity_id (Phase DY) — for the
+           customer_tier extraction.
+        4. ActionLog rows for phone_id, ordered most-recent-first.
 
     Args:
         phone_id (int):     PK of the PhoneNumber row.
@@ -219,6 +281,23 @@ def get_phone_detail(
 
     entity = session.get(Entity, phone.entity_id)
 
+    # Phase DY — resolve the root target Entity (one hop up) and extract
+    # customer_tier. When the immediate entity IS the root, use its own
+    # extra_data.
+    root_entity = entity
+    if entity is not None and entity.target_entity_id is not None:
+        candidate = session.get(Entity, entity.target_entity_id)
+        if candidate is not None:
+            root_entity = candidate
+    customer_tier: Optional[int] = None
+    if root_entity is not None and root_entity.extra_data is not None:
+        raw_tier = root_entity.extra_data.get("customer_tier")
+        if raw_tier is not None:
+            try:
+                customer_tier = int(raw_tier)
+            except (TypeError, ValueError):
+                customer_tier = None
+
     action_logs = session.exec(
         select(ActionLog)
         .where(ActionLog.phone_id == phone_id)
@@ -237,6 +316,11 @@ def get_phone_detail(
         verification_source=phone.verification_source,
         verification_reason=phone.verification_reason,
         verified_at=phone.verified_at,
+        confidence_score=phone.confidence_score,
+        confidence_updated_at=phone.confidence_updated_at,
+        priority_score=phone.priority_score,
+        priority_updated_at=phone.priority_updated_at,
+        customer_tier=customer_tier,
         extra_data=phone.extra_data,
         created_at=phone.created_at,
         updated_at=phone.updated_at,
@@ -267,21 +351,28 @@ def update_phone(
     body: PhoneUpdateRequest,
     session: Session = Depends(get_session),
     trigger_service: ActionDataTriggerService = Depends(get_action_data_trigger_service),
+    scoring_service: ScoringService = Depends(get_scoring_service),
 ) -> PhoneUpdateResponse:
     """
-    Partially update mutable PhoneNumber fields and evaluate re-dispatch trigger.
+    Partially update mutable PhoneNumber fields, run the Phase DY scoring
+    recalc, and evaluate the Phase 2 re-dispatch trigger.
 
     Update semantics:
         - Only non-None fields in `body` are applied.
         - `extra_data` is replaced (not merged) when provided.
+        - `confidence_score` updates also bump `confidence_updated_at`
+          and trigger a `priority_score` recompute — all four columns
+          land in one transaction (Phase DY atomic contract).
         - The list of actually-changed field names is passed to
-          `ActionDataTriggerService` for trigger evaluation.
+          `ActionDataTriggerService` for trigger evaluation AFTER the
+          atomic write commits.
 
     Args:
-        phone_id        (int):                    PK of the PhoneNumber to update.
-        body            (PhoneUpdateRequest):     Partial update payload.
-        session         (Session):               Injected DB session.
+        phone_id        (int):                      PK of the PhoneNumber to update.
+        body            (PhoneUpdateRequest):       Partial update payload.
+        session         (Session):                 Injected DB session.
         trigger_service (ActionDataTriggerService): Injected trigger evaluator.
+        scoring_service (ScoringService):           Phase DY scoring hook.
 
     Returns:
         PhoneUpdateResponse: Updated phone + optional triggered ActionLog.
@@ -308,13 +399,29 @@ def update_phone(
         phone.extra_data = body.extra_data
         changed_fields.append("extra_data")
 
+    # Phase DY — confidence_score is a mutable audit field. The scoring
+    # service writes confidence + priority + both timestamps in one
+    # session pass; we then commit ONCE for the whole PATCH.
+    confidence_changed = (
+        body.confidence_score is not None
+        and float(body.confidence_score) != float(phone.confidence_score)
+    )
+    if confidence_changed:
+        scoring_service.update_confidence_and_recalc(
+            phone_id=phone_id,
+            new_confidence=float(body.confidence_score),
+            commit=False,
+        )
+        changed_fields.append("confidence_score")
+
     if changed_fields:
-        phone.updated_at = datetime.utcnow()
+        phone.updated_at = utc_now()
         session.add(phone)
         session.commit()
         session.refresh(phone)
 
     # Evaluate whether any of the changed fields warrant a re-dispatch.
+    # ActionDataTriggerService runs in its own session/transaction.
     triggered_log = None
     if changed_fields:
         try:

@@ -23,6 +23,7 @@ from app.api.deps import (
     get_action_dispatcher,
     get_pipeline_task_service,
     get_retry_engine,
+    get_scoring_service,
     get_user_action_service,
     get_verification_engine,
     get_verification_service,
@@ -45,6 +46,7 @@ from services.dispatcher import (
     UserActionService,
 )
 from services.ingestion import IngestionService
+from services.scoring import ScoringService
 from services.tasks import PipelineTaskService
 from services.verification import VerificationEngine, VerificationService
 
@@ -109,14 +111,21 @@ def client():
         retry_backoff_seconds=60,
     )
     routing_engine = _MockRoutingEngine()
+
+    # Phase DY — real scoring strategy via the mock module so api tests
+    # exercise the same code path production uses.
+    from modules.mock_scoring import ScoringStrategy as MockScoringStrategy
+    scoring_svc = ScoringService(session=test_session, strategy=MockScoringStrategy())
+
     ingestion_svc = IngestionService(
         session=test_session,
         routing_engine=routing_engine,
         dispatcher=dispatcher,
+        scoring_service=scoring_svc,
     )
     user_action_svc = UserActionService(session=test_session, dispatcher=dispatcher)
     trigger_svc = ActionDataTriggerService(session=test_session, dispatcher=dispatcher)
-    verification_svc = VerificationService(session=test_session)
+    verification_svc = VerificationService(session=test_session, scoring_service=scoring_svc)
     retry_eng = RetryEngine(session=test_session, dispatcher=dispatcher)
     strategy = _MockVerificationStrategy()
     verification_eng = VerificationEngine(
@@ -138,6 +147,7 @@ def client():
     app.dependency_overrides[get_retry_engine] = lambda: retry_eng
     app.dependency_overrides[get_verification_engine] = lambda: verification_eng
     app.dependency_overrides[get_pipeline_task_service] = lambda: task_svc
+    app.dependency_overrides[get_scoring_service] = lambda: scoring_svc
 
     with TestClient(app) as tc:
         yield tc, test_session
@@ -734,3 +744,188 @@ class TestTasksEndpoints:
             json={"outcome": "resolved"},
         )
         assert r.status_code == 422
+
+
+# ===========================================================================
+# Phase DY — Scoring & priority-sort integration
+# ===========================================================================
+
+
+_SEED_COUNTER = [0]
+
+def _seed_target_with_tier(session, tier=1, confidence=80.0):
+    """
+    Seed a target Entity (with customer_tier in extra_data) + a phone.
+
+    Uses a module-level counter to guarantee a unique phone_number per
+    invocation — calling twice with the same tier in one test must not
+    collide on the UNIQUE constraint.
+    """
+    _SEED_COUNTER[0] += 1
+    n = _SEED_COUNTER[0]
+    e = Entity(
+        entity_type="target",
+        relation_type="primary",
+        client_id=1,
+        extra_data={"customer_tier": tier},
+    )
+    session.add(e)
+    session.flush()
+    p = PhoneNumber(
+        entity_id=e.id,
+        phone_number=f"+1555{n:07d}",
+        ingestion_source="manual",
+        confidence_score=confidence,
+    )
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return p
+
+
+class TestPatchConfidence:
+    def test_patch_confidence_updates_and_recalcs_priority(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, tier=1, confidence=50.0)
+
+        r = tc.patch(f"/api/v1/phones/{phone.id}", json={"confidence_score": 95.0})
+        assert r.status_code == 200
+        body = r.json()
+        # IngestionResponse-shaped phone payload reflects the new scores.
+        assert body["phone"]["confidence_score"] == 95.0
+        # Priority recomputed: 95 × (0.6×1.0 + 0.4×1.0) = 95.0.
+        assert abs(body["phone"]["priority_score"] - 95.0) < 1e-9
+
+    def test_patch_rejects_confidence_outside_0_100(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session)
+        # Range enforced at the Pydantic boundary.
+        r = tc.patch(f"/api/v1/phones/{phone.id}", json={"confidence_score": 150.0})
+        assert r.status_code == 422
+
+    def test_patch_classification_alone_does_not_change_confidence(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, confidence=42.0)
+        before_confidence = phone.confidence_score
+
+        r = tc.patch(f"/api/v1/phones/{phone.id}", json={"classification_type": "type_a"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["phone"]["confidence_score"] == before_confidence
+
+
+class TestListSortBy:
+    def test_default_sort_is_priority_descending(self, client):
+        tc, session = client
+        from sqlmodel import select as sm_select
+        # Seed two phones with distinguishable priorities (tier 1 vs tier 3).
+        _seed_target_with_tier(session, tier=1, confidence=80.0)  # priority 80
+        _seed_target_with_tier(session, tier=3, confidence=80.0)  # priority < 80
+        # Trigger scoring on both.
+        from modules.mock_scoring import ScoringStrategy
+        from services.scoring import ScoringService
+        sc = ScoringService(session=session, strategy=ScoringStrategy())
+        for p in session.exec(sm_select(PhoneNumber)).all():
+            sc.recalculate_for_phone(p.id)
+
+        r = tc.get("/api/v1/phones")
+        assert r.status_code == 200
+        items = r.json()["items"]
+        # First item must have the higher priority_score.
+        assert items[0]["priority_score"] >= items[1]["priority_score"]
+
+    def test_sort_by_ingested_at_preserves_legacy_order(self, client):
+        tc, session = client
+        # Two phones, second one has a LOWER priority but a NEWER ingested_at.
+        _seed_target_with_tier(session, tier=3, confidence=20.0)  # low priority, older
+        _seed_target_with_tier(session, tier=1, confidence=10.0)  # higher priority, newer
+
+        r = tc.get("/api/v1/phones?sort_by=ingested_at")
+        assert r.status_code == 200
+        items = r.json()["items"]
+        # Most recent ingested_at first regardless of priority.
+        assert items[0]["ingested_at"] >= items[1]["ingested_at"]
+
+    def test_sort_by_invalid_value_returns_422(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/phones?sort_by=bogus")
+        assert r.status_code == 422
+
+    def test_priority_sort_tiebreaker_by_id_desc(self, client):
+        tc, session = client
+        # Two phones with IDENTICAL priority_score — tiebreaker must put
+        # the higher id first.
+        _seed_target_with_tier(session, tier=1, confidence=50.0)
+        _seed_target_with_tier(session, tier=1, confidence=50.0)
+
+        r = tc.get("/api/v1/phones")
+        items = r.json()["items"]
+        assert items[0]["id"] > items[1]["id"]
+
+
+class TestPhoneSummaryShape:
+    def test_list_response_includes_phase_dy_fields(self, client):
+        tc, session = client
+        _seed_target_with_tier(session, tier=2, confidence=70.0)
+        r = tc.get("/api/v1/phones")
+        item = r.json()["items"][0]
+        for key in [
+            "confidence_score", "confidence_updated_at",
+            "priority_score",   "priority_updated_at",
+            "customer_tier",
+        ]:
+            assert key in item, f"missing {key} in PhoneSummary"
+
+    def test_customer_tier_extracted_from_root_entity(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, tier=2)
+        r = tc.get("/api/v1/phones")
+        item = next(i for i in r.json()["items"] if i["id"] == phone.id)
+        assert item["customer_tier"] == 2
+
+    def test_detail_response_includes_phase_dy_fields(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, tier=1, confidence=80.0)
+        r = tc.get(f"/api/v1/phones/{phone.id}")
+        assert r.status_code == 200
+        body = r.json()
+        for key in [
+            "confidence_score", "confidence_updated_at",
+            "priority_score",   "priority_updated_at",
+            "customer_tier",
+        ]:
+            assert key in body
+        assert body["customer_tier"] == 1
+
+
+class TestVerdictTriggersRecalc:
+    def test_verdict_bumps_priority_updated_at(self, client):
+        tc, session = client
+        phone = _seed_target_with_tier(session, tier=1, confidence=80.0)
+        # Initial recalc to set priority_updated_at to a baseline.
+        from modules.mock_scoring import ScoringStrategy
+        from services.scoring import ScoringService
+        sc = ScoringService(session=session, strategy=ScoringStrategy())
+        sc.recalculate_for_phone(phone.id)
+        session.refresh(phone)
+        baseline_ts = phone.priority_updated_at
+        assert baseline_ts is not None
+
+        # Submit a manual verdict — should re-run scoring inside the
+        # verdict transaction, bumping priority_updated_at.
+        r = tc.post(
+            "/api/v1/verification/verdict",
+            json={
+                "phone_id": phone.id,
+                "status":   "verified_good",
+                "reason":   "ok",
+            },
+        )
+        assert r.status_code == 200
+
+        session.expire_all()
+        reloaded = session.get(PhoneNumber, phone.id)
+        # The verdict triggers a recompute even if the formula inputs
+        # didn't change — the timestamp moves forward.
+        assert reloaded.priority_updated_at is not None
+        assert reloaded.priority_updated_at >= baseline_ts

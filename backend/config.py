@@ -76,6 +76,24 @@ class Settings(BaseSettings):
     Must implement: interfaces.feedback.BaseFeedbackChecker
     """
 
+    scoring_module: str = "modules.mock_scoring"
+    """
+    Dotted path to the module containing `ScoringStrategy` (Phase DY).
+    Must implement: interfaces.scoring.BaseScoringStrategy
+
+    Internal teams replace this with their proprietary scoring strategy
+    (weight tables + formula). The mock implementation ships a default
+    hybrid formula that is workable but generic.
+    """
+
+    scoring_default_confidence: float = 50.0
+    """
+    Baseline confidence_score written on every newly-ingested PhoneNumber
+    row. Neutral midpoint — new numbers compete on tier and relation
+    alone until audited (manual verdict, automated check, or a PATCH
+    write). Tunable per deployment via env var.
+    """
+
     # ------------------------------------------------------------------
     # Scheduler Intervals
     # ------------------------------------------------------------------

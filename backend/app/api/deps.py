@@ -27,6 +27,7 @@ from database import get_session
 from dependencies import (  # noqa: F401  (re-exported for router convenience)
     get_action_dispatcher,
     get_ingestion_service,
+    get_scoring_service,
     get_verification_engine,
 )
 from services.dispatcher import (
@@ -35,6 +36,7 @@ from services.dispatcher import (
     RetryEngine,
     UserActionService,
 )
+from services.scoring import ScoringService
 from services.tasks import PipelineTaskService
 from services.verification import VerificationService
 
@@ -137,6 +139,7 @@ def get_retry_engine(
 
 def get_verification_service(
     session: Session = Depends(get_session),
+    scoring_service: ScoringService = Depends(get_scoring_service),
 ) -> VerificationService:
     """
     Compose and return a `VerificationService` for manual verdict submissions.
@@ -145,13 +148,20 @@ def get_verification_service(
     block of the PhoneNumber table. Using it in the manual verdict endpoint
     ensures that human and automated verdicts follow the same atomic write path.
 
+    Phase DY composition: the injected `ScoringService` ensures that every
+    successful verdict triggers a priority recalculation in the SAME
+    transaction as the verdict write, so verdict + priority land
+    atomically (no race between separate commits).
+
     Args:
-        session (Session): Per-request DB session.
+        session         (Session):         Per-request DB session.
+        scoring_service (ScoringService):  Phase DY scoring hook.
 
     Returns:
-        VerificationService: Ready to write one verification verdict.
+        VerificationService: Ready to write one verification verdict +
+        recompute priority atomically.
     """
-    return VerificationService(session=session)
+    return VerificationService(session=session, scoring_service=scoring_service)
 
 
 # ===========================================================================

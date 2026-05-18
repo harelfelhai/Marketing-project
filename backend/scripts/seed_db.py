@@ -56,8 +56,25 @@ from models.pipeline_task import PipelineTask  # noqa: E402
 # ---------------------------------------------------------------------------
 
 def _dt(days_ago: float = 0, hours_ago: float = 0) -> datetime:
-    """Return a UTC datetime offset from now."""
+    """
+    Return a NAIVE UTC datetime offset from now. Used for the legacy
+    tables (Entity, ActionLog) whose columns remain naive until the
+    Phase F migration.
+
+    For PhoneNumber writes, callers MUST pass through `_to_utc()` because
+    that table was migrated to UTCDateTime columns by DY-1 — naive
+    inputs raise ValueError at the column boundary.
+    """
     return datetime.utcnow() - timedelta(days=days_ago, hours=hours_ago)
+
+
+def _to_utc(value: datetime | None) -> datetime | None:
+    """Promote a naive datetime to tz-aware UTC, or pass None through."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _wipe(session: Session) -> None:
@@ -107,17 +124,22 @@ def _wipe(session: Session) -> None:
 
 # Five primary entities — one per client partition.
 # relation_type='primary': direct marketing targets.
+#
+# Phase DY — extra_data['customer_tier'] is the JSON-pivot location for
+# the client tier (kept off the relational schema per design review §1a).
+# ScoringService reads this when computing priority_score for any
+# phone whose owning entity reports up to this root entity.
 PRIMARY_ENTITIES = [
     dict(client_id=1, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_a", "priority": "high"}),
+         extra_data={"segment": "segment_a", "priority": "high",   "customer_tier": 1}),
     dict(client_id=2, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_b", "priority": "medium"}),
+         extra_data={"segment": "segment_b", "priority": "medium", "customer_tier": 2}),
     dict(client_id=3, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_a", "priority": "high"}),
+         extra_data={"segment": "segment_a", "priority": "high",   "customer_tier": 1}),
     dict(client_id=4, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_c", "priority": "low"}),
+         extra_data={"segment": "segment_c", "priority": "low",    "customer_tier": 3}),
     dict(client_id=5, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_b", "priority": "medium"}),
+         extra_data={"segment": "segment_b", "priority": "medium", "customer_tier": 2}),
 ]
 
 # Phone numbers for primaries — indexed 0–4 matching PRIMARY_ENTITIES.
@@ -322,10 +344,10 @@ def seed(reset: bool = False) -> None:
                 verification_reason=spec.get("verification_reason"),
                 ingestion_source=spec["ingestion_source"],
                 ingestion_reason=spec.get("ingestion_reason"),
-                ingested_at=spec["ingested_at"],
-                verified_at=spec.get("verified_at"),
-                created_at=spec["ingested_at"],
-                updated_at=spec.get("verified_at") or spec["ingested_at"],
+                ingested_at=_to_utc(spec["ingested_at"]),
+                verified_at=_to_utc(spec.get("verified_at")),
+                created_at=_to_utc(spec["ingested_at"]),
+                updated_at=_to_utc(spec.get("verified_at") or spec["ingested_at"]),
             )
             session.add(phone)
             session.flush()
@@ -367,15 +389,34 @@ def seed(reset: bool = False) -> None:
                 verification_reason=spec.get("verification_reason"),
                 ingestion_source=spec["ingestion_source"],
                 ingestion_reason=spec.get("ingestion_reason"),
-                ingested_at=spec["ingested_at"],
-                verified_at=spec.get("verified_at"),
-                created_at=spec["ingested_at"],
-                updated_at=spec.get("verified_at") or spec["ingested_at"],
+                ingested_at=_to_utc(spec["ingested_at"]),
+                verified_at=_to_utc(spec.get("verified_at")),
+                created_at=_to_utc(spec["ingested_at"]),
+                updated_at=_to_utc(spec.get("verified_at") or spec["ingested_at"]),
             )
             session.add(phone)
             session.flush()
             phone_records.append(phone)
         print(f"    → {len(phone_records)} total phone numbers after associated batch.")
+
+        # ----------------------------------------------------------------
+        # 4a. Phase DY — initial priority scoring pass.
+        # ----------------------------------------------------------------
+        # Every seeded phone has its column-default confidence_score (50.0)
+        # but priority_score=0.0. We run ScoringService against each to
+        # populate priority_score using the real formula, so the seed
+        # data matches what production-grade ingestion produces.
+        #
+        # Importing ScoringService lazily keeps the seed script importable
+        # by tests that don't want to pull the scoring stack.
+        print("  Computing initial priority scores …")
+        from modules.mock_scoring import ScoringStrategy
+        from services.scoring import ScoringService
+        scoring_service = ScoringService(session=session, strategy=ScoringStrategy())
+        for phone in phone_records:
+            scoring_service.recalculate_for_phone(phone.id, commit=False)
+        session.commit()
+        print(f"    → {len(phone_records)} priority scores computed.")
 
         # ----------------------------------------------------------------
         # 5. Action logs

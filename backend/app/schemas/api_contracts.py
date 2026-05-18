@@ -150,6 +150,26 @@ class IngestionResponse(BaseModel):
     )
     created_at: datetime = Field(..., description="UTC row-creation timestamp.")
 
+    # Phase DY — the scoring block is populated by the time this response
+    # is built, because ingestion triggers the initial recalc inside the
+    # same transaction.
+    confidence_score: float = Field(
+        ...,
+        description="Reliability score (defaults to settings.scoring_default_confidence on insert).",
+    )
+    priority_score: float = Field(
+        ...,
+        description="Initial priority score computed by ScoringService at ingest time.",
+    )
+    confidence_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last write timestamp of confidence_score. Null on fresh ingest.",
+    )
+    priority_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last write timestamp of priority_score. Populated by the initial ingest recalc.",
+    )
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -231,6 +251,21 @@ class PhoneUpdateRequest(BaseModel):
             "`PhoneNumber.extra_data` value. Pass the full desired state. "
             "Leave null to leave existing extra_data unchanged."
         ),
+    )
+    confidence_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description=(
+            "Phase DY — operator-supplied confidence score (0.0 → 100.0). "
+            "When provided, the value is written to `confidence_score`, "
+            "`confidence_updated_at` is bumped, and `priority_score` is "
+            "recomputed atomically by ScoringService. Leave null to leave "
+            "confidence unchanged. The 0..100 range is enforced at the "
+            "API boundary; the DB column itself is unconstrained to allow "
+            "internal strategies that use other scales."
+        ),
+        examples=[85.0],
     )
 
 
@@ -420,6 +455,37 @@ class PhoneSummary(BaseModel):
     )
     created_at: datetime = Field(..., description="UTC row-creation timestamp.")
 
+    # ------------------------------------------------------------------
+    # Phase DY — scoring block (flattened JOIN result)
+    # ------------------------------------------------------------------
+    confidence_score: float = Field(
+        ...,
+        description="Reliability score (0.0 → 100.0 by convention).",
+    )
+    confidence_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last write timestamp of confidence_score. Null until audited.",
+    )
+    priority_score: float = Field(
+        ...,
+        description=(
+            "Final urgency score driving the prioritised queue ordering. "
+            "Convention: 0.0 → 100.0; values outside that range are valid."
+        ),
+    )
+    priority_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last write timestamp of priority_score.",
+    )
+    customer_tier: Optional[int] = Field(
+        default=None,
+        description=(
+            "Tier of the owning client, extracted server-side from the "
+            "root target Entity's `extra_data['customer_tier']` JSON key. "
+            "Null when the root entity has no tier hint."
+        ),
+    )
+
 
 class PhoneListResponse(BaseModel):
     """
@@ -515,6 +581,31 @@ class PhoneDetailsResponse(BaseModel):
     verified_at: Optional[datetime] = Field(
         default=None,
         description="UTC timestamp of the most recent verification verdict.",
+    )
+
+    # Phase DY block
+    confidence_score: float = Field(
+        ...,
+        description="Reliability score (0.0 → 100.0 by convention).",
+    )
+    confidence_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last write timestamp of confidence_score.",
+    )
+    priority_score: float = Field(
+        ...,
+        description="Final urgency score driving the prioritised queue ordering.",
+    )
+    priority_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Last write timestamp of priority_score.",
+    )
+    customer_tier: Optional[int] = Field(
+        default=None,
+        description=(
+            "Tier of the owning client, extracted server-side from the "
+            "root target Entity's extra_data."
+        ),
     )
 
     # Proprietary payload

@@ -240,3 +240,121 @@ class TestPipelineTaskAtomicity:
         assert after.extra_data  == before_snapshot["extra_data"], (
             "Blocked resolve leaked partial extra_data mutation."
         )
+
+
+# ===========================================================================
+# Phase DY — ScoringService transaction-boundary invariants
+# ===========================================================================
+
+
+class TestScoringTransactionBoundary:
+    """
+    Atomicity contract for the Phase DY recalculation hooks.
+
+    Three properties to assert:
+      1. When VerificationService is wired with a scoring service, a
+         successful verdict commits BOTH the verdict and the new
+         priority in one transaction.
+      2. If the scoring strategy RAISES inside the verdict transaction,
+         the verdict itself does NOT commit (rollback is honoured —
+         no half-written state where the verdict is visible but the
+         priority is stale).
+      3. ScoringService.update_confidence_and_recalc with commit=False
+         leaves the row pending in-session; the caller's outer commit
+         lands both writes.
+    """
+
+    def _scoring(self, session):
+        from modules.mock_scoring import ScoringStrategy
+        from services.scoring import ScoringService
+        return ScoringService(session=session, strategy=ScoringStrategy())
+
+    def _verification(self, session, scoring=None):
+        from services.verification import VerificationService
+        return VerificationService(session=session, scoring_service=scoring)
+
+    def test_verdict_and_priority_commit_atomically(self, session, seeded_target):
+        scoring = self._scoring(session)
+        vs = self._verification(session, scoring=scoring)
+
+        # Baseline: scoring has never run on this row.
+        assert seeded_target.priority_score == 0.0
+        assert seeded_target.priority_updated_at is None
+
+        vs.update_verification_verdict(
+            phone_id=seeded_target.id,
+            status="verified_good",
+            source="manual",
+            reason="ok",
+        )
+
+        # Re-read from a fresh identity-map view — both verdict AND
+        # priority must be visible.
+        session.expire_all()
+        reloaded = session.get(PhoneNumber, seeded_target.id)
+        assert reloaded.verification_status == "verified_good"
+        assert reloaded.priority_score > 0.0  # was recalculated
+        assert reloaded.priority_updated_at is not None
+
+    def test_scoring_failure_rolls_back_verdict(self, session, seeded_target):
+        """
+        If the strategy raises mid-verdict, the verdict write must NOT
+        commit — verification_status stays at its prior value. This is
+        the same-transaction guarantee that protects against
+        verdict-without-priority drift.
+        """
+        from interfaces.scoring import BaseScoringStrategy
+        from services.scoring import ScoringService
+
+        class ExplodingStrategy(BaseScoringStrategy):
+            def compute_priority(self, confidence_score, relation_type, customer_tier):
+                raise RuntimeError("simulated strategy failure")
+
+        scoring = ScoringService(session=session, strategy=ExplodingStrategy())
+        vs = self._verification(session, scoring=scoring)
+
+        original_status = seeded_target.verification_status
+        with pytest.raises(RuntimeError):
+            vs.update_verification_verdict(
+                phone_id=seeded_target.id,
+                status="verified_good",
+                source="manual",
+                reason="ok",
+            )
+        session.rollback()
+
+        # Verdict is NOT applied — the in-flight write was rolled back.
+        session.expire_all()
+        reloaded = session.get(PhoneNumber, seeded_target.id)
+        assert reloaded.verification_status == original_status
+
+    def test_update_confidence_commit_false_is_rollback_safe(
+        self, session, seeded_target
+    ):
+        """
+        commit=False contract — the caller owns the commit boundary.
+        Asserting this via rollback is more meaningful than asserting
+        the raw row state pre-commit, because SQLAlchemy autoflushes
+        pending changes to the connection on every query (the value
+        IS written, just inside an uncommitted transaction). What we
+        actually care about is: rollback reverts cleanly.
+        """
+        scoring = self._scoring(session)
+        scoring.update_confidence_and_recalc(
+            phone_id=seeded_target.id,
+            new_confidence=90.0,
+            commit=False,
+        )
+        # In-session view shows the new value.
+        session.refresh(seeded_target)
+        assert seeded_target.confidence_score == 90.0
+
+        # Rollback reverts both the confidence and the priority writes.
+        session.rollback()
+        session.expire_all()
+        reloaded = session.get(PhoneNumber, seeded_target.id)
+        assert reloaded.confidence_score == 50.0  # column default
+        assert reloaded.priority_score   == 0.0   # column default
+        # And the timestamps are unchanged (still NULL).
+        assert reloaded.confidence_updated_at is None
+        assert reloaded.priority_updated_at   is None

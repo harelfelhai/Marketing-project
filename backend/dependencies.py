@@ -27,6 +27,7 @@ EXPECTED CLASS NAMES BY MODULE
     INGESTION_MODULE  → class IngestionRoutingEngine(BaseIngestionRoutingEngine)
     DISPATCHER_MODULE → class ActionHandler(BaseActionHandler)
     FEEDBACK_MODULE   → class VerificationStrategy(BaseVerificationStrategy)
+    SCORING_MODULE    → class ScoringStrategy(BaseScoringStrategy)  (Phase DY)
 """
 
 import importlib
@@ -38,9 +39,11 @@ from config import settings
 from database import get_session
 from interfaces.dispatcher import BaseActionHandler
 from interfaces.ingestion import BaseIngestionRoutingEngine
+from interfaces.scoring import BaseScoringStrategy
 from interfaces.verification import BaseVerificationStrategy
 from services.dispatcher import ActionDispatcher
 from services.ingestion import IngestionService
+from services.scoring import ScoringService
 from services.verification import VerificationEngine, VerificationService
 
 
@@ -102,12 +105,13 @@ def get_ingestion_service(
     """
     Compose and return a fully wired `IngestionService` for the current request.
 
-    Injects the DB session, routing engine, and action dispatcher automatically.
-    All three dependencies are resolved independently by FastAPI.
+    Injects the DB session, routing engine, action dispatcher, and Phase DY
+    scoring service automatically. All sub-dependencies are resolved
+    independently by FastAPI.
 
-    The `ActionDispatcher` sub-dependency is constructed inline here because
-    it is an internal service (not a pluggable module) that simply needs the
-    current session and the loaded action handler.
+    The `ActionDispatcher` and `ScoringService` sub-dependencies are
+    constructed inline here because they are internal services (not
+    pluggable modules) that simply need the current session.
 
     Args:
         session        (Session):                    Injected per-request DB session.
@@ -118,10 +122,12 @@ def get_ingestion_service(
                           one ingestion request.
     """
     dispatcher = get_action_dispatcher(session)
+    scoring_service = get_scoring_service(session)
     return IngestionService(
         session=session,
         routing_engine=routing_engine,
         dispatcher=dispatcher,
+        scoring_service=scoring_service,
     )
 
 
@@ -231,6 +237,10 @@ def get_verification_engine(
     Returns:
         VerificationEngine: Fully wired engine ready to run `process_eligible_numbers()`.
     """
+    # The VerificationEngine writes verdicts in batch (no scoring hook
+    # here yet — scoring on engine batches is a Phase DY-2 add). For the
+    # synchronous manual-verdict path that uses `get_verification_service`,
+    # scoring IS wired in `app/api/deps.py`.
     verification_service = VerificationService(session=session)
     return VerificationEngine(
         session=session,
@@ -238,3 +248,45 @@ def get_verification_engine(
         verification_service=verification_service,
         verification_window_days=settings.verification_window_days,
     )
+
+
+# ===========================================================================
+# PHASE DY — SCORING
+# ===========================================================================
+
+
+def get_scoring_strategy() -> BaseScoringStrategy:
+    """
+    Resolve and return the active `ScoringStrategy` instance.
+
+    The concrete class is determined by the `SCORING_MODULE` env var
+    (default: `modules.mock_scoring`). The returned object is guaranteed
+    to implement `BaseScoringStrategy`.
+
+    HOOK FOR INTERNAL ENGINEERS:
+        Set SCORING_MODULE to your proprietary module path.
+        The class inside must be named `ScoringStrategy` and must
+        subclass `interfaces.scoring.BaseScoringStrategy`.
+
+    Returns:
+        BaseScoringStrategy: Fresh instance of the configured scoring class.
+    """
+    cls = _load_class(settings.scoring_module, "ScoringStrategy")
+    return cls()
+
+
+def get_scoring_service(
+    session: Session = Depends(get_session),
+    strategy: BaseScoringStrategy = Depends(get_scoring_strategy),
+) -> ScoringService:
+    """
+    Compose and return a fully wired `ScoringService` for the current request.
+
+    Args:
+        session  (Session):              Per-request DB session.
+        strategy (BaseScoringStrategy):  Injected scoring strategy.
+
+    Returns:
+        ScoringService: Ready to recalculate any phone's priority score.
+    """
+    return ScoringService(session=session, strategy=strategy)

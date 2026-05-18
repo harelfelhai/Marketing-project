@@ -2,11 +2,14 @@
 models/phone_number.py — The `PhoneNumber` table (Channel + Internal Evaluation).
 
 Represents a unique communication endpoint owned by an `Entity`.
-Encapsulates THREE conceptual concerns in one normalised row:
+Encapsulates FOUR conceptual concerns in one normalised row:
 
-    1. CORE IDENTITY        — what number this is and whom it belongs to.
-    2. PHASE 1 (INGESTION)  — how & why this number entered the pipeline.
-    3. PHASE 3 (VERIFICATION) — internal quality audit of the number.
+    1. CORE IDENTITY            — what number this is and whom it belongs to.
+    2. PHASE 1 (INGESTION)      — how & why this number entered the pipeline.
+    3. PHASE 3 (VERIFICATION)   — internal quality audit of the number.
+    4. PHASE DY (SCORING)       — confidence + priority floats driving the
+                                  prioritised review queue. Written by
+                                  ScoringService, read by the operator UI.
 
 PHASE 2 (External Dispatching / Campaigns) is intentionally NOT stored
 here — it lives in `models/action_log.py` as a separate event log.
@@ -18,7 +21,16 @@ PRIVACY CONTRACT
 All proprietary algorithmic outputs, vendor-specific identifiers, and
 sensitive ingestion/verification metadata MUST live inside the
 `extra_data` JSON column. The structured columns below capture only
-generic lifecycle state.
+generic lifecycle state and the abstract scoring floats.
+
+TIMESTAMP CONTRACT (Phase DY migration)
+---------------------------------------
+Every datetime column on this table is `UTCDateTime` (tz-aware UTC).
+Writes of naive `datetime.utcnow()` are rejected at the column boundary;
+use `models.types.utc_now()` instead. The migration was bundled with
+DY-1 to avoid a half-tz-aware state where the new confidence/priority
+timestamps would be aware while ingested_at/verified_at remained naive
+— a known comparison hazard in mixed schemas.
 """
 
 from datetime import datetime
@@ -26,6 +38,8 @@ from typing import Optional
 
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
+
+from models.types import UTCDateTime, utc_now as _utc_now
 
 
 class PhoneNumber(SQLModel, table=True):
@@ -138,9 +152,9 @@ class PhoneNumber(SQLModel, table=True):
     """
 
     ingested_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False,
-        description="UTC timestamp when this number entered the pipeline.",
+        default_factory=_utc_now,
+        sa_column=Column(UTCDateTime(), nullable=False),
+        description="Tz-aware UTC timestamp when this number entered the pipeline.",
     )
     """Set once at insertion. Functionally equivalent to `created_at`
     but kept separately to preserve semantic clarity in queries."""
@@ -198,26 +212,96 @@ class PhoneNumber(SQLModel, table=True):
 
     verified_at: Optional[datetime] = Field(
         default=None,
-        description="UTC timestamp of the most recent verification verdict.",
+        sa_column=Column(UTCDateTime(), nullable=True),
+        description="Tz-aware UTC timestamp of the most recent verification verdict.",
     )
     """Set when `verification_status` transitions out of "pending".
     NULL while still pending."""
+
+    # ==================================================================
+    # PHASE DY BLOCK — SCORING & PRIORITISATION
+    # ==================================================================
+    # confidence_score   : "How sure are we this number belongs to this entity?"
+    # priority_score     : confidence × (α·relation_weight + β·tier_weight)
+    # *_updated_at       : last write timestamp on each respective score.
+    #
+    # The actual formula and weight tables live in the injected
+    # BaseScoringStrategy (see interfaces/scoring.py). This table stores
+    # only the abstract floats — no business meaning leaks into the DB.
+
+    confidence_score: float = Field(
+        default=50.0,
+        nullable=False,
+        description=(
+            "Reliability/validation score of the number, 0.0 → 100.0. "
+            "Configured baseline on ingest; mutated by manual operator "
+            "audit or by an automated reliability strategy."
+        ),
+    )
+    """
+    Stored as float for headroom in case the strategy outputs decimals
+    (e.g. weighted averages). Acceptable range is convention-only —
+    the column does not enforce 0..100 at the DB level so internal
+    strategies can adopt different scales without a migration.
+    """
+
+    confidence_updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(UTCDateTime(), nullable=True),
+        description=(
+            "Tz-aware UTC timestamp of the most recent confidence_score "
+            "write. NULL means the score is still at its insert default "
+            "and has never been audited."
+        ),
+    )
+
+    priority_score: float = Field(
+        default=0.0,
+        nullable=False,
+        index=True,
+        description=(
+            "Final business urgency score driving the prioritised review "
+            "queue. Computed by ScoringService from confidence + relation + "
+            "tier inputs. Indexed because every /phones list page sorts "
+            "DESC on this column (with NULLS LAST + id tiebreaker)."
+        ),
+    )
+    """
+    Stored (denormalised) rather than computed at query time. Trade-off:
+    fast reads, eventually-consistent writes. ScoringService is the sole
+    writer (via VerificationService, IngestionService, and PATCH /phones).
+
+    Indexed so the priority-sorted list endpoint scales without a full
+    table scan once row counts grow past the SQLite-dev range.
+    """
+
+    priority_updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(UTCDateTime(), nullable=True),
+        description=(
+            "Tz-aware UTC timestamp of the most recent priority_score "
+            "write. NULL until ScoringService has run once."
+        ),
+    )
 
     # ==================================================================
     # METADATA & PROPRIETARY PAYLOAD
     # ==================================================================
 
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False,
-        description="UTC timestamp when this row was first inserted.",
+        default_factory=_utc_now,
+        sa_column=Column(UTCDateTime(), nullable=False),
+        description="Tz-aware UTC timestamp when this row was first inserted.",
     )
 
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        nullable=False,
-        sa_column_kwargs={"onupdate": datetime.utcnow},
-        description="UTC timestamp of the most recent update (auto-managed).",
+        default_factory=_utc_now,
+        sa_column=Column(
+            UTCDateTime(),
+            nullable=False,
+            onupdate=_utc_now,
+        ),
+        description="Tz-aware UTC timestamp of the most recent update (auto-managed).",
     )
     """
     Auto-refreshed by SQLAlchemy's `onupdate` hook on every UPDATE.

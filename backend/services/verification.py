@@ -13,7 +13,7 @@ This module only manages WHEN to evaluate and HOW to persist the result.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import Session, col, func, select
 
@@ -21,6 +21,14 @@ from exceptions import PhoneNumberNotFoundError
 from interfaces.verification import BaseVerificationStrategy
 from models.action_log import ActionLog
 from models.phone_number import PhoneNumber
+from models.types import utc_now
+
+# Forward-only typing import. The ScoringService is optional at the
+# VerificationService construction boundary (tests + legacy call sites
+# may omit it), and a hard import here would create a circular reference
+# via dependencies.py.
+if TYPE_CHECKING:
+    from services.scoring import ScoringService
 
 
 class VerificationService:
@@ -44,12 +52,23 @@ class VerificationService:
     consistently, regardless of whether the trigger was automated or manual.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        scoring_service: Optional["ScoringService"] = None,
+    ) -> None:
         """
         Args:
-            session (Session): Active DB session.
+            session         (Session):                  Active DB session.
+            scoring_service (Optional[ScoringService]): Phase DY scoring
+                hook. When provided, every successful verdict triggers
+                a priority recalculation INSIDE the same transaction
+                so verdict + priority land atomically. When None,
+                scoring is skipped (used by legacy tests and any caller
+                that wants to defer scoring).
         """
         self.session = session
+        self.scoring_service = scoring_service
 
     def update_verification_verdict(
         self,
@@ -100,11 +119,12 @@ class VerificationService:
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
-        # Write the Phase 3 block fields.
+        # Write the Phase 3 block fields. utc_now() returns a tz-aware
+        # value compatible with the migrated UTCDateTime column.
         phone.verification_status = status
         phone.verification_source = source
         phone.verification_reason = reason
-        phone.verified_at = datetime.utcnow()
+        phone.verified_at = utc_now()
 
         # Merge extra_metadata into existing extra_data (non-destructive).
         if extra_metadata:
@@ -113,6 +133,13 @@ class VerificationService:
             phone.extra_data = merged
 
         self.session.add(phone)
+
+        # Phase DY scoring hook — recalc priority IN THE SAME TRANSACTION
+        # so the verdict and the resulting priority change land
+        # atomically (no race between two separate commits).
+        if self.scoring_service is not None:
+            self.scoring_service.recalculate_for_phone(phone_id, commit=False)
+
         self.session.commit()
         self.session.refresh(phone)
         return phone
