@@ -19,6 +19,7 @@ export const NAV_CLIENT_HUB    = 'מרכז לקוחות';
 export const NAV_PHONE_GRID    = 'רשת טלפונים';
 export const NAV_SYSTEM_OPS    = 'מבצעי מערכת';
 export const NAV_DASHBOARD     = 'לוח בקרה';
+export const NAV_OPERATIONS    = 'מרכז משימות';
 export const BTN_INGEST_NEW    = 'קליטת מספר חדש';
 export const ROLE_TITLE        = (role) => `תפקיד: ${role}`;
 
@@ -315,3 +316,35 @@ export const ENGINE_STATUS_PROCESSING = 'מעבד — אין להפעיל שוב
 export const ENGINE_STATUS_IDLE      = 'במנוחה — מוכן להרצה הבאה';
 export const ENGINE_BTN_FORCE_RUN    = 'הפעל כעת';
 export const ENGINE_BTN_RUNNING      = 'מריץ…';
+
+// ---------------------------------------------------------------------------
+// Phase DX — Operations Task Queue
+// ---------------------------------------------------------------------------
+
+export const PAGE_OPERATIONS_TITLE = 'מרכז משימות';
+export const PAGE_OPERATIONS_SUB   = 'תור עבודה ייעודי למנהל מערכת — כשלים לטיפול, בקשות אישור והמלצות.';
+
+// Filter bar
+export const TASK_FILTER_SEARCH_PLACEHOLDER = 'חיפוש לפי טלפון, סוג משימה או שם לקוח…';
+export const TASK_FILTER_ALL_STATUSES       = 'כל הסטטוסים';
+export const TASK_FILTER_ALL_TYPES          = 'כל סוגי המשימות';
+export const TASK_FILTER_BTN_CLEAR          = 'נקה סינון';
+
+// 5-column table headers
+export const TASK_TABLE_COL_TYPE      = 'סוג משימה';
+export const TASK_TABLE_COL_PHONE     = 'טלפון';
+export const TASK_TABLE_COL_CLIENT    = 'לקוח';
+export const TASK_TABLE_COL_STATUS    = 'סטטוס וייחוס';
+export const TASK_TABLE_COL_UPDATED   = 'עודכן';
+
+// Empty / loading / showing line
+export const TASK_TABLE_EMPTY   = 'אין משימות התואמות לסינון הנוכחי.';
+export const TASK_TABLE_SHOWING = (shown, total) => `מציג ${shown} מתוך ${total} משימות.`;
+
+// Row caption fragments
+export const TASK_ROW_REQUESTED_BY  = (who) => `נפתח ע"י ${who}`;
+export const TASK_ROW_RESOLVED_BY   = (who) => `טופל ע"י ${who}`;
+export const TASK_ROW_ENTITY_LINE   = (id, type) => `ישות #${id} · ${type}`;
+
+// Permission gate fallback (used when RequireRole denies)
+export const PERMISSION_DENIED_NOTICE = 'אין לך הרשאה לצפות בתוכן זה. פנה למנהל מערכת.';

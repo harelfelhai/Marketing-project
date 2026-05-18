@@ -18,6 +18,13 @@ const DEFAULT_FILTERS = {
   search:             '',
 };
 
+// Phase DX — Operations Queue filter shape; mirrors TaskFilterBar controls.
+const DEFAULT_TASK_FILTERS = {
+  status:   '',
+  taskType: '',
+  search:   '',
+};
+
 export function UIProvider({ children }) {
   // -------------------------------------------------------------------------
   // Ingestion modal
@@ -43,6 +50,19 @@ export function UIProvider({ children }) {
   // first navigation to /phones?client_id=X without overwriting other filters.
   const seedClientFilter = useCallback((clientId) => {
     setPhoneFilters((prev) => ({ ...prev, clientId: clientId || '' }));
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Persistent Operations Queue filters (Phase DX) — survive tab navigation.
+  // -------------------------------------------------------------------------
+  const [taskFilters, setTaskFilters] = useState(DEFAULT_TASK_FILTERS);
+
+  const updateTaskFilters = useCallback((partial) => {
+    setTaskFilters((prev) => ({ ...prev, ...partial }));
+  }, []);
+
+  const resetTaskFilters = useCallback(() => {
+    setTaskFilters(DEFAULT_TASK_FILTERS);
   }, []);
 
   // -------------------------------------------------------------------------
@@ -73,6 +93,10 @@ export function UIProvider({ children }) {
     updatePhoneFilters,
     resetPhoneFilters,
     seedClientFilter,
+    // Task filters (Phase DX)
+    taskFilters,
+    updateTaskFilters,
+    resetTaskFilters,
     // Toasts
     toasts,
     pushToast,

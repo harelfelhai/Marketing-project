@@ -51,3 +51,49 @@ export function actionVariant(status) {
 export function actionLabel(status) {
   return ACTION_LABELS[status] || status || 'לא ידוע';
 }
+
+// ---------------------------------------------------------------------------
+// Phase DX — PipelineTask classification
+// ---------------------------------------------------------------------------
+
+const TASK_STATUS_VARIANTS = {
+  pending:   'pending',
+  assigned:  'retry',     // in-flight; mirrors "scheduled_retry" semantic
+  resolved:  'good',
+  rejected:  'failed',
+};
+
+const TASK_STATUS_LABELS = {
+  pending:   'ממתין לטיפול',
+  assigned:  'בטיפול',
+  resolved:  'טופל',
+  rejected:  'נדחה',
+};
+
+const TASK_TYPE_VARIANTS = {
+  remediation_failure:   'failed',
+  approval_required:     'pending',
+  manual_recommendation: 'info',
+};
+
+const TASK_TYPE_LABELS = {
+  remediation_failure:   'תיקון כשל',
+  approval_required:     'דרוש אישור',
+  manual_recommendation: 'המלצה ידנית',
+};
+
+export function taskStatusVariant(status) {
+  return TASK_STATUS_VARIANTS[status] || 'info';
+}
+
+export function taskStatusLabel(status) {
+  return TASK_STATUS_LABELS[status] || status || 'לא ידוע';
+}
+
+export function taskTypeVariant(taskType) {
+  return TASK_TYPE_VARIANTS[taskType] || 'info';
+}
+
+export function taskTypeLabel(taskType) {
+  return TASK_TYPE_LABELS[taskType] || taskType || 'לא ידוע';
+}
