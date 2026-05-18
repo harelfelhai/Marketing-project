@@ -31,7 +31,15 @@ import {
 
 const SKELETON_ROW_COUNT = 8;
 
-function applyFilters(tasks, filters) {
+/**
+ * applyFilters — pure filter function for unit-testability.
+ *
+ * Exported so DX-T2 tests/unit/TaskTable.applyFilters.test.js can exercise
+ * the combinatorial matrix of status × taskType × phoneId × clientId ×
+ * openOnly × search without mounting the React tree. Component code
+ * imports the default export below; tests import the named export.
+ */
+export function applyFilters(tasks, filters) {
   return tasks.filter((t) => {
     if (filters.status   && t.status    !== filters.status)   return false;
     if (filters.taskType && t.task_type !== filters.taskType) return false;
