@@ -233,7 +233,7 @@ def list_action_logs(
         ),
     ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
-    page_size: int = Query(default=20, ge=1, le=200, description="Records per page (max 200)."),
+    page_size: int = Query(default=20, ge=1, le=500, description="Records per page (max 500)."),
     session: Session = Depends(get_session),
 ) -> ActionLogListResponse:
     """
