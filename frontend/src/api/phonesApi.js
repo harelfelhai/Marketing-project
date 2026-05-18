@@ -90,11 +90,13 @@ export async function getPhoneDetail(id, mockDb) {
  *
  * MOCK_MODE = false → PATCH /phones/{id}; triggers refetchPhoneById (Phase D
  *                     narrowed refetch — single GET /phones/{id}).
- *                     Also returns triggered_action if the backend fires a
- *                     re-dispatch (PhoneUpdateResponse.triggered_action) —
- *                     per §4.3, log-side refresh is not part of this mutation's
- *                     contract; callers needing the new ActionLog must read
- *                     it from the returned response body directly.
+ *                     If the backend's ActionDataTriggerService also fired
+ *                     a re-dispatch (PhoneUpdateResponse.triggered_action),
+ *                     that ActionLog is spliced into the logs cache inline
+ *                     from the response body — NO extra HTTP call. This
+ *                     respects §4.3 (no log-side refetch for patchPhone)
+ *                     while still keeping the operator's drawer timeline
+ *                     accurate when a fix-then-redispatch happens.
  * MOCK_MODE = true  → applies patch to in-memory mock state.
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
@@ -103,6 +105,9 @@ export async function patchPhone(id, body, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.patch(`/phones/${id}`, body);
     await mockDb.refetchPhoneById(id);
+    if (data?.triggered_action) {
+      mockDb.spliceActionLog(data.triggered_action);
+    }
     return data;
   }
 

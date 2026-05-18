@@ -161,6 +161,25 @@ export function MockDataProvider({ children }) {
     });
   }, []);
 
+  // spliceActionLog — replace-by-id or append a SINGLE ActionLog that the
+  // server has already delivered to us inside another response body.
+  //
+  // Today's only caller is patchPhone, which can receive a
+  // PhoneUpdateResponse.triggered_action when ActionDataTriggerService
+  // fires a re-dispatch as a side-effect of the PATCH. The log is server-
+  // authoritative (just delivered inline rather than via a follow-up GET),
+  // so splicing it into the cache is consistent with §7.5 — not optimistic.
+  const spliceActionLog = useCallback((log) => {
+    if (!log || log.id == null) return;
+    setDb((prev) => {
+      const exists = prev.actionLogs.some((l) => l.id === log.id);
+      const next = exists
+        ? prev.actionLogs.map((l) => (l.id === log.id ? log : l))
+        : [...prev.actionLogs, log];
+      return { ...prev, actionLogs: next };
+    });
+  }, []);
+
   // refetchPhoneById — narrow refetch for single-phone mutations.
   // Uses GET /phones/{id}; flattens the detail-shape response (entity nested,
   // action_timeline included) back into the list-shape PhoneSummary stored
@@ -385,6 +404,7 @@ export function MockDataProvider({ children }) {
     // existing call sites in src/api/*.js.
     refetchPhoneById,
     refetchLogsForPhone,
+    spliceActionLog,
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
     applyPatchPhone,
