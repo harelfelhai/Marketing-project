@@ -30,8 +30,9 @@ export async function listActionLogs(filters = {}, mockDb) {
 /**
  * triggerManualAction — dispatch a named action for a phone number.
  *
- * MOCK_MODE = false → POST /actions/trigger; triggers refetchActionLogs so
- *                     the timeline and failed-actions table show server truth.
+ * MOCK_MODE = false → POST /actions/trigger; triggers refetchLogsForPhone
+ *                     (Phase D narrowed refetch — GET /actions/logs?phone_id=…
+ *                     per the filter-as-view contract §3.3).
  * MOCK_MODE = true  → appends a new log to the in-memory mock state.
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
@@ -44,7 +45,7 @@ export async function triggerManualAction(body, mockDb) {
       action_type: body.action_type,
       operator_id: body.operator_id,
     });
-    await mockDb.refetchActionLogs();
+    await mockDb.refetchLogsForPhone(body.phone_id);
     return data;
   }
 
@@ -74,8 +75,10 @@ export async function triggerManualAction(body, mockDb) {
 /**
  * retryNow — force-retry a specific failed action log row immediately.
  *
- * MOCK_MODE = false → POST /actions/retry-now/{logId}; triggers refetchActionLogs
- *                     so the failed-actions table reflects server state.
+ * MOCK_MODE = false → POST /actions/retry-now/{logId}; triggers
+ *                     refetchLogsForPhone(response.phone_id) — Phase D
+ *                     narrowed refetch. The response is ActionLogResponse,
+ *                     which carries phone_id directly (no extra lookup).
  * MOCK_MODE = true  → marks original log superseded and appends a retry log.
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
@@ -86,7 +89,7 @@ export async function retryNow(logId, operatorId, mockDb) {
     const { data } = await apiClient.post(`/actions/retry-now/${logId}`, {
       operator_id: operatorId || null,
     });
-    await mockDb.refetchActionLogs();
+    await mockDb.refetchLogsForPhone(data.phone_id);
     return data;
   }
 

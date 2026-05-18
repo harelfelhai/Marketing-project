@@ -88,10 +88,13 @@ export async function getPhoneDetail(id, mockDb) {
 /**
  * patchPhone — partial update of phone metadata / fields.
  *
- * MOCK_MODE = false → PATCH /phones/{id}; triggers refetchPhones so the drawer
- *                     and table reflect authoritative server state.
+ * MOCK_MODE = false → PATCH /phones/{id}; triggers refetchPhoneById (Phase D
+ *                     narrowed refetch — single GET /phones/{id}).
  *                     Also returns triggered_action if the backend fires a
- *                     re-dispatch (PhoneUpdateResponse.triggered_action).
+ *                     re-dispatch (PhoneUpdateResponse.triggered_action) —
+ *                     per §4.3, log-side refresh is not part of this mutation's
+ *                     contract; callers needing the new ActionLog must read
+ *                     it from the returned response body directly.
  * MOCK_MODE = true  → applies patch to in-memory mock state.
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
@@ -99,7 +102,7 @@ export async function getPhoneDetail(id, mockDb) {
 export async function patchPhone(id, body, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.patch(`/phones/${id}`, body);
-    await mockDb.refetchPhones();
+    await mockDb.refetchPhoneById(id);
     return data;
   }
 

@@ -3,8 +3,8 @@ import { mockDelay, MOCK_MODE, apiClient } from './client';
 /**
  * submitVerdict — record a manual verification verdict for a phone number.
  *
- * MOCK_MODE = false → POST /verification/verdict; triggers refetchPhones
- *                     so the drawer and table both reflect authoritative state.
+ * MOCK_MODE = false → POST /verification/verdict; triggers refetchPhoneById
+ *                     (Phase D narrowed refetch — single GET /phones/{id}).
  * MOCK_MODE = true  → applies verdict to in-memory mock state.
  *
  * Backend VerificationVerdictRequest accepts {phone_id, status, reason, extra_metadata}.
@@ -22,7 +22,7 @@ export async function submitVerdict(phoneId, status, reason, operatorId, mockDb)
       reason,
       extra_metadata: operatorId ? { operator_id: operatorId } : undefined,
     });
-    await mockDb.refetchPhones();
+    await mockDb.refetchPhoneById(phoneId);
     return data;
   }
 
