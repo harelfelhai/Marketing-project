@@ -28,11 +28,26 @@ export async function listActionLogs(filters = {}, mockDb) {
 }
 
 /**
- * triggerManualAction — dispatch an action for a phone number.
+ * triggerManualAction — dispatch a named action for a phone number.
  *
- * // HOOK FOR REAL API: POST /api/v1/actions/trigger — wired in Phase C.
+ * MOCK_MODE = false → POST /actions/trigger; triggers refetchActionLogs so
+ *                     the timeline and failed-actions table show server truth.
+ * MOCK_MODE = true  → appends a new log to the in-memory mock state.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
+ * // HOOK FOR ENTERPRISE AUTH: operator_id sourced from useAuth() by the caller.
  */
 export async function triggerManualAction(body, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post('/actions/trigger', {
+      phone_id:    body.phone_id,
+      action_type: body.action_type,
+      operator_id: body.operator_id,
+    });
+    await mockDb.refetchActionLogs();
+    return data;
+  }
+
   await mockDelay(600);
   const phone = mockDb.phones.find((p) => p.id === body.phone_id);
   if (!phone) throw new Error(`Phone ${body.phone_id} not found`);
@@ -57,11 +72,24 @@ export async function triggerManualAction(body, mockDb) {
 }
 
 /**
- * retryNow — force a retry on a specific failed action log.
+ * retryNow — force-retry a specific failed action log row immediately.
  *
- * // HOOK FOR REAL API: POST /api/v1/actions/retry-now/{logId} — wired in Phase C.
+ * MOCK_MODE = false → POST /actions/retry-now/{logId}; triggers refetchActionLogs
+ *                     so the failed-actions table reflects server state.
+ * MOCK_MODE = true  → marks original log superseded and appends a retry log.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
+ * // HOOK FOR ENTERPRISE AUTH: operator_id sourced from useAuth() by the caller.
  */
 export async function retryNow(logId, operatorId, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post(`/actions/retry-now/${logId}`, {
+      operator_id: operatorId || null,
+    });
+    await mockDb.refetchActionLogs();
+    return data;
+  }
+
   await mockDelay(700);
   mockDb.applyRetryNow(logId, operatorId);
   return { log_id: logId, status: 'sent', message: 'Retry dispatched successfully' };

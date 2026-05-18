@@ -1,24 +1,40 @@
-import { mockDelay } from './client';
+import { mockDelay, MOCK_MODE, apiClient } from './client';
 
 /**
  * runWorker — trigger a named worker engine pass.
  *
- * Simulates a 1.5s processing cycle and returns a WorkerRunResponse.
- * Engine executing state is managed in MockDataContext so the spinner
- * persists across tab switches (UI robustness mandate).
+ * MOCK_MODE = false → POST /system/workers/run?worker_name={name}.
+ *                     Engine executing state is still managed locally (UI-only
+ *                     concern; the server has no concept of per-client spinner).
+ *                     On completion, both phones and action logs are refetched
+ *                     because a worker pass may touch either table.
+ * MOCK_MODE = true  → simulates a 1.5s processing cycle.
  *
- * @param {string} engineName  - 'retry' | 'verification'
- * @param {object} mockDb      - MockDataContext value
- *
- * // HOOK FOR REAL API:
- * //   return axios.post(`/api/v1/system/workers/run?worker_name=${engineName}`)
- * //              .then(r => r.data)
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
  */
 export async function runWorker(engineName, mockDb) {
+  if (!MOCK_MODE) {
+    mockDb.setEngineExecuting(engineName, true);
+    try {
+      const { data } = await apiClient.post('/system/workers/run', null, {
+        params: { worker_name: engineName },
+      });
+      mockDb.applyWorkerRun(engineName, data.processed_count);
+      await Promise.all([
+        mockDb.refetchPhones(),
+        mockDb.refetchActionLogs(),
+      ]);
+      return data;
+    } catch (err) {
+      mockDb.setEngineExecuting(engineName, false);
+      throw err;
+    }
+  }
+
+  // --- mock path ---
   mockDb.setEngineExecuting(engineName, true);
   await mockDelay(1500);
 
-  // Simulate a plausible processed count based on pending work.
   const pendingCount = engineName === 'retry'
     ? mockDb.actionLogs.filter((l) => l.status === 'scheduled_retry').length
     : mockDb.phones.filter((p) => p.verification_status === 'pending').length;

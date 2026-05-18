@@ -1,13 +1,13 @@
 import { mockDelay, MOCK_MODE, apiClient } from './client';
-import { unwrapPage }         from './adapters/paginationAdapter';
-import { enrichPhone, enrichPhoneDetail } from './adapters/phoneAdapter';
+import { unwrapPage }                        from './adapters/paginationAdapter';
+import { enrichPhone, enrichPhoneDetail }    from './adapters/phoneAdapter';
 
 /**
  * listPhones — returns phone records matching the given filters.
  *
  * MOCK_MODE = false → GET /phones with query params; items enriched via phoneAdapter.
  *                     `search` filter is applied client-side (no backend full-text).
- * MOCK_MODE = true  → filters and returns from in-memory mockDb (unchanged).
+ * MOCK_MODE = true  → filters and returns from in-memory mockDb.
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
  */
@@ -88,9 +88,21 @@ export async function getPhoneDetail(id, mockDb) {
 /**
  * patchPhone — partial update of phone metadata / fields.
  *
- * // HOOK FOR REAL API: PATCH /api/v1/phones/{id} — wired in Phase C.
+ * MOCK_MODE = false → PATCH /phones/{id}; triggers refetchPhones so the drawer
+ *                     and table reflect authoritative server state.
+ *                     Also returns triggered_action if the backend fires a
+ *                     re-dispatch (PhoneUpdateResponse.triggered_action).
+ * MOCK_MODE = true  → applies patch to in-memory mock state.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
  */
 export async function patchPhone(id, body, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.patch(`/phones/${id}`, body);
+    await mockDb.refetchPhones();
+    return data;
+  }
+
   await mockDelay(350);
   mockDb.applyPatchPhone(id, body);
   return mockDb.phones.find((p) => p.id === id);

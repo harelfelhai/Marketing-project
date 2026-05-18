@@ -79,6 +79,41 @@ export function MockDataProvider({ children }) {
   // Expose raw state slices
   const { clients, entities, phones, actionLogs, engines } = db;
 
+  // ---------------------------------------------------------------------------
+  // refetchPhones — re-hydrates phones + entities from the server.
+  // No-op in mock mode. Called by API mutation functions after successful HTTP
+  // mutations to enforce the server-as-single-source-of-truth contract.
+  // ---------------------------------------------------------------------------
+  const refetchPhones = useCallback(async () => {
+    if (MOCK_MODE) return;
+    const phonesData = await listPhones({ pageSize: 200 });
+    const entityMap  = new Map();
+    phonesData.forEach((p) => {
+      if (!entityMap.has(p.entity_id)) {
+        entityMap.set(p.entity_id, {
+          id:          p.entity_id,
+          entity_type: p.entity_type,
+          client_id:   p.client_id,
+        });
+      }
+    });
+    setDb((prev) => ({
+      ...prev,
+      phones:   phonesData,
+      entities: Array.from(entityMap.values()),
+    }));
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // refetchActionLogs — re-hydrates action logs from the server.
+  // No-op in mock mode.
+  // ---------------------------------------------------------------------------
+  const refetchActionLogs = useCallback(async () => {
+    if (MOCK_MODE) return;
+    const logsData = await listActionLogs({ pageSize: 500 });
+    setDb((prev) => ({ ...prev, actionLogs: logsData }));
+  }, []);
+
   // -------------------------------------------------------------------------
   // applyIngest
   // -------------------------------------------------------------------------
@@ -267,7 +302,10 @@ export function MockDataProvider({ children }) {
     actionLogs,
     engines,
     loading,
-    // Mutators
+    // Invalidation / refetch (real-API mode — no-op in mock mode)
+    refetchPhones,
+    refetchActionLogs,
+    // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
     applyPatchPhone,
     applyVerdict,
