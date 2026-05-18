@@ -488,11 +488,15 @@ export const SEED_PHONES = [
   // owning entity is a 'social_envelope' placeholder. buildInitialDb()
   // injects customer_tier + priority_score via the same path as named
   // entities, so these rows participate in the priority sort normally.
+  //
+  // Domain invariant: every phone carries a classification_type (the
+  // source / algorithm is proprietary, out of scope for the open repo).
+  // We pick generic CLASSIFICATION_TYPES tokens to honour the invariant.
 
   // EP-088 — raw envelope, untouched. Demonstrates "📡 ◌ 🔍 ◇".
   {
     id: 88, entity_id: 88, phone_number: '+15559000088',
-    classification_type: null, ingestion_source: 'automated',
+    classification_type: 'type_b', ingestion_source: 'automated',
     ingestion_reason: 'Surfaced via social-cluster scrape.',
     ingested_at: _daysAgo(6),
     verification_status: 'pending', verification_source: null,
@@ -505,7 +509,7 @@ export const SEED_PHONES = [
   // Demonstrates "📡 ● 🔍 ◇" — your specific scenario.
   {
     id: 91, entity_id: 91, phone_number: '+15559000091',
-    classification_type: null, ingestion_source: 'automated',
+    classification_type: 'type_a', ingestion_source: 'automated',
     ingestion_reason: 'Surfaced via co-occurrence cluster.',
     ingested_at: _daysAgo(5),
     verification_status: 'pending', verification_source: null,

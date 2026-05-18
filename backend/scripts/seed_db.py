@@ -238,9 +238,13 @@ ASSOCIATED_PHONES = [
          ingested_at=_dt(days_ago=8), verified_at=None),
 
     # Phase DY-4 envelopes — match the two ASSOCIATED_SPEC envelopes above.
-    # First envelope: raw / untouched (verification_status='pending',
-    # baseline confidence). Demonstrates the "📡 ◌ 🔍 ◇" row state.
-    dict(phone_number="+14155550901", classification_type=None,
+    # Domain invariant: every PhoneNumber carries a classification_type;
+    # the source/algorithm for assignment is proprietary (out of scope
+    # for the open repo). The seed picks generic taxonomy values from
+    # the existing CLASSIFICATION_TYPES set to honor the invariant.
+    #
+    # First envelope: raw / untouched. Demonstrates "📡 ◌ 🔍 ◇".
+    dict(phone_number="+14155550901", classification_type="type_b",
          verification_status="pending", verification_source=None,
          verification_reason=None,
          ingestion_source="automated", ingestion_reason="Surfaced via social-cluster scrape.",
@@ -251,7 +255,7 @@ ASSOCIATED_PHONES = [
     #   confidence_score=100.0  (📡 ● in Truth Panel)
     #   verification_status='verified_good' (the relation axis propagates)
     # Identity stays unknown (entity_type='social_envelope', diamond glyph).
-    dict(phone_number="+14155550902", classification_type=None,
+    dict(phone_number="+14155550902", classification_type="type_a",
          verification_status="verified_good",
          verification_source="manual",
          verification_reason="Operator confirmed phone is in target network",
