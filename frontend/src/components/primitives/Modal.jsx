@@ -2,13 +2,13 @@
  * Modal — generic centered modal with backdrop dismiss + Escape key support.
  *
  * Renders via portal so it overlays the entire viewport regardless of where
- * it's mounted in the tree. The full-screen Side Drawer uses its own
- * layout (PhoneDetailDrawer), not this primitive.
+ * it's mounted in the tree.
  */
 
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { ARIA_CLOSE_MODAL } from '../../config/strings.he';
 
 export default function Modal({
   isOpen,
@@ -18,7 +18,6 @@ export default function Modal({
   footer = null,
   size = 'md',
 }) {
-  // Close on Escape
   useEffect(() => {
     if (!isOpen) return undefined;
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
@@ -56,7 +55,7 @@ export default function Modal({
             type="button"
             onClick={onClose}
             className="text-slate-400 hover:text-slate-700 transition-colors"
-            aria-label="Close modal"
+            aria-label={ARIA_CLOSE_MODAL}
           >
             <X className="w-4 h-4" />
           </button>

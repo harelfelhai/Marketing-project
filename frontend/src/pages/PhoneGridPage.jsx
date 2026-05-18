@@ -16,6 +16,7 @@ import PhoneFilterBar     from '../components/phones/PhoneFilterBar';
 import PhoneTable         from '../components/phones/PhoneTable';
 import PhoneDetailDrawer  from '../components/phones/PhoneDetailDrawer';
 import { useUI }          from '../contexts/UIContext';
+import { PAGE_PHONE_GRID_TITLE, PAGE_PHONE_GRID_SUB } from '../config/strings.he';
 
 export default function PhoneGridPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -47,10 +48,8 @@ export default function PhoneGridPage() {
     <section className="space-y-4">
       <header className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Phone Grid</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Filter, inspect, and act on every phone in the pipeline.
-          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">{PAGE_PHONE_GRID_TITLE}</h1>
+          <p className="text-sm text-slate-500 mt-1">{PAGE_PHONE_GRID_SUB}</p>
         </div>
       </header>
 

@@ -6,15 +6,13 @@
  *   tel      → <input type="tel">
  *   select   → <select> with schema-provided options
  *   textarea → <textarea>
- *   json_blob→ <textarea> (raw JSON; errors are shown inline, not as toast)
- *
- * The `error` prop is set externally by the parent's per-field validation
- * pass. For json_blob fields, the parent catches JSON.parse failures and
- * sets the error string here; a generic red message appears below the field.
+ *   json_blob→ <textarea> (raw JSON; errors shown inline)
  *
  * // HOOK FOR ENTERPRISE LABELS — field labels and placeholders come
  * // entirely from the schema response, not from this file.
  */
+
+import { DYNAMIC_SELECT_DEFAULT } from '../../config/strings.he';
 
 const baseInput =
   'w-full h-9 px-3 text-sm rounded-md border bg-white focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors';
@@ -40,8 +38,8 @@ export default function DynamicField({ field, value, onChange, error }) {
 
   if (field.type === 'select') {
     inputEl = (
-      <select {...shared} className={`${baseInput} ${bordClass} pr-8`}>
-        <option value="">— select —</option>
+      <select {...shared} className={`${baseInput} ${bordClass} pe-8`}>
+        <option value="">{DYNAMIC_SELECT_DEFAULT}</option>
         {(field.options || []).map((opt) => (
           <option key={opt} value={opt}>{opt}</option>
         ))}
@@ -65,7 +63,6 @@ export default function DynamicField({ field, value, onChange, error }) {
       />
     );
   } else {
-    // text | tel | number — default to text input
     inputEl = (
       <input
         {...shared}
@@ -77,17 +74,13 @@ export default function DynamicField({ field, value, onChange, error }) {
 
   return (
     <div className="space-y-1">
-      <label
-        htmlFor={id}
-        className="block text-xs font-semibold text-slate-700"
-      >
+      <label htmlFor={id} className="block text-xs font-semibold text-slate-700">
         {field.label}
-        {field.required && <span className="text-rose-500 ml-0.5" aria-hidden="true">*</span>}
+        {field.required && <span className="text-rose-500 ms-0.5" aria-hidden="true">*</span>}
       </label>
 
       {inputEl}
 
-      {/* Inline field-level error — used by json_blob validation */}
       {error && (
         <p id={`${id}-err`} role="alert" className="text-xs text-rose-600 break-words">
           {error}

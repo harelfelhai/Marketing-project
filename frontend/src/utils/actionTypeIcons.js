@@ -19,14 +19,18 @@ export function iconForActionType(actionType) {
   return ICONS[actionType] || Zap;
 }
 
+// // HOOK FOR ENTERPRISE LABELS — Hebrew display labels for action type tokens.
+const LABELS_HE = {
+  outreach_a: 'פנייה א',
+  outreach_b: 'פנייה ב',
+  outreach_c: 'פנייה ג',
+  outreach_d: 'פנייה ד',
+};
+
 /** Stable, generic label for display purposes. */
 export function labelForActionType(actionType) {
-  if (!actionType) return 'Unknown Action';
-  // Convert "outreach_a" → "Outreach A"
-  return actionType
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+  if (!actionType) return 'פעולה לא ידועה';
+  return LABELS_HE[actionType] || actionType;
 }
 
 /** Lists every action_type known to the seed; used by ManualActionModal. */

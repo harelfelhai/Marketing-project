@@ -12,14 +12,14 @@ export default {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.4' },
         },
-        // Drawer slide-in from right — pure CSS, no tailwindcss-animate.
+        // Drawer slide-in from left (RTL layout) — pure CSS, no tailwindcss-animate.
         drawerSlideIn: {
-          '0%': { transform: 'translateX(100%)' },
+          '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(0)' },
         },
         drawerSlideOut: {
           '0%': { transform: 'translateX(0)' },
-          '100%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(-100%)' },
         },
       },
       animation: {

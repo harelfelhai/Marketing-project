@@ -1,8 +1,7 @@
 /**
  * PhoneTable — filtered table over the live MockDataContext state.
  *
- * Uses table-fixed with explicit colgroup widths so a long string in
- * Column 2 cannot push Columns 3-5 off-screen. Filter application is
+ * Uses table-fixed with explicit colgroup widths. Filter application is
  * a useMemo derivation; the source of truth stays in context so
  * mutations propagate instantly.
  */
@@ -12,6 +11,10 @@ import { useMemo } from 'react';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import PhoneRow        from './PhoneRow';
+import {
+  TABLE_HEADER_PHONE, TABLE_HEADER_ASSOCIATION, TABLE_HEADER_VERIFICATION,
+  TABLE_HEADER_ACTIONS, TABLE_HEADER_UPDATED, TABLE_EMPTY_PHONES, TABLE_SHOWING,
+} from '../../config/strings.he';
 
 function applyFilters(phones, entities, clients, actionLogs, filters) {
   const entityById = new Map(entities.map((e) => [e.id, e]));
@@ -60,26 +63,26 @@ export default function PhoneTable({ selectedId, onSelect }) {
     <div className="bg-white rounded-lg border border-slate-200">
       <table className="w-full table-fixed">
         <colgroup>
-          <col className="w-[180px]" />  {/* Phone + classification */}
-          <col className="w-[200px]" />  {/* Association          */}
-          <col className="w-[160px]" />  {/* Verification         */}
-          <col />                        {/* Action pipeline      */}
-          <col className="w-[140px]" />  {/* Last updated         */}
+          <col className="w-[180px]" />
+          <col className="w-[200px]" />
+          <col className="w-[160px]" />
+          <col />
+          <col className="w-[140px]" />
         </colgroup>
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
-            <Th>Phone / Type</Th>
-            <Th>Association</Th>
-            <Th>Verification</Th>
-            <Th>Recent Actions</Th>
-            <Th>Updated</Th>
+            <Th>{TABLE_HEADER_PHONE}</Th>
+            <Th>{TABLE_HEADER_ASSOCIATION}</Th>
+            <Th>{TABLE_HEADER_VERIFICATION}</Th>
+            <Th>{TABLE_HEADER_ACTIONS}</Th>
+            <Th>{TABLE_HEADER_UPDATED}</Th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
             <tr>
               <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
-                No phones match the current filters.
+                {TABLE_EMPTY_PHONES}
               </td>
             </tr>
           ) : (
@@ -99,7 +102,7 @@ export default function PhoneTable({ selectedId, onSelect }) {
       </table>
 
       <div className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
-        Showing {rows.length} of {phones.length} phone{phones.length === 1 ? '' : 's'}
+        {TABLE_SHOWING(rows.length, phones.length)}
       </div>
     </div>
   );
@@ -107,7 +110,7 @@ export default function PhoneTable({ selectedId, onSelect }) {
 
 function Th({ children }) {
   return (
-    <th className="px-4 py-2.5 text-left text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+    <th className="px-4 py-2.5 text-start text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
       {children}
     </th>
   );

@@ -1,11 +1,8 @@
 /**
  * ManualActionModal — operator-initiated action dispatch.
  *
- * The action_type picker is scoped to the phone's classification_type
- * via a simple lookup table; when no scope is known, all KNOWN_ACTION_TYPES
- * are offered. The submit calls triggerManualAction() which appends a
- * new ActionLog via applyTriggerAction() — the new log surfaces in the
- * row's mini-pipeline immediately on next render.
+ * Action type picker is scoped to the phone's classification_type.
+ * // HOOK FOR ENTERPRISE LABELS — ACTION_SCOPE_BY_CLASSIFICATION is the swap point.
  */
 
 import { useState } from 'react';
@@ -17,6 +14,12 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import { useAuth }     from '../../contexts/MockAuthContext';
 import { KNOWN_ACTION_TYPES, labelForActionType } from '../../utils/actionTypeIcons';
+import {
+  ACTION_MODAL_TITLE, ACTION_MODAL_TARGET_PHONE, ACTION_MODAL_CLASSIFICATION,
+  ACTION_MODAL_ACTION_TYPE, ACTION_MODAL_HELP,
+  ACTION_MODAL_BTN_CANCEL, ACTION_MODAL_BTN_DISPATCH, ACTION_MODAL_BTN_DISPATCHING,
+  ACTION_MODAL_TOAST_SUCCESS, ACTION_MODAL_TOAST_ERROR,
+} from '../../config/strings.he';
 
 // // HOOK FOR ENTERPRISE LABELS — map classification_type → allowed actions.
 const ACTION_SCOPE_BY_CLASSIFICATION = {
@@ -44,10 +47,10 @@ export default function ManualActionModal({ isOpen, onClose, phone }) {
         { phone_id: phone.id, action_type: actionType, operator_id: operatorId },
         mockDb
       );
-      pushToast({ variant: 'success', message: `Action "${labelForActionType(actionType)}" dispatched.` });
+      pushToast({ variant: 'success', message: ACTION_MODAL_TOAST_SUCCESS(labelForActionType(actionType)) });
       onClose();
     } catch (err) {
-      pushToast({ variant: 'error', message: `Dispatch failed: ${err.message}` });
+      pushToast({ variant: 'error', message: ACTION_MODAL_TOAST_ERROR(err.message) });
     } finally {
       setSubmitting(false);
     }
@@ -59,7 +62,7 @@ export default function ManualActionModal({ isOpen, onClose, phone }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Trigger Manual Action"
+      title={ACTION_MODAL_TITLE}
       footer={
         <div className="flex items-center justify-end gap-2">
           <button
@@ -68,7 +71,7 @@ export default function ManualActionModal({ isOpen, onClose, phone }) {
             disabled={submitting}
             className="h-9 px-3 text-sm text-slate-600 hover:text-slate-900"
           >
-            Cancel
+            {ACTION_MODAL_BTN_CANCEL}
           </button>
           <button
             type="button"
@@ -77,19 +80,19 @@ export default function ManualActionModal({ isOpen, onClose, phone }) {
             className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors disabled:opacity-60"
           >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-            {submitting ? 'Dispatching…' : 'Dispatch'}
+            {submitting ? ACTION_MODAL_BTN_DISPATCHING : ACTION_MODAL_BTN_DISPATCH}
           </button>
         </div>
       }
     >
       <div className="space-y-3 text-sm">
         <div className="flex items-baseline justify-between">
-          <span className="text-slate-500">Target phone</span>
+          <span className="text-slate-500">{ACTION_MODAL_TARGET_PHONE}</span>
           <span className="font-mono text-slate-900">{phone.phone_number}</span>
         </div>
         {phone.classification_type && (
           <div className="flex items-baseline justify-between">
-            <span className="text-slate-500">Classification</span>
+            <span className="text-slate-500">{ACTION_MODAL_CLASSIFICATION}</span>
             <span className="font-mono text-slate-900 uppercase tracking-wide text-xs">
               {phone.classification_type}
             </span>
@@ -97,7 +100,9 @@ export default function ManualActionModal({ isOpen, onClose, phone }) {
         )}
 
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Action type</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            {ACTION_MODAL_ACTION_TYPE}
+          </label>
           <select
             value={actionType}
             onChange={(e) => setActionType(e.target.value)}
@@ -107,9 +112,7 @@ export default function ManualActionModal({ isOpen, onClose, phone }) {
               <option key={t} value={t}>{labelForActionType(t)}</option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Action options are scoped to this phone's classification.
-          </p>
+          <p className="text-[11px] text-slate-400 mt-1">{ACTION_MODAL_HELP}</p>
         </div>
       </div>
     </Modal>

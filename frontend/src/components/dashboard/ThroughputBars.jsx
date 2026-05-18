@@ -1,14 +1,11 @@
 /**
- * ThroughputBars — 14-day rolling ingestion throughput as a pure flex bar chart.
- *
- * Derives data from MockDataContext.actionLogs grouped by requested_at date.
- * No external chart library — purely flex divs + Tailwind with fixed heights.
- * Each bar's height is proportional to the day with the highest count.
+ * ThroughputBars — 14-day rolling action throughput as a pure flex bar chart.
  */
 
 import { useMemo } from 'react';
 import { useMockData } from '../../contexts/MockDataContext';
 import { formatDate }  from '../../utils/formatDate';
+import { THROUGHPUT_HEADING, THROUGHPUT_SUBTITLE, THROUGHPUT_TOOLTIP } from '../../config/strings.he';
 
 const CHART_HEIGHT_PX = 120;
 const DAYS            = 14;
@@ -18,7 +15,6 @@ function buildDays(actionLogs) {
   const days   = [];
   const counts = {};
 
-  // Build an array of the last N dates.
   for (let i = DAYS - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
@@ -27,7 +23,6 @@ function buildDays(actionLogs) {
     counts[key] = 0;
   }
 
-  // Count action log entries per date.
   actionLogs.forEach((log) => {
     const key = formatDate(log.requested_at);
     if (key in counts) counts[key]++;
@@ -45,30 +40,26 @@ export default function ThroughputBars() {
   return (
     <section className="bg-white rounded-lg border border-slate-200 p-5 space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">Daily Action Throughput</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Last 14 days — action log entries per day</p>
+        <h3 className="text-sm font-semibold text-slate-900">{THROUGHPUT_HEADING}</h3>
+        <p className="text-xs text-slate-400 mt-0.5">{THROUGHPUT_SUBTITLE}</p>
       </div>
 
       <div className="flex items-end gap-1" style={{ height: `${CHART_HEIGHT_PX}px` }}>
         {days.map(({ date, count }) => {
           const pct     = (count / maxVal) * 100;
           const isEmpty = count === 0;
-          // Short label: month/day only.
-          const label   = date.slice(5); // "MM-DD"
 
           return (
             <div
               key={date}
               className="flex-1 flex flex-col items-center justify-end gap-0.5 group"
-              title={`${date}: ${count} action${count === 1 ? '' : 's'}`}
+              title={THROUGHPUT_TOOLTIP(date, count)}
             >
-              {/* Value label (visible on hover) */}
               {!isEmpty && (
                 <span className="text-[9px] text-slate-400 hidden group-hover:block tabular-nums">
                   {count}
                 </span>
               )}
-              {/* Bar */}
               <div
                 className={`w-full rounded-t-sm transition-all duration-300 ${
                   isEmpty ? 'bg-slate-100' : 'bg-slate-700 group-hover:bg-slate-900'
@@ -80,7 +71,7 @@ export default function ThroughputBars() {
         })}
       </div>
 
-      {/* X-axis labels: show every other day to avoid crowding */}
+      {/* X-axis labels */}
       <div className="flex gap-1">
         {days.map(({ date }, idx) => (
           <div key={date} className="flex-1 text-center">

@@ -2,15 +2,14 @@
  * Toast / ToastStack — portal-mounted notification overlay.
  *
  * Reads the toast queue from UIContext and renders a fixed stack in the
- * lower-right corner. Each toast auto-dismisses after 4s (handled in
- * UIContext.pushToast); the X button forces immediate removal.
- *
- * Mounted once at the App root so notifications survive route changes.
+ * lower-left corner (RTL layout — left is the inline-end side).
+ * Each toast auto-dismisses after 4s; the X button forces immediate removal.
  */
 
 import { createPortal } from 'react-dom';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { useUI } from '../../contexts/UIContext';
+import { ARIA_DISMISS_NOTIFICATION } from '../../config/strings.he';
 
 const VARIANT_STYLES = {
   success: {
@@ -33,14 +32,13 @@ const VARIANT_STYLES = {
 export default function ToastStack() {
   const { toasts, dismissToast } = useUI();
 
-  // Render nothing if no toasts, but still mount the portal target check.
   if (typeof document === 'undefined') return null;
 
   return createPortal(
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+      className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 pointer-events-none"
     >
       {toasts.map((t) => {
         const style = VARIANT_STYLES[t.variant] || VARIANT_STYLES.info;
@@ -59,7 +57,7 @@ export default function ToastStack() {
               type="button"
               onClick={() => dismissToast(t.id)}
               className="shrink-0 text-slate-400 hover:text-slate-700 transition-colors"
-              aria-label="Dismiss notification"
+              aria-label={ARIA_DISMISS_NOTIFICATION}
             >
               <X className="w-4 h-4" />
             </button>

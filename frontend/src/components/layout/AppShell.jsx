@@ -1,18 +1,11 @@
 /**
  * AppShell — top-level chrome: header bar, nav tabs, and content slot.
  *
- * Layout structure:
- *   ┌───────────────────────────────────────────────────────┐
- *   │  Branding   |  NavTabs        |    HeaderActions      │   <- sticky top
- *   ├───────────────────────────────────────────────────────┤
- *   │                                                       │
- *   │              page content via {children}              │
- *   │                                                       │
- *   └───────────────────────────────────────────────────────┘
+ * ms-auto is used (logical property) so the right cluster pushes to the
+ * inline-end edge in both LTR and RTL layouts.
+ * The operator chip uses ps-4 / border-s for the same reason.
  *
- * The header is a single sticky row so all tab switches happen below it
- * without layout jump. The operator chip on the right reads from useAuth()
- * — // HOOK FOR ENTERPRISE AUTH: swap to a real user dropdown later.
+ * // HOOK FOR ENTERPRISE AUTH: swap operator chip to real user dropdown.
  */
 
 import { Activity } from 'lucide-react';
@@ -20,6 +13,7 @@ import { Activity } from 'lucide-react';
 import NavTabs       from './NavTabs';
 import HeaderActions from './HeaderActions';
 import { useAuth }   from '../../contexts/MockAuthContext';
+import { APP_NAME, ROLE_TITLE } from '../../config/strings.he';
 
 export default function AppShell({ children }) {
   const { operatorId, operatorRole } = useAuth();
@@ -34,19 +28,19 @@ export default function AppShell({ children }) {
               <Activity className="w-4 h-4" />
             </div>
             <span className="font-semibold text-slate-900 tracking-tight">
-              Marketing Automation
+              {APP_NAME}
             </span>
           </div>
 
           {/* Tabs */}
           <NavTabs />
 
-          {/* Right cluster: actions + operator chip */}
-          <div className="ml-auto flex items-center gap-4">
+          {/* End cluster: actions + operator chip — ms-auto pushes to inline-end */}
+          <div className="ms-auto flex items-center gap-4">
             <HeaderActions />
             <div
-              className="flex items-center gap-2 pl-4 border-l border-slate-200"
-              title={`Role: ${operatorRole}`}
+              className="flex items-center gap-2 ps-4 border-s border-slate-200"
+              title={ROLE_TITLE(operatorRole)}
             >
               <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center">
                 {operatorId.slice(-2).toUpperCase()}

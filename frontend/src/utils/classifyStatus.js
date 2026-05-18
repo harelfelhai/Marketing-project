@@ -13,9 +13,9 @@ const VERIFICATION_VARIANTS = {
 };
 
 const VERIFICATION_LABELS = {
-  pending:        'Pending',
-  verified_good:  'Verified Good',
-  verified_bad:   'Verified Bad',
+  pending:        'ממתין',
+  verified_good:  'אומת - תקין',
+  verified_bad:   'אומת - פסול',
 };
 
 const ACTION_VARIANTS = {
@@ -28,12 +28,12 @@ const ACTION_VARIANTS = {
 };
 
 const ACTION_LABELS = {
-  sent:             'Sent',
-  delivered:        'Delivered',
-  scheduled_retry:  'Scheduled Retry',
-  failed:           'Failed',
-  superseded:       'Superseded',
-  pending:          'Pending',
+  sent:             'נשלח',
+  delivered:        'נמסר',
+  scheduled_retry:  'מתוזמן לניסיון חוזר',
+  failed:           'נכשל',
+  superseded:       'הוחלף',
+  pending:          'ממתין',
 };
 
 export function verificationVariant(status) {
@@ -41,7 +41,7 @@ export function verificationVariant(status) {
 }
 
 export function verificationLabel(status) {
-  return VERIFICATION_LABELS[status] || status || 'Unknown';
+  return VERIFICATION_LABELS[status] || status || 'לא ידוע';
 }
 
 export function actionVariant(status) {
@@ -49,5 +49,5 @@ export function actionVariant(status) {
 }
 
 export function actionLabel(status) {
-  return ACTION_LABELS[status] || status || 'Unknown';
+  return ACTION_LABELS[status] || status || 'לא ידוע';
 }

@@ -8,12 +8,15 @@
 
 import { NavLink } from 'react-router-dom';
 import { LayoutGrid, Phone, Activity, BarChart3 } from 'lucide-react';
+import {
+  NAV_CLIENT_HUB, NAV_PHONE_GRID, NAV_SYSTEM_OPS, NAV_DASHBOARD,
+} from '../../config/strings.he';
 
 const TABS = [
-  { to: '/',          label: 'Client Hub',  icon: LayoutGrid },
-  { to: '/phones',    label: 'Phone Grid',  icon: Phone },
-  { to: '/ops',       label: 'System Ops',  icon: Activity },
-  { to: '/dashboard', label: 'Dashboard',   icon: BarChart3 },
+  { to: '/',          label: NAV_CLIENT_HUB,  icon: LayoutGrid },
+  { to: '/phones',    label: NAV_PHONE_GRID,  icon: Phone },
+  { to: '/ops',       label: NAV_SYSTEM_OPS,  icon: Activity },
+  { to: '/dashboard', label: NAV_DASHBOARD,   icon: BarChart3 },
 ];
 
 const baseClasses   = 'inline-flex items-center gap-2 h-14 px-3 text-sm font-medium border-b-2 transition-colors';
@@ -27,7 +30,6 @@ export default function NavTabs() {
         <NavLink
           key={to}
           to={to}
-          // `end` on the root path prevents it from matching every subroute.
           end={to === '/'}
           className={({ isActive }) =>
             `${baseClasses} ${isActive ? activeClasses : idleClasses}`

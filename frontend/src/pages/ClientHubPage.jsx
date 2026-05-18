@@ -8,6 +8,7 @@
 
 import { useMockData } from '../contexts/MockDataContext';
 import ClientCard       from '../components/clients/ClientCard';
+import { PAGE_CLIENT_HUB_TITLE, PAGE_CLIENT_HUB_SUB } from '../config/strings.he';
 
 export default function ClientHubPage() {
   const { clients } = useMockData();
@@ -15,10 +16,8 @@ export default function ClientHubPage() {
   return (
     <section className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Client Hub</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Per-client pipeline overview. Click a card to filter the Phone Grid to that client.
-        </p>
+        <h1 className="text-2xl font-semibold text-slate-900">{PAGE_CLIENT_HUB_TITLE}</h1>
+        <p className="text-sm text-slate-500 mt-1">{PAGE_CLIENT_HUB_SUB}</p>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

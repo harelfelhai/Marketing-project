@@ -1,10 +1,5 @@
 /**
- * VerdictSplitButtons — Approve (green) / Reject (red) controls with an
- * inline reason textarea (no separate modal — keeps the footer flow tight).
- *
- * On submit: calls submitVerdict() (which calls applyVerdict() under the
- * hood). The drawer remains open so the operator sees the status badge
- * flip in the header.
+ * VerdictSplitButtons — Approve / Reject controls with inline reason textarea.
  */
 
 import { useState } from 'react';
@@ -14,16 +9,20 @@ import { submitVerdict } from '../../api/verificationApi';
 import { useMockData }   from '../../contexts/MockDataContext';
 import { useUI }         from '../../contexts/UIContext';
 import { useAuth }       from '../../contexts/MockAuthContext';
+import {
+  VERDICT_BTN_APPROVE, VERDICT_BTN_REJECT,
+  VERDICT_CONFIRM_GOOD, VERDICT_CONFIRM_BAD,
+  VERDICT_REASON_PLACEHOLDER, VERDICT_BTN_CANCEL,
+  VERDICT_BTN_SUBMITTING, VERDICT_BTN_CONFIRM_APPROVE, VERDICT_BTN_CONFIRM_REJECT,
+  VERDICT_TOAST_SUCCESS, VERDICT_TOAST_ERROR,
+} from '../../config/strings.he';
+import { verificationLabel } from '../../utils/classifyStatus';
 
 export default function VerdictSplitButtons({ phone }) {
   const mockDb           = useMockData();
   const { operatorId }   = useAuth();
   const { pushToast }    = useUI();
 
-  // pendingChoice is the verdict the operator picked but hasn't submitted yet:
-  //   null            — collapsed (showing the two buttons)
-  //   'verified_good' — reason textarea visible, Approve flow
-  //   'verified_bad'  — reason textarea visible, Reject flow
   const [pendingChoice, setPendingChoice] = useState(null);
   const [reason, setReason]               = useState('');
   const [submitting, setSubmitting]       = useState(false);
@@ -37,11 +36,10 @@ export default function VerdictSplitButtons({ phone }) {
     setSubmitting(true);
     try {
       await submitVerdict(phone.id, pendingChoice, reason.trim(), operatorId, mockDb);
-      const niceLabel = pendingChoice === 'verified_good' ? 'verified good' : 'verified bad';
-      pushToast({ variant: 'success', message: `Verdict recorded — phone marked as ${niceLabel}.` });
+      pushToast({ variant: 'success', message: VERDICT_TOAST_SUCCESS(verificationLabel(pendingChoice)) });
       cancel();
     } catch (err) {
-      pushToast({ variant: 'error', message: `Verdict failed: ${err.message}` });
+      pushToast({ variant: 'error', message: VERDICT_TOAST_ERROR(err.message) });
     } finally {
       setSubmitting(false);
     }
@@ -56,7 +54,7 @@ export default function VerdictSplitButtons({ phone }) {
           className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
         >
           <ShieldCheck className="w-4 h-4" />
-          Approve
+          {VERDICT_BTN_APPROVE}
         </button>
         <button
           type="button"
@@ -64,7 +62,7 @@ export default function VerdictSplitButtons({ phone }) {
           className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium transition-colors"
         >
           <ShieldAlert className="w-4 h-4" />
-          Reject
+          {VERDICT_BTN_REJECT}
         </button>
       </div>
     );
@@ -75,14 +73,12 @@ export default function VerdictSplitButtons({ phone }) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500">
-        {isApprove
-          ? 'Confirming verdict as Verified Good.'
-          : 'Confirming verdict as Verified Bad.'}
+        {isApprove ? VERDICT_CONFIRM_GOOD : VERDICT_CONFIRM_BAD}
       </p>
       <textarea
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        placeholder="Optional: brief reason for this verdict (e.g. confirmed via callback, number disconnected, low confidence score)."
+        placeholder={VERDICT_REASON_PLACEHOLDER}
         rows={2}
         className="w-full text-sm rounded-md border border-slate-300 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300 resize-none"
       />
@@ -93,7 +89,7 @@ export default function VerdictSplitButtons({ phone }) {
           disabled={submitting}
           className="h-9 px-3 text-sm text-slate-600 hover:text-slate-900"
         >
-          Cancel
+          {VERDICT_BTN_CANCEL}
         </button>
         <button
           type="button"
@@ -106,7 +102,10 @@ export default function VerdictSplitButtons({ phone }) {
           }`}
         >
           {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-          {submitting ? 'Submitting…' : (isApprove ? 'Confirm Approve' : 'Confirm Reject')}
+          {submitting
+            ? VERDICT_BTN_SUBMITTING
+            : (isApprove ? VERDICT_BTN_CONFIRM_APPROVE : VERDICT_BTN_CONFIRM_REJECT)
+          }
         </button>
       </div>
     </div>

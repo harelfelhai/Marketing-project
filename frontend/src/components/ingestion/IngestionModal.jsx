@@ -2,16 +2,9 @@
  * IngestionModal — dynamic ingestion form driven entirely by the schema
  * returned from getLeadFormSchema(). No field names are hardcoded here.
  *
- * Validation rules:
+ * Validation:
  *   - required fields must be non-empty after trim().
- *   - json_blob fields: empty string → maps to {} (not an error).
- *     If non-empty but invalid JSON → a precise inline error is shown
- *     under that specific field only (NOT a generic toast).
- *
- * On success: ingestCircleMember(payload, mockDb) → toast + close.
- *
- * The modal is rendered at App root level, reads isIngestionModalOpen from
- * UIContext, and is therefore always available regardless of route.
+ *   - json_blob: empty → {} (not an error); non-empty invalid JSON → inline error.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -23,18 +16,24 @@ import { getLeadFormSchema }    from '../../api/schemaApi';
 import { ingestCircleMember }   from '../../api/ingestionApi';
 import { useMockData }          from '../../contexts/MockDataContext';
 import { useUI }                from '../../contexts/UIContext';
+import {
+  INGEST_MODAL_TITLE, INGEST_MODAL_LOADING, INGEST_MODAL_SCHEMA_ERROR,
+  INGEST_MODAL_BTN_CANCEL, INGEST_MODAL_BTN_SUBMIT, INGEST_MODAL_BTN_SUBMITTING,
+  INGEST_MODAL_REQUIRED_NOTE,
+  INGEST_TOAST_SCHEMA_ERROR, INGEST_TOAST_SUCCESS, INGEST_TOAST_ERROR,
+  INGEST_FIELD_REQUIRED, INGEST_FIELD_JSON_ERR,
+} from '../../config/strings.he';
 
 export default function IngestionModal() {
   const mockDb = useMockData();
   const { isIngestionModalOpen, closeIngestionModal, pushToast } = useUI();
 
-  const [schema,     setSchema]     = useState(null);
+  const [schema,        setSchema]        = useState(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
-  const [values,     setValues]     = useState({});
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
+  const [values,        setValues]        = useState({});
+  const [fieldErrors,   setFieldErrors]   = useState({});
+  const [submitting,    setSubmitting]    = useState(false);
 
-  // Fetch schema whenever the modal opens.
   useEffect(() => {
     if (!isIngestionModalOpen) return;
     setLoadingSchema(true);
@@ -43,18 +42,16 @@ export default function IngestionModal() {
     getLeadFormSchema()
       .then((s) => {
         setSchema(s);
-        // Seed default values — prevents uncontrolled→controlled flip.
         const defaults = {};
         s.fields.forEach((f) => { defaults[f.name] = ''; });
         setValues(defaults);
       })
-      .catch(() => pushToast({ variant: 'error', message: 'Failed to load form schema.' }))
+      .catch(() => pushToast({ variant: 'error', message: INGEST_TOAST_SCHEMA_ERROR }))
       .finally(() => setLoadingSchema(false));
   }, [isIngestionModalOpen, pushToast]);
 
   const handleChange = useCallback((name, value) => {
     setValues((v) => ({ ...v, [name]: value }));
-    // Clear the field error as soon as the operator starts editing.
     setFieldErrors((e) => ({ ...e, [name]: '' }));
   }, []);
 
@@ -65,20 +62,17 @@ export default function IngestionModal() {
     for (const field of (schema?.fields || [])) {
       const raw = (values[field.name] ?? '').trim();
 
-      // Required check.
       if (field.required && !raw) {
-        errors[field.name] = `${field.label} is required.`;
+        errors[field.name] = INGEST_FIELD_REQUIRED(field.label);
         ok = false;
         continue;
       }
 
-      // json_blob: empty → fine ({} will be used); non-empty must parse.
       if (field.type === 'json_blob' && raw) {
         try {
           JSON.parse(raw);
         } catch {
-          errors[field.name] =
-            `Invalid JSON syntax — check for missing quotes, commas, or brackets.`;
+          errors[field.name] = INGEST_FIELD_JSON_ERR;
           ok = false;
         }
       }
@@ -91,7 +85,6 @@ export default function IngestionModal() {
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    // Build the final payload: coerce json_blob fields, trim strings.
     const payload = {};
     for (const field of (schema?.fields || [])) {
       const raw = (values[field.name] ?? '').trim();
@@ -105,10 +98,10 @@ export default function IngestionModal() {
     setSubmitting(true);
     try {
       await ingestCircleMember(payload, mockDb);
-      pushToast({ variant: 'success', message: 'Phone number ingested and queued for processing.' });
+      pushToast({ variant: 'success', message: INGEST_TOAST_SUCCESS });
       closeIngestionModal();
     } catch (err) {
-      pushToast({ variant: 'error', message: `Ingestion failed: ${err.message}` });
+      pushToast({ variant: 'error', message: INGEST_TOAST_ERROR(err.message) });
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +115,7 @@ export default function IngestionModal() {
         disabled={submitting}
         className="h-9 px-3 text-sm text-slate-600 hover:text-slate-900"
       >
-        Cancel
+        {INGEST_MODAL_BTN_CANCEL}
       </button>
       <button
         type="button"
@@ -131,8 +124,8 @@ export default function IngestionModal() {
         className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors disabled:opacity-50"
       >
         {submitting
-          ? <><Loader2 className="w-4 h-4 animate-spin" /> Ingesting…</>
-          : <><Upload className="w-4 h-4" /> Submit</>
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> {INGEST_MODAL_BTN_SUBMITTING}</>
+          : <><Upload className="w-4 h-4" /> {INGEST_MODAL_BTN_SUBMIT}</>
         }
       </button>
     </div>
@@ -142,18 +135,18 @@ export default function IngestionModal() {
     <Modal
       isOpen={isIngestionModalOpen}
       onClose={closeIngestionModal}
-      title={schema?.form_title || 'New Number Ingestion'}
+      title={schema?.form_title || INGEST_MODAL_TITLE}
       size="lg"
       footer={footer}
     >
       {loadingSchema ? (
         <div className="flex items-center justify-center py-10 gap-2 text-slate-500">
           <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">Loading form schema…</span>
+          <span className="text-sm">{INGEST_MODAL_LOADING}</span>
         </div>
       ) : !schema ? (
         <p className="text-sm text-rose-600 py-6 text-center">
-          Form schema could not be loaded. Please close and try again.
+          {INGEST_MODAL_SCHEMA_ERROR}
         </p>
       ) : (
         <div className="space-y-4">
@@ -172,7 +165,9 @@ export default function IngestionModal() {
           ))}
 
           <p className="text-[11px] text-slate-400">
-            Fields marked <span className="text-rose-500 font-bold">*</span> are required.
+            {INGEST_MODAL_REQUIRED_NOTE.split('*')[0]}
+            <span className="text-rose-500 font-bold" aria-hidden="true">*</span>
+            {INGEST_MODAL_REQUIRED_NOTE.split('*')[1]}
           </p>
         </div>
       )}
