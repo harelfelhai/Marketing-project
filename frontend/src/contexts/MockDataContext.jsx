@@ -16,8 +16,8 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { buildInitialDb, deriveClientMetrics } from '../mock/mockData';
 import { MOCK_MODE } from '../api/client';
-import { listPhones }     from '../api/phonesApi';
-import { listActionLogs } from '../api/actionsApi';
+import { listPhones, getPhoneDetail } from '../api/phonesApi';
+import { listActionLogs }              from '../api/actionsApi';
 import { CLIENT_REGISTRY } from '../config/clientRegistry';
 
 const MockDataContext = createContext(null);
@@ -113,6 +113,80 @@ export function MockDataProvider({ children }) {
     const logsData = await listActionLogs({ pageSize: 500 });
     setDb((prev) => ({ ...prev, actionLogs: logsData }));
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Phase D — targeted SWR-style merges (real-API mode only).
+  //
+  // These helpers swap the wholesale refetch pattern for narrow updates keyed
+  // by id. The single-item mutation paths (verdict, patch, retry, trigger)
+  // call into refetchPhoneById / refetchLogsForPhone instead of dragging the
+  // full list down on every change. Ingest and runWorker keep the full
+  // refetch because their blast radius is wider than one id.
+  //
+  // mergePhoneById   — replace by id, append if new; rebuild the synthetic
+  //                    entity entry from the merged phone so derived selectors
+  //                    (getClientForPhone, deriveClientMetrics) stay coherent.
+  // mergeLogsByPhoneId — drop existing logs for phoneId, splice in fresh batch.
+  //                    Used after triggerManualAction / retryNow to keep the
+  //                    drawer timeline and failed-actions table in sync.
+  // ---------------------------------------------------------------------------
+
+  const mergePhoneById = useCallback((flatPhone) => {
+    if (!flatPhone || flatPhone.id == null) return;
+    setDb((prev) => {
+      const exists = prev.phones.some((p) => p.id === flatPhone.id);
+      const phones = exists
+        ? prev.phones.map((p) => (p.id === flatPhone.id ? flatPhone : p))
+        : [...prev.phones, flatPhone];
+
+      // Keep the synthetic entities list consistent with the JOIN data
+      // that now lives on the merged phone row.
+      const entityMap = new Map(prev.entities.map((e) => [e.id, e]));
+      if (flatPhone.entity_id != null) {
+        entityMap.set(flatPhone.entity_id, {
+          id:          flatPhone.entity_id,
+          entity_type: flatPhone.entity_type,
+          client_id:   flatPhone.client_id,
+        });
+      }
+      return { ...prev, phones, entities: Array.from(entityMap.values()) };
+    });
+  }, []);
+
+  const mergeLogsByPhoneId = useCallback((phoneId, freshLogs) => {
+    if (phoneId == null) return;
+    setDb((prev) => {
+      const others = prev.actionLogs.filter((l) => l.phone_id !== phoneId);
+      return { ...prev, actionLogs: [...others, ...freshLogs] };
+    });
+  }, []);
+
+  // refetchPhoneById — narrow refetch for single-phone mutations.
+  // Uses GET /phones/{id}; flattens the detail-shape response (entity nested,
+  // action_timeline included) back into the list-shape PhoneSummary stored
+  // in db.phones, so consumers continue to see the same shape they do after
+  // the wholesale refetchPhones() boot path.
+  const refetchPhoneById = useCallback(async (id) => {
+    if (MOCK_MODE || id == null) return;
+    const detail = await getPhoneDetail(id);
+    const { entity, action_timeline, ...rest } = detail;
+    const flat = {
+      ...rest,
+      entity_type: entity?.entity_type,
+      client_id:   entity?.client_id,
+      client_name: entity?.client_name,
+    };
+    mergePhoneById(flat);
+  }, [mergePhoneById]);
+
+  // refetchLogsForPhone — narrow refetch for log-touching mutations.
+  // Uses GET /actions/logs?phone_id=... (filter-as-view per §3.3) rather
+  // than a dedicated endpoint, so no backend changes are required.
+  const refetchLogsForPhone = useCallback(async (phoneId) => {
+    if (MOCK_MODE || phoneId == null) return;
+    const fresh = await listActionLogs({ phone_id: phoneId });
+    mergeLogsByPhoneId(phoneId, fresh);
+  }, [mergeLogsByPhoneId]);
 
   // -------------------------------------------------------------------------
   // applyIngest
@@ -305,6 +379,12 @@ export function MockDataProvider({ children }) {
     // Invalidation / refetch (real-API mode — no-op in mock mode)
     refetchPhones,
     refetchActionLogs,
+    // Phase D — narrowed refetches (real-API mode only; no-op in mock mode).
+    // Consumers should prefer these over refetchPhones/refetchActionLogs when
+    // the mutation scope is a single id. Both remain available; PR 3 swaps
+    // existing call sites in src/api/*.js.
+    refetchPhoneById,
+    refetchLogsForPhone,
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
     applyPatchPhone,
