@@ -189,6 +189,7 @@ class BulkIngestionService:
         ingestion_reason: Optional[str] = None,
         entity_extra: Optional[dict] = None,
         phone_extra_shared: Optional[dict] = None,
+        uploaded_by_user_id: Optional[int] = None,
     ) -> dict:
         """
         Execute the two-pass bulk-text ingestion.
@@ -274,6 +275,7 @@ class BulkIngestionService:
             entity_type=entity_type,
             target_entity_id=target_entity_id,
             extra_data=entity_extra_merged,
+            created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
         )
         self.session.add(new_entity)
         self.session.flush()  # populate new_entity.id without committing
@@ -294,6 +296,7 @@ class BulkIngestionService:
                         ingestion_source=ingestion_source,
                         ingestion_reason=ingestion_reason,
                         extra_data=dict(phone_extra_with_audit),
+                        uploaded_by_user_id=uploaded_by_user_id,  # Phase AUTH-B
                     )
                     self.session.add(phone)
                     self.session.flush()
@@ -341,6 +344,7 @@ class BulkIngestionService:
         self,
         file_bytes: bytes,
         filename: str,
+        uploaded_by_user_id: Optional[int] = None,
     ) -> dict:
         """
         Parse an Excel (.xlsx) or CSV file and insert one PhoneNumber
@@ -496,6 +500,7 @@ class BulkIngestionService:
                         entity_type=row["entity_type"],
                         target_entity_id=target_id,
                         extra_data=entity_extra,
+                        created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
                     )
                     self.session.add(new_entity)
                     self.session.flush()
@@ -506,6 +511,7 @@ class BulkIngestionService:
                         ingestion_source=row["ingestion_source"],
                         ingestion_reason=row.get("ingestion_reason"),
                         extra_data={"bulk_submission_id": submission_id},
+                        uploaded_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
                     )
                     self.session.add(phone)
                     self.session.flush()

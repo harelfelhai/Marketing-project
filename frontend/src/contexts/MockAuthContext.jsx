@@ -106,6 +106,17 @@ export function AuthProvider({ children, initialState }) {
   // /auth/me succeeds → authenticated. If it 401s and we have the
   // guest flag in localStorage → guest. Otherwise → unauthenticated
   // (the route gate will redirect to /login).
+  // Phase AUTH-B — when a test pre-seeds initialState with a user,
+  // mirror that user into the mock DB so the mock-mode mutators
+  // (resolveTask, bulkResolve, openTask, etc.) can attribute writes
+  // to current_user.username without the caller passing it explicitly.
+  useEffect(() => {
+    if (initialState && initialState.user && mockDb._syncTestUser) {
+      mockDb._syncTestUser(initialState.user);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (initialState) return;  // test pre-seed; no hydrate
     let cancelled = false;

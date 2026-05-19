@@ -720,18 +720,17 @@ class TestTasksEndpoints:
             tc, phone.id,
             extra_data={"requested_action_type": "action_type_a"},
         ).json()
+        # Phase AUTH-B — operator_id no longer in the body; the
+        # client fixture is authenticated as 'test_admin', so the
+        # resolved_by value comes from the session.
         r = tc.post(
             f"/api/v1/tasks/{opened['id']}/resolve",
-            json={
-                "operator_id": "mock_admin_01",
-                "outcome": "resolved",
-                "resolution_note": "approved",
-            },
+            json={"outcome": "resolved", "resolution_note": "approved"},
         )
         assert r.status_code == 200
         body = r.json()
         assert body["status"] == "resolved"
-        assert body["resolved_by"] == "mock_admin_01"
+        assert body["resolved_by"] == "test_admin"
         assert body["resolved_at"] is not None
         # Resolution metadata merged with opener metadata (no overwrite):
         assert body["extra_data"]["requested_action_type"] == "action_type_a"
@@ -740,10 +739,7 @@ class TestTasksEndpoints:
 
     def test_resolve_unknown_id_returns_404(self, client):
         tc, _ = client
-        r = tc.post(
-            "/api/v1/tasks/99999/resolve",
-            json={"operator_id": "op", "outcome": "resolved"},
-        )
+        r = tc.post("/api/v1/tasks/99999/resolve", json={"outcome": "resolved"})
         assert r.status_code == 404
 
     def test_resolve_terminal_task_returns_422(self, client):
@@ -753,13 +749,13 @@ class TestTasksEndpoints:
         # First resolve succeeds.
         first = tc.post(
             f"/api/v1/tasks/{opened['id']}/resolve",
-            json={"operator_id": "adm", "outcome": "resolved"},
+            json={"outcome": "resolved"},
         )
         assert first.status_code == 200
         # Second resolve is blocked.
         second = tc.post(
             f"/api/v1/tasks/{opened['id']}/resolve",
-            json={"operator_id": "adm", "outcome": "rejected"},
+            json={"outcome": "rejected"},
         )
         assert second.status_code == 422
 
@@ -769,19 +765,24 @@ class TestTasksEndpoints:
         opened = self._open_via_api(tc, phone.id).json()
         r = tc.post(
             f"/api/v1/tasks/{opened['id']}/resolve",
-            json={"operator_id": "adm", "outcome": "approved"},  # not in allowed regex
+            json={"outcome": "approved"},  # not in allowed regex
         )
         assert r.status_code == 422
 
-    def test_resolve_missing_operator_id_returns_422(self, client):
+    def test_resolve_unauthenticated_returns_401(self, client):
+        """Phase AUTH-B replaces the old 'missing operator_id → 422'
+        contract: operator_id is no longer in the body, so the
+        rejection moves up the stack to the auth dep (401 anonymous,
+        403 non-admin)."""
         tc, session = client
         phone = _seed_target(session)
         opened = self._open_via_api(tc, phone.id).json()
+        tc.cookies.clear()    # log out — clears the auto-seeded admin cookie
         r = tc.post(
             f"/api/v1/tasks/{opened['id']}/resolve",
             json={"outcome": "resolved"},
         )
-        assert r.status_code == 422
+        assert r.status_code == 401
 
     # -----------------------------------------------------------------
     # GET /tasks?exclude_terminal=true (Task Center default-hide)
@@ -2004,15 +2005,25 @@ class TestTaskExportEndpoint:
     """POST /api/v1/tasks/export — happy path + 422s."""
 
     def _seed_two_tasks(self, tc, session):
+        """Seed tasks with distinct requested_by values for the q-filter
+        tests. Goes through the service directly to bypass the
+        Phase AUTH-B attribution rule (logged-in user overrides body
+        requested_by) — we deliberately want two different opener
+        attributions on the same DB so the q="alice" search has
+        something to find."""
+        from services.tasks import PipelineTaskService
         phone = _seed_target(session)
-        tc.post("/api/v1/tasks", json={
-            "phone_id": phone.id, "task_type": "approval_required",
-            "requested_by": "alice",
-        })
-        tc.post("/api/v1/tasks", json={
-            "phone_id": phone.id, "task_type": "remediation_failure",
-            "requested_by": "bob",
-        })
+        svc = PipelineTaskService(session=session)
+        svc.open_task(
+            phone_id=phone.id,
+            task_type="approval_required",
+            requested_by="alice",
+        )
+        svc.open_task(
+            phone_id=phone.id,
+            task_type="remediation_failure",
+            requested_by="bob",
+        )
 
     def test_happy_path(self, client):
         tc, session = client
@@ -2061,16 +2072,15 @@ class TestListEndpointsAcceptQParam:
     exports apply the same search intent."""
 
     def test_tasks_q_param_narrows_list_result(self, client):
+        """Seed via the service so each task carries the intended
+        requested_by — Phase AUTH-B's "logged-in user wins" rule
+        would otherwise attribute both tasks to the fixture admin."""
+        from services.tasks import PipelineTaskService
         tc, session = client
         phone = _seed_target(session)
-        tc.post("/api/v1/tasks", json={
-            "phone_id": phone.id, "task_type": "approval_required",
-            "requested_by": "alice",
-        })
-        tc.post("/api/v1/tasks", json={
-            "phone_id": phone.id, "task_type": "remediation_failure",
-            "requested_by": "bob",
-        })
+        svc = PipelineTaskService(session=session)
+        svc.open_task(phone_id=phone.id, task_type="approval_required", requested_by="alice")
+        svc.open_task(phone_id=phone.id, task_type="remediation_failure", requested_by="bob")
         r = tc.get("/api/v1/tasks?q=alice")
         assert r.status_code == 200
         assert r.json()["total"] == 1
@@ -2553,3 +2563,170 @@ class TestTaskCenterRBACGate:
         assert tc.get("/api/v1/phones").status_code == 200
         # Dashboard metrics too.
         assert tc.get("/api/v1/dashboard/metrics").status_code == 200
+
+
+# ===========================================================================
+# Phase AUTH-B — operator_id → current_user migration
+# ===========================================================================
+
+
+class TestAuthBOperatorAttribution:
+    """The operator_id / requested_by / created_by body fields are now
+    server-derived. These tests document the new attribution rules
+    end-to-end."""
+
+    def test_resolve_attributes_to_logged_in_admin(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "approval_required",
+            "requested_by": "automation",
+        }).json()
+        r = tc.post(f"/api/v1/tasks/{opened['id']}/resolve",
+                    json={"outcome": "resolved"})
+        assert r.status_code == 200
+        assert r.json()["resolved_by"] == "test_admin"
+
+    def test_bulk_resolve_attributes_to_logged_in_admin(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        opened = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "approval_required",
+            "requested_by": "automation",
+        }).json()
+        r = tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids": [opened["id"]], "outcome": "resolved",
+        })
+        assert r.status_code == 200
+        assert r.json()["success_count"] == 1
+        detail = tc.get(f"/api/v1/tasks/{opened['id']}").json()
+        assert detail["resolved_by"] == "test_admin"
+
+    def test_open_task_authenticated_overrides_body_requested_by(self, client):
+        """'Authenticated user wins' — prevents spoofing."""
+        tc, session = client
+        phone = _seed_target(session)
+        r = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "approval_required",
+            "requested_by": "mallory",
+        })
+        assert r.status_code == 201
+        assert r.json()["requested_by"] == "test_admin"
+
+    def test_open_task_anonymous_uses_body_requested_by(self, client):
+        """Automation has no session → body's requested_by wins."""
+        tc, session = client
+        phone = _seed_target(session)
+        tc.cookies.clear()
+        r = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "remediation_failure",
+            "requested_by": "automation:retry_engine",
+        })
+        assert r.status_code == 201
+        assert r.json()["requested_by"] == "automation:retry_engine"
+
+    def test_open_task_anonymous_without_requested_by_returns_422(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        tc.cookies.clear()
+        r = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "remediation_failure",
+        })
+        assert r.status_code == 422
+
+    def test_manual_action_trigger_no_longer_accepts_operator_id(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        r = tc.post("/api/v1/actions/trigger", json={
+            "phone_id": phone.id, "action_type": "test_action",
+        })
+        assert r.status_code == 201
+        # UserActionService stamps the attribution under
+        # `triggered_by_operator` inside extra_data — the exact key
+        # is its contract; we just verify the session-derived
+        # username made it there.
+        assert r.json()["extra_data"].get("triggered_by_operator") == "test_admin"
+
+    def test_manual_action_trigger_unauthenticated_returns_401(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        tc.cookies.clear()
+        r = tc.post("/api/v1/actions/trigger", json={
+            "phone_id": phone.id, "action_type": "test_action",
+        })
+        assert r.status_code == 401
+
+    def test_notification_subscription_created_by_from_session(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/notifications/subscriptions", json={
+            "trigger_event_type": "phone.ingested",
+            "target_kind": "phone", "target_id": 1,
+            "recipients": ["ops-alerts"],
+        })
+        assert r.status_code == 201
+        assert r.json()["created_by"] == "test_admin"
+
+
+class TestAuthBIngestionAttribution:
+    """Ingestion endpoints populate the new audit FK columns when a
+    user is logged in. Guest / automation callers leave the columns
+    NULL — that's the Phase AUTH-B contract."""
+
+    def test_phone_ingest_populates_uploaded_by_user_id_for_logged_in(self, client):
+        from sqlmodel import select
+        from models.phone_number import PhoneNumber
+
+        tc, session = client
+        _seed_target(session)
+        r = tc.post("/api/v1/ingest", json={
+            "phone_number": "+15559990111",
+            "entity_type": "family",
+            "target_phone_number": "+15550001111",
+            "ingestion_source": "manual",
+        })
+        assert r.status_code == 201
+        phone = session.exec(
+            select(PhoneNumber).where(PhoneNumber.id == r.json()["id"])
+        ).first()
+        # The fixture auto-logs-in as test_admin; the FK should match.
+        assert phone.uploaded_by_user_id is not None
+
+    def test_phone_ingest_anonymous_leaves_user_fk_null(self, client):
+        from sqlmodel import select
+        from models.phone_number import PhoneNumber
+
+        tc, session = client
+        _seed_target(session)
+        tc.cookies.clear()
+        r = tc.post("/api/v1/ingest", json={
+            "phone_number": "+15559990222",
+            "entity_type": "family",
+            "target_phone_number": "+15550001111",
+            "ingestion_source": "manual",
+        })
+        assert r.status_code == 201
+        phone = session.exec(
+            select(PhoneNumber).where(PhoneNumber.id == r.json()["id"])
+        ).first()
+        assert phone.uploaded_by_user_id is None
+
+    def test_entity_create_populates_created_by_user_id(self, client):
+        from sqlmodel import select
+        from models.entity import Entity
+
+        tc, session = client
+        target = Entity(entity_type="target", relation_type="primary", client_id=1)
+        session.add(target)
+        session.commit()
+        session.refresh(target)
+
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane", "last_name": "Doe",
+            "relation_type": "family",
+            "target_entity_id": target.id,
+        })
+        assert r.status_code == 201
+        ent = session.exec(
+            select(Entity).where(Entity.id == r.json()["id"])
+        ).first()
+        assert ent.created_by_user_id is not None

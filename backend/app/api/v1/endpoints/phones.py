@@ -27,9 +27,11 @@ from sqlmodel import Session, select
 from app.api.deps import (
     get_action_data_trigger_service,
     get_bulk_ingestion_service,
+    get_current_user,
     get_export_service,
     get_scoring_service,
 )
+from models.user import User
 from app.schemas.api_contracts import (
     ActionLogResponse,
     BulkIngestSummary,
@@ -620,6 +622,7 @@ def update_phone(
 )
 def bulk_text_ingest(
     body: BulkTextIngestRequest,
+    current_user: Optional[User] = Depends(get_current_user),
     service: BulkIngestionService = Depends(get_bulk_ingestion_service),
 ) -> BulkIngestSummary:
     """
@@ -645,6 +648,7 @@ def bulk_text_ingest(
             ingestion_reason=body.ingestion_reason,
             entity_extra=body.entity_extra,
             phone_extra_shared=body.phone_extra_shared,
+            uploaded_by_user_id=current_user.id if current_user else None,
         )
     except TargetNotFoundError as exc:
         raise HTTPException(
@@ -689,6 +693,7 @@ _UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 )
 async def bulk_upload_ingest(
     file: UploadFile = File(..., description="The .xlsx or .csv file to ingest."),
+    current_user: Optional[User] = Depends(get_current_user),
     service: BulkIngestionService = Depends(get_bulk_ingestion_service),
 ) -> BulkIngestSummary:
     """
@@ -720,6 +725,7 @@ async def bulk_upload_ingest(
         summary = service.ingest_bulk_upload(
             file_bytes=file_bytes,
             filename=file.filename or "",
+            uploaded_by_user_id=current_user.id if current_user else None,
         )
     except ValueError as exc:
         raise HTTPException(

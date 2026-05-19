@@ -55,6 +55,30 @@ export function MockDataProvider({ children }) {
   const [db, setDb]           = useState(MOCK_MODE ? buildInitialDb : () => EMPTY_DB);
   const [loading, setLoading] = useState(!MOCK_MODE);
 
+  // -------------------------------------------------------------------------
+  // _currentOperatorUsername — Phase AUTH-B helper.
+  //
+  // Resolves the operator username for mock-mode mutators that
+  // previously read `body.operator_id`, `body.requested_by`, or
+  // `body.created_by`. Order:
+  //   1. currentMockUserId → users[id].username
+  //   2. caller-supplied fallback (backward compat for tests that
+  //      still pass operator_id explicitly)
+  //   3. the literal `fallback` value (often null)
+  //
+  // Declared near the top of the provider so every downstream mutator
+  // can reference it via closure + useCallback dep array. Without this
+  // hoist, JavaScript's temporal-dead-zone forbids any mutator
+  // declared earlier from referencing it.
+  // -------------------------------------------------------------------------
+  const _currentOperatorUsername = useCallback((fallback = null) => {
+    if (db.currentMockUserId != null) {
+      const u = (db.users || []).find((u) => u.id === db.currentMockUserId);
+      if (u) return u.username;
+    }
+    return fallback;
+  }, [db.users, db.currentMockUserId]);
+
   // ---------------------------------------------------------------------------
   // Real-API boot hydration — fires once on mount when MOCK_MODE = false.
   // Fetches phones + action logs + tasks, synthesizes entities, seeds clients
@@ -1149,6 +1173,8 @@ export function MockDataProvider({ children }) {
   // applyRetryNow
   // -------------------------------------------------------------------------
   const applyRetryNow = useCallback((logId, operatorId) => {
+    // Phase AUTH-B: prefer the current mock user.
+    const op = _currentOperatorUsername(operatorId);
     setDb((prev) => {
       const original = prev.actionLogs.find((l) => l.id === logId);
       if (!original) return prev;
@@ -1165,7 +1191,7 @@ export function MockDataProvider({ children }) {
         executed_at:  now,
         retry_count:  0,
         retry_after:  null,
-        extra_data:   { operator_id: operatorId, manual_retry_of: logId },
+        extra_data:   { force_retried_by_operator: op, manual_retry_of: logId },
       };
 
       const updatedLogs = prev.actionLogs.map((l) =>
@@ -1174,7 +1200,7 @@ export function MockDataProvider({ children }) {
 
       return { ...prev, actionLogs: [...updatedLogs, retryLog] };
     });
-  }, []);
+  }, [_currentOperatorUsername]);
 
   // -------------------------------------------------------------------------
   // applyTriggerAction
@@ -1235,7 +1261,9 @@ export function MockDataProvider({ children }) {
         source_action_log_id: payload.source_action_log_id ?? null,
         task_type:            payload.task_type,
         status:               'pending',
-        requested_by:         payload.requested_by,
+        // Phase AUTH-B: prefer the current mock user; fall back to
+        // the body field for automation-style callers.
+        requested_by:         _currentOperatorUsername(payload.requested_by),
         resolved_by:          null,
         created_at:           now,
         updated_at:           now,
@@ -1249,7 +1277,7 @@ export function MockDataProvider({ children }) {
       };
       return { ...prev, tasks: [...prev.tasks, newTask] };
     });
-  }, []);
+  }, [_currentOperatorUsername]);
 
   // -------------------------------------------------------------------------
   // applyResolveTask  (mock-mode only; real path uses refetchTaskById)
@@ -1258,6 +1286,10 @@ export function MockDataProvider({ children }) {
   // resolution_note into extra_data — same shape the backend service produces.
   // -------------------------------------------------------------------------
   const applyResolveTask = useCallback((taskId, body) => {
+    // Phase AUTH-B: resolved_by comes from the current mock user
+    // when set, falling back to the body field for backward compat
+    // with tests that still pass operator_id explicitly.
+    const operator = _currentOperatorUsername(body.operator_id);
     setDb((prev) => ({
       ...prev,
       tasks: prev.tasks.map((t) => {
@@ -1266,7 +1298,7 @@ export function MockDataProvider({ children }) {
         const merged = {
           ...(t.extra_data || {}),
           resolution_outcome: body.outcome,
-          resolved_by:        body.operator_id,
+          resolved_by:        operator,
         };
         if (body.resolution_note != null) {
           merged.resolution_note = body.resolution_note;
@@ -1274,14 +1306,14 @@ export function MockDataProvider({ children }) {
         return {
           ...t,
           status:      body.outcome,
-          resolved_by: body.operator_id,
+          resolved_by: operator,
           resolved_at: now,
           updated_at:  now,
           extra_data:  merged,
         };
       }),
     }));
-  }, []);
+  }, [_currentOperatorUsername]);
 
   // -------------------------------------------------------------------------
   // applyBulkResolveTasks — mock-mode parity for POST /api/v1/tasks/bulk-status.
@@ -1295,6 +1327,8 @@ export function MockDataProvider({ children }) {
   // -------------------------------------------------------------------------
   const applyBulkResolveTasks = useCallback((body) => {
     const TERMINAL = new Set(['resolved', 'rejected']);
+    // Phase AUTH-B: resolve the operator once at the top.
+    const operator = _currentOperatorUsername(body.operator_id);
     let result;
     setDb((prev) => {
       const successIds = [];
@@ -1325,7 +1359,7 @@ export function MockDataProvider({ children }) {
         const merged = {
           ...(existing.extra_data || {}),
           resolution_outcome: body.outcome,
-          resolved_by:        body.operator_id,
+          resolved_by:        operator,
         };
         if (body.resolution_note != null) {
           merged.resolution_note = body.resolution_note;
@@ -1333,7 +1367,7 @@ export function MockDataProvider({ children }) {
         updatedTasks[idx] = {
           ...existing,
           status:      body.outcome,
-          resolved_by: body.operator_id,
+          resolved_by: operator,
           resolved_at: now,
           updated_at:  now,
           extra_data:  merged,
@@ -1350,7 +1384,7 @@ export function MockDataProvider({ children }) {
       return { ...prev, tasks: updatedTasks };
     });
     return result;
-  }, []);
+  }, [_currentOperatorUsername]);
 
   // -------------------------------------------------------------------------
   // Phase NOTIF — mock-mode parity for the 5 notification endpoints.
@@ -1389,6 +1423,9 @@ export function MockDataProvider({ children }) {
       throw new Error('recipients must contain at least one entry.');
     }
 
+    // Phase AUTH-B: created_by comes from the current mock user
+    // when set; falls back to body.created_by for backward compat.
+    const author = _currentOperatorUsername(body.created_by);
     let created;
     setDb((prev) => {
       const nextId = Math.max(0, ...(prev.notificationSubscriptions || []).map((s) => s.id)) + 1;
@@ -1402,7 +1439,7 @@ export function MockDataProvider({ children }) {
         title_template:      body.title_template ?? null,
         body_template:       body.body_template ?? null,
         active:              true,
-        created_by:          body.created_by,
+        created_by:          author,
         created_at:          now,
         updated_at:          now,
         extra_data:          body.extra_data ?? null,
@@ -1413,7 +1450,7 @@ export function MockDataProvider({ children }) {
       };
     });
     return created;
-  }, []);
+  }, [_currentOperatorUsername]);
 
   const applyUpdateNotificationSubscription = useCallback((id, body) => {
     if (body.recipients != null && body.recipients.length === 0) {
@@ -1551,6 +1588,39 @@ export function MockDataProvider({ children }) {
 
   const applyAuthLogout = useCallback(() => {
     setDb((prev) => ({ ...prev, currentMockUserId: null }));
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // _syncTestUser — Phase AUTH-B test helper.
+  //
+  // The AuthProvider calls this on mount whenever it's given an
+  // `initialState` with a user (the renderApp test seam). It mirrors
+  // the user into mockDb.users + sets currentMockUserId so the
+  // mock-mode mutators that read attribution from the DB (resolve_by,
+  // requested_by, created_by) have a single source of truth.
+  //
+  // Idempotent: if the user already exists by id, we just bump the
+  // currentMockUserId pointer.
+  // -------------------------------------------------------------------------
+  const _syncTestUser = useCallback((user) => {
+    if (!user || user.id == null) return;
+    setDb((prev) => {
+      const users = (prev.users || []).slice();
+      const idx = users.findIndex((u) => u.id === user.id);
+      const mockUser = {
+        id:                 user.id,
+        username:           user.username,
+        password_hash:      'mock:test',
+        role:               user.role,
+        active:             true,
+        managed_client_ids: [...(user.managed_client_ids || [])],
+        display_name:       user.display_name || null,
+        created_at:         user.created_at || new Date().toISOString(),
+      };
+      if (idx === -1) users.push(mockUser);
+      else            users[idx] = mockUser;
+      return { ...prev, users, currentMockUserId: user.id };
+    });
   }, []);
 
   const applyAuthPatchMe = useCallback((body) => {
@@ -1702,6 +1772,7 @@ export function MockDataProvider({ children }) {
     applyAuthLogin,
     applyAuthLogout,
     applyAuthPatchMe,
+    _syncTestUser,
     setEngineExecuting,
     // Derived helpers
     getClientMetrics,

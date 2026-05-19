@@ -40,10 +40,10 @@ export async function listActionLogs(filters = {}, mockDb) {
  */
 export async function triggerManualAction(body, mockDb) {
   if (!MOCK_MODE) {
+    // Phase AUTH-B: operator_id is server-derived from the session.
     const { data } = await apiClient.post('/actions/trigger', {
       phone_id:    body.phone_id,
       action_type: body.action_type,
-      operator_id: body.operator_id,
     });
     await mockDb.refetchLogsForPhone(body.phone_id);
     return data;
@@ -56,6 +56,12 @@ export async function triggerManualAction(body, mockDb) {
   const nextId = Math.max(...mockDb.actionLogs.map((l) => l.id), 0) + 1;
   const now    = new Date().toISOString();
 
+  // Mock-mode attribution: read from the current mock user
+  // (set when AuthProvider hydrates a test seed) and fall back
+  // to body.operator_id for legacy callers.
+  const cur = mockDb.users?.find((u) => u.id === mockDb.currentMockUserId);
+  const op  = cur?.username ?? body.operator_id ?? 'mock_operator';
+
   const newLog = {
     id:           nextId,
     phone_id:     body.phone_id,
@@ -65,7 +71,7 @@ export async function triggerManualAction(body, mockDb) {
     executed_at:  now,
     retry_count:  0,
     retry_after:  null,
-    extra_data:   { operator_id: body.operator_id, manual: true },
+    extra_data:   { triggered_by_operator: op, manual: true },
   };
 
   mockDb.applyTriggerAction(newLog);
@@ -86,9 +92,9 @@ export async function triggerManualAction(body, mockDb) {
  */
 export async function retryNow(logId, operatorId, mockDb) {
   if (!MOCK_MODE) {
-    const { data } = await apiClient.post(`/actions/retry-now/${logId}`, {
-      operator_id: operatorId || null,
-    });
+    // Phase AUTH-B: empty body — operator_id is server-derived
+    // from the session.
+    const { data } = await apiClient.post(`/actions/retry-now/${logId}`, {});
     await mockDb.refetchLogsForPhone(data.phone_id);
     return data;
   }

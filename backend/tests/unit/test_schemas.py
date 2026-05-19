@@ -94,14 +94,25 @@ class TestOpenTaskRequest:
         assert r.source_action_log_id == 42
         assert r.extra_data == {"requested_action_type": "action_type_a"}
 
-    @pytest.mark.parametrize("missing", ["phone_id", "task_type", "requested_by"])
+    # Phase AUTH-B: requested_by is now OPTIONAL on this schema.
+    # Logged-in operators get `current_user.username` stamped server-
+    # side; automation (no session) still passes requested_by in the
+    # body. So the required-field set on the SCHEMA shrinks to two.
+    @pytest.mark.parametrize("missing", ["phone_id", "task_type"])
     def test_required_field_missing_raises(self, missing):
         kwargs = dict(phone_id=1, task_type="x", requested_by="op")
         kwargs.pop(missing)
         with pytest.raises(ValidationError):
             OpenTaskRequest(**kwargs)
 
-    @pytest.mark.parametrize("field", ["task_type", "requested_by"])
+    def test_requested_by_now_optional_phase_authb(self):
+        # No longer raises — the endpoint reads from current_user when
+        # the caller is logged in. The schema still accepts a body
+        # value (used by anonymous automation callers).
+        r = OpenTaskRequest(phone_id=1, task_type="x")
+        assert r.requested_by is None
+
+    @pytest.mark.parametrize("field", ["task_type"])
     def test_empty_string_rejected(self, field):
         kwargs = dict(phone_id=1, task_type="x", requested_by="op")
         kwargs[field] = ""
@@ -110,13 +121,15 @@ class TestOpenTaskRequest:
 
 
 class TestResolveTaskRequest:
+    # Phase AUTH-B: operator_id removed from the body. The endpoint
+    # reads from `require_admin`. Schema only carries outcome +
+    # resolution_note now.
     def test_resolved_outcome(self):
-        r = ResolveTaskRequest(operator_id="mock_admin_01", outcome="resolved")
+        r = ResolveTaskRequest(outcome="resolved")
         assert r.resolution_note is None
 
     def test_rejected_outcome_with_note(self):
         r = ResolveTaskRequest(
-            operator_id="mock_admin_01",
             outcome="rejected",
             resolution_note="Carrier intercept is permanent.",
         )
@@ -126,12 +139,4 @@ class TestResolveTaskRequest:
     @pytest.mark.parametrize("bad_outcome", ["pending", "assigned", "RESOLVED", "", "approved"])
     def test_invalid_outcome_rejected(self, bad_outcome):
         with pytest.raises(ValidationError):
-            ResolveTaskRequest(operator_id="op", outcome=bad_outcome)
-
-    def test_empty_operator_id_rejected(self):
-        with pytest.raises(ValidationError):
-            ResolveTaskRequest(operator_id="", outcome="resolved")
-
-    def test_missing_operator_id_rejected(self):
-        with pytest.raises(ValidationError):
-            ResolveTaskRequest(outcome="resolved")
+            ResolveTaskRequest(outcome=bad_outcome)

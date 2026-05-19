@@ -33,8 +33,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from app.api.deps import get_export_service, get_pipeline_task_service, require_admin
+from app.api.deps import (
+    get_current_user,
+    get_export_service,
+    get_pipeline_task_service,
+    require_admin,
+)
 from models.user import User
+from typing import Optional as _Optional
 from app.schemas.api_contracts import (
     BulkResolveTaskRequest,
     BulkResolveTaskResponse,
@@ -259,29 +265,37 @@ def get_task(
 )
 def open_task(
     body: OpenTaskRequest,
+    current_user: _Optional[User] = Depends(get_current_user),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
     """
-    Args:
-        body    (OpenTaskRequest):     Validated payload from the caller.
-        service (PipelineTaskService): Injected via FastAPI Depends.
+    POST /tasks is the SOLE ungated task endpoint — automation +
+    lower-tier operators both call it. Attribution semantics
+    (Phase AUTH-B):
 
-    Returns:
-        PipelineTaskResponse: The newly committed task with JOIN fields.
-
-    Raises:
-        HTTPException 404: `phone_id` not found.
-        HTTPException 422: `source_action_log_id` does not belong to `phone_id`.
+      * Logged-in operator → `requested_by = current_user.username`.
+        The body's `requested_by` is IGNORED — no spoofing.
+      * No session (automation) → `requested_by = body.requested_by`.
+        If both are absent, we 422 (an unattributed task is meaningless).
     """
+    if current_user is not None:
+        attribution = current_user.username
+    elif body.requested_by:
+        attribution = body.requested_by
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Anonymous callers must supply `requested_by` "
+                "(e.g. 'automation:retry_engine')."
+            ),
+        )
+
     try:
         task = service.open_task(
             phone_id=body.phone_id,
             task_type=body.task_type,
-            # // HOOK FOR ENTERPRISE AUTH — `requested_by` is read verbatim
-            # // from the request body. Phase G replaces this with
-            # // `operator = Depends(get_current_operator)` and the line
-            # // becomes `requested_by=operator.id`.
-            requested_by=body.requested_by,
+            requested_by=attribution,
             source_action_log_id=body.source_action_log_id,
             extra_data=body.extra_data,
         )
@@ -296,7 +310,6 @@ def open_task(
             detail=str(exc),
         ) from exc
 
-    # Re-fetch with the JOIN so the response carries the convenience fields.
     return _row_to_response(service.get_task_with_join(task_id=task.id))
 
 
@@ -386,27 +399,18 @@ def export_tasks(
 )
 def bulk_resolve_tasks(
     body: BulkResolveTaskRequest,
-    _admin: User = Depends(require_admin),     # Task Center guardrail
+    admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> BulkResolveTaskResponse:
     """
     Delegate to `PipelineTaskService.bulk_resolve_tasks` and shape the
-    response. The service is the sole writer and owns per-task error
-    accounting.
-
-    Args:
-        body    (BulkResolveTaskRequest):   Validated request payload.
-        service (PipelineTaskService):      Injected via FastAPI Depends.
-
-    Returns:
-        BulkResolveTaskResponse: success_ids + failed_rows summary.
+    response. Phase AUTH-B: `operator_id` is taken from the
+    authenticated session (admin only — enforced by require_admin)
+    rather than the request body.
     """
     summary = service.bulk_resolve_tasks(
         task_ids=body.task_ids,
-        # // HOOK FOR ENTERPRISE AUTH — same handoff as the singular
-        # // resolve endpoint. Phase G derives this from the
-        # // get_current_operator dependency.
-        operator_id=body.operator_id,
+        operator_id=admin.username,
         outcome=body.outcome,
         resolution_note=body.resolution_note,
     )
@@ -430,32 +434,17 @@ def bulk_resolve_tasks(
 def resolve_task(
     task_id: int,
     body: ResolveTaskRequest,
-    _admin: User = Depends(require_admin),     # Task Center guardrail
+    admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
     """
-    Args:
-        task_id (int):                  PK of the task to settle.
-        body    (ResolveTaskRequest):   Validated payload (operator_id + outcome).
-        service (PipelineTaskService):  Injected via FastAPI Depends.
-
-    Returns:
-        PipelineTaskResponse: The updated task in its terminal state, with
-                              JOIN convenience fields populated.
-
-    Raises:
-        HTTPException 404: Task not found.
-        HTTPException 422: Task is already in a terminal status.
+    Phase AUTH-B: `operator_id` removed from the body — admin's
+    username comes from the session.
     """
     try:
         service.resolve_task(
             task_id=task_id,
-            # // HOOK FOR ENTERPRISE AUTH — `operator_id` is read verbatim
-            # // from the request body today. Phase G replaces this with
-            # // `operator = Depends(get_current_operator)` and the line
-            # // becomes `operator_id=operator.id`. The Pydantic Field on
-            # // ResolveTaskRequest.operator_id is the one place to remove.
-            operator_id=body.operator_id,
+            operator_id=admin.username,
             outcome=body.outcome,
             resolution_note=body.resolution_note,
         )

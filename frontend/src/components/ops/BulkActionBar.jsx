@@ -54,9 +54,10 @@ export default function BulkActionBar({ selectedIds, onClear }) {
       const summary = await bulkUpdateTasks(
         {
           task_ids:    ids,
-          // // HOOK FOR ENTERPRISE AUTH — read from useAuth() until
-          // // Phase G replaces this with a server-side dependency.
-          operator_id: operatorId || 'unknown_operator',
+          // Phase AUTH-B: operator_id is server-derived from the
+          // session. Sent in mock-mode bodies only via the
+          // tasksApi adapter; the real-mode wire body drops it.
+          operator_id: operatorId,
           outcome,
         },
         mockDb,

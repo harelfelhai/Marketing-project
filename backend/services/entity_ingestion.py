@@ -97,6 +97,7 @@ class EntityIngestionService:
         target_entity_id: int,
         last_name: Optional[str] = None,
         extra_data: Optional[dict] = None,
+        created_by_user_id: Optional[int] = None,
     ) -> Entity:
         """
         Create one Entity row associated with an existing root target.
@@ -193,6 +194,7 @@ class EntityIngestionService:
             entity_type=relation_type,
             target_entity_id=target.id,
             extra_data=merged_extra,
+            created_by_user_id=created_by_user_id,     # Phase AUTH-B
         )
 
         # ----------------------------------------------------------------
@@ -213,6 +215,7 @@ class EntityIngestionService:
         rows: list[dict],
         default_relation_type: str,
         default_target_entity_id: int,
+        created_by_user_id: Optional[int] = None,
     ) -> dict:
         """
         Insert one Entity row per item in `rows` with per-row resilience.
@@ -384,6 +387,7 @@ class EntityIngestionService:
                         entity_type=c["relation_type"],
                         target_entity_id=c["target"].id,
                         extra_data=extra,
+                        created_by_user_id=created_by_user_id,     # Phase AUTH-B
                     )
                     self.session.add(ent)
                     self.session.flush()
@@ -415,6 +419,7 @@ class EntityIngestionService:
         self,
         file_bytes: bytes,
         filename: str,
+        created_by_user_id: Optional[int] = None,
     ) -> dict:
         """
         Parse an Excel (.xlsx) or CSV file and insert one Entity per row.
@@ -567,6 +572,7 @@ class EntityIngestionService:
                         entity_type=c["relation_type"],
                         target_entity_id=c["target"].id,
                         extra_data=extra,
+                        created_by_user_id=created_by_user_id,     # Phase AUTH-B
                     )
                     self.session.add(ent)
                     self.session.flush()

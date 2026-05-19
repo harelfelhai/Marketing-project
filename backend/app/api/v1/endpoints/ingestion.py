@@ -23,12 +23,15 @@ PHASE INVARIANT:
     immediately.
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import get_ingestion_service
+from app.api.deps import get_current_user, get_ingestion_service
 from app.schemas.api_contracts import IngestionResponse
 from exceptions import TargetNotFoundError
+from models.user import User
 from schemas.ingestion import IngestionPayload
 from services.ingestion import IngestionService
 
@@ -51,6 +54,7 @@ router = APIRouter()
 )
 def ingest_circle_member(
     payload: IngestionPayload,
+    current_user: Optional[User] = Depends(get_current_user),
     service: IngestionService = Depends(get_ingestion_service),
 ) -> IngestionResponse:
     """
@@ -78,7 +82,10 @@ def ingest_circle_member(
         HTTPException 409: Duplicate phone number.
     """
     try:
-        new_phone = service.ingest_circle_member(payload)
+        new_phone = service.ingest_circle_member(
+            payload,
+            uploaded_by_user_id=current_user.id if current_user else None,
+        )
     except TargetNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

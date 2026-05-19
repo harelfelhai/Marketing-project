@@ -182,9 +182,11 @@ class ManualActionTriggerRequest(BaseModel):
     """
     Request body for POST /api/v1/actions/trigger.
 
-    An operator selects a phone number in the UI and fires a named action.
-    The `operator_id` is stored in `ActionLog.extra_data` for full audit
-    traceability — it is never lost between the request and the persisted row.
+    Phase AUTH-B: the operator_id field has been removed. The endpoint
+    requires authentication; the operator's username is taken from the
+    session cookie (`Depends(require_authenticated_user)`) and stamped
+    onto `ActionLog.extra_data` server-side. Callers can no longer
+    spoof attribution.
     """
 
     phone_id: int = Field(
@@ -201,26 +203,23 @@ class ManualActionTriggerRequest(BaseModel):
         ),
         examples=["advertisement_type_a"],
     )
-    operator_id: str = Field(
-        ...,
-        description="Identifier of the human operator submitting this trigger (e.g. username).",
-        examples=["operator_007"],
-    )
 
 
 class RetryNowRequest(BaseModel):
     """
-    Optional request body for POST /api/v1/actions/retry-now/{log_id}.
+    Request body for POST /api/v1/actions/retry-now/{log_id}.
 
-    Carries optional operator attribution for the force-retry. If omitted,
-    the retry is logged without an operator stamp.
+    Phase AUTH-B: the operator_id field has been removed. The endpoint
+    requires authentication; the operator's username is read from the
+    session and recorded on the retried ActionLog row.
+
+    The body itself now carries nothing — kept as a model to preserve
+    the endpoint's POST shape and to leave room for future fields.
     """
 
-    operator_id: Optional[str] = Field(
-        default=None,
-        description="Operator ID to stamp on the retried ActionLog row. Optional.",
-        examples=["admin_user"],
-    )
+    # Empty body. Pydantic accepts {} or no body for endpoints that
+    # need only the URL path param.
+    pass
 
 
 class PhoneUpdateRequest(BaseModel):
@@ -945,6 +944,14 @@ class OpenTaskRequest(BaseModel):
     `source_action_log_id` is validated against `phone_id`: if the
     referenced ActionLog exists, it must belong to the same phone or the
     request is rejected as 422.
+
+    Phase AUTH-B: `requested_by` is now OPTIONAL.
+      - Operator-driven calls (logged-in users) → field is ignored;
+        the endpoint stamps `current_user.username` on the row.
+      - Automation calls (no session) → field is read verbatim
+        (e.g. `'automation:retry_engine'`). This is the SOLE
+        ungated task endpoint precisely because automation needs to
+        open tasks without a session.
     """
 
     phone_id: int = Field(..., description="FK to the target PhoneNumber.")
@@ -957,17 +964,16 @@ class OpenTaskRequest(BaseModel):
             "contract change)."
         ),
     )
-    # // HOOK FOR ENTERPRISE AUTH — `requested_by` is a request-body field
-    # // today and carries the opener's operator_id verbatim. Phase G removes
-    # // this field from the schema and derives it from a
-    # // `get_current_operator` FastAPI dependency, so callers no longer have
-    # // to (and cannot) spoof it.
-    requested_by: str = Field(
-        ...,
+    # Phase AUTH-B: optional. Operators with a session don't get to
+    # set this — the endpoint overrides with current_user.username.
+    # Automation (no session) sets the engine identifier here.
+    requested_by: Optional[str] = Field(
+        default=None,
         min_length=1,
         description=(
-            "operator_id of the opener. For automated tasks this is an engine "
-            "identifier (e.g. 'automation:retry_engine')."
+            "Automation-only field carrying the engine identifier "
+            "(e.g. 'automation:retry_engine'). IGNORED when a logged-"
+            "in operator opens the task — current_user.username wins."
         ),
     )
     source_action_log_id: Optional[int] = Field(
@@ -1113,19 +1119,8 @@ class BulkResolveTaskRequest(BaseModel):
             "resolve endpoint."
         ),
     )
-    # // HOOK FOR ENTERPRISE AUTH — operator_id is a request-body field
-    # // today, same as ResolveTaskRequest. Phase G replaces both with a
-    # // server-side `Depends(get_current_operator)`.
-    operator_id: str = Field(
-        ...,
-        min_length=1,
-        description=(
-            "operator_id of the manager settling these tasks. Recorded "
-            "verbatim on every settled `pipeline_task.resolved_by` AND "
-            "duplicated into `extra_data.resolved_by` for audit-trail "
-            "redundancy."
-        ),
-    )
+    # Phase AUTH-B: operator_id removed. Endpoint reads from the
+    # session via Depends(require_admin).
     resolution_note: Optional[str] = Field(
         default=None,
         description=(
@@ -1179,28 +1174,13 @@ class ResolveTaskRequest(BaseModel):
     Request body for POST /api/v1/tasks/{id}/resolve.
 
     Terminally settles a task. `outcome` selects the terminal status
-    ('resolved' or 'rejected'). `operator_id` is mandatory — it is recorded
-    on the task as `resolved_by` and embedded into `extra_data.resolved_by`
-    for audit-trail redundancy.
+    ('resolved' or 'rejected').
 
-    // HOOK FOR ENTERPRISE AUTH — operator_id is a request-body field today.
-    // Phase G replaces it with a `get_current_operator` FastAPI dependency
-    // and the field is dropped from this schema. Frontend call sites pass
-    // it explicitly until then.
+    Phase AUTH-B: operator_id removed. The endpoint requires
+    Admin auth; `current_user.username` becomes the
+    `pipeline_task.resolved_by` value.
     """
 
-    # // HOOK FOR ENTERPRISE AUTH — see class docstring above. This Field
-    # // declaration is the single source of truth for the operator_id wire
-    # // contract on the resolve endpoint; removing this Field in Phase G
-    # // is a one-line deletion + the matching read in tasks.py:resolve_task.
-    operator_id: str = Field(
-        ...,
-        min_length=1,
-        description=(
-            "operator_id of the Senior Admin settling this task. Recorded "
-            "verbatim on `pipeline_task.resolved_by`."
-        ),
-    )
     outcome: str = Field(
         ...,
         pattern="^(resolved|rejected)$",

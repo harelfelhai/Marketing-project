@@ -58,7 +58,9 @@ export default function ResolveTaskModal({ task, outcome, isOpen, onClose }) {
       await resolveTask(
         task.id,
         {
-          // // HOOK FOR ENTERPRISE AUTH — operator_id sourced from useAuth().
+          // Phase AUTH-B: operator_id is server-derived from the
+          // session. Passed through to mock-mode mutators only via
+          // the tasksApi adapter — the real-mode wire body drops it.
           operator_id:     operatorId,
           outcome,
           resolution_note: note.trim(),

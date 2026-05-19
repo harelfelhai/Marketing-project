@@ -30,8 +30,10 @@ from app.api.deps import (
     get_event_dispatcher,
     get_notification_dispatcher,
     get_notification_subscription_service,
+    require_authenticated_user,
 )
 from exceptions import NotificationSubscriptionNotFoundError
+from models.user import User
 from schemas.notifications import (
     NotificationDeliveryResponse,
     NotificationSubscriptionCreate,
@@ -71,11 +73,13 @@ router = APIRouter()
 )
 def create_subscription(
     body: NotificationSubscriptionCreate,
+    current_user: User = Depends(require_authenticated_user),
     service: NotificationSubscriptionService = Depends(get_notification_subscription_service),
 ) -> NotificationSubscriptionResponse:
     """
-    Translate the validated body to the service signature; map
-    domain-level ValueError to HTTP 422.
+    Phase AUTH-B: `created_by` is no longer in the body. The
+    endpoint requires authentication and stamps
+    `current_user.username` as the row's creator.
     """
     try:
         sub = service.create(
@@ -83,7 +87,7 @@ def create_subscription(
             target_kind=body.target_kind,
             target_id=body.target_id,
             recipients=body.recipients,
-            created_by=body.created_by,
+            created_by=current_user.username,
             title_template=body.title_template,
             body_template=body.body_template,
             extra_data=body.extra_data,

@@ -85,7 +85,12 @@ class IngestionService:
         self.dispatcher = dispatcher
         self.scoring_service = scoring_service
 
-    def ingest_circle_member(self, payload: IngestionPayload) -> PhoneNumber:
+    def ingest_circle_member(
+        self,
+        payload: IngestionPayload,
+        *,
+        uploaded_by_user_id: Optional[int] = None,
+    ) -> PhoneNumber:
         """
         Ingest a new circle-of-trust phone number into the system.
 
@@ -164,6 +169,8 @@ class IngestionService:
             target_entity_id=target_entity_id,
             # Pass through the opaque proprietary blob — do not inspect.
             extra_data=payload.entity_extra,
+            # Phase AUTH-B audit attribution.
+            created_by_user_id=uploaded_by_user_id,
         )
         self.session.add(new_entity)
         self.session.flush()  # assigns new_entity.id without committing
@@ -176,6 +183,8 @@ class IngestionService:
             ingested_at=utc_now(),
             # Pass through the opaque proprietary blob — do not inspect.
             extra_data=payload.phone_extra,
+            # Phase AUTH-B audit attribution.
+            uploaded_by_user_id=uploaded_by_user_id,
         )
         self.session.add(new_phone)
         self.session.flush()  # assign new_phone.id without committing

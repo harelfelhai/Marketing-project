@@ -112,17 +112,8 @@ class NotificationSubscriptionCreate(BaseModel):
             "semantics as title_template."
         ),
     )
-    # // HOOK FOR ENTERPRISE AUTH — `created_by` is request-body today.
-    # // Phase G replaces with Depends(get_current_operator).
-    created_by: str = Field(
-        ...,
-        min_length=1,
-        max_length=80,
-        description=(
-            "operator_id of the manager creating this subscription. "
-            "Recorded verbatim on `created_by`."
-        ),
-    )
+    # Phase AUTH-B: created_by removed. Endpoint requires auth;
+    # current_user.username becomes the row's created_by value.
     extra_data: Optional[dict] = Field(
         default=None,
         description=(

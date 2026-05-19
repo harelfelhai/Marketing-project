@@ -23,14 +23,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select as sa_select
 from sqlmodel import Session, select
 
-from app.api.deps import get_retry_engine, get_user_action_service
+from app.api.deps import (
+    get_action_dispatcher,
+    get_retry_engine,
+    get_user_action_service,
+    require_authenticated_user,
+)
 from app.schemas.api_contracts import ActionLogListResponse, ActionLogResponse, RetryNowRequest
 from app.schemas.api_contracts import ManualActionTriggerRequest
 from database import get_session
 from exceptions import PhoneNumberNotFoundError
 from models.action_log import ActionLog
+from models.user import User
 from services.dispatcher import ActionDispatcher, RetryEngine, UserActionService
-from app.api.deps import get_action_dispatcher
 
 router = APIRouter()
 
@@ -56,34 +61,19 @@ _NON_RETRYABLE_TERMINAL_STATUSES = {"sent", "delivered"}
 )
 def trigger_manual_action(
     body: ManualActionTriggerRequest,
+    current_user: User = Depends(require_authenticated_user),
     service: UserActionService = Depends(get_user_action_service),
 ) -> ActionLogResponse:
     """
-    Queue and execute an operator-attributed action dispatch.
-
-    Delegates to `UserActionService.trigger_manual_action()` which:
-        1. Verifies the phone exists.
-        2. Creates an ActionLog row pre-stamped with `operator_id`.
-        3. Calls `ActionDispatcher.execute_pending()` to run the handler.
-        4. Re-merges `operator_id` into `extra_data` after dispatch so the
-           attribution survives handler result overwrite.
-
-    Args:
-        body    (ManualActionTriggerRequest): Validated request body.
-        service (UserActionService):         Injected via FastAPI Depends.
-
-    Returns:
-        ActionLogResponse: Committed ActionLog with final status and attribution.
-
-    Raises:
-        HTTPException 404: phone_id not found.
-        HTTPException 422: No handler registered for action_type.
+    Phase AUTH-B: operator_id removed from the body — the
+    operator's username comes from the session
+    (`Depends(require_authenticated_user)`).
     """
     try:
         log = service.trigger_manual_action(
             phone_id=body.phone_id,
             action_type=body.action_type,
-            operator_id=body.operator_id,
+            operator_id=current_user.username,
         )
     except PhoneNumberNotFoundError as exc:
         raise HTTPException(
@@ -116,6 +106,7 @@ def trigger_manual_action(
 def retry_now(
     log_id: int,
     body: RetryNowRequest = RetryNowRequest(),
+    current_user: User = Depends(require_authenticated_user),
     dispatcher: ActionDispatcher = Depends(get_action_dispatcher),
     session: Session = Depends(get_session),
 ) -> ActionLogResponse:
@@ -178,14 +169,13 @@ def retry_now(
             detail=str(exc),
         ) from exc
 
-    # Merge operator attribution if provided.
-    if body.operator_id:
-        merged = dict(completed.extra_data or {})
-        merged["force_retried_by_operator"] = body.operator_id
-        completed.extra_data = merged
-        session.add(completed)
-        session.commit()
-        session.refresh(completed)
+    # Phase AUTH-B — attribute the manual retry from the session.
+    merged = dict(completed.extra_data or {})
+    merged["force_retried_by_operator"] = current_user.username
+    completed.extra_data = merged
+    session.add(completed)
+    session.commit()
+    session.refresh(completed)
 
     return ActionLogResponse.model_validate(completed)
 

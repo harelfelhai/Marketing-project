@@ -184,9 +184,11 @@ export default function NotificationOptInPanel({ contextKind, contextId }) {
             target_kind:        contextKind,
             target_id:          contextId,
             recipients,
-            // // HOOK FOR ENTERPRISE AUTH — read from useAuth() until
-            // // Phase G replaces with server-side dep.
-            created_by:         operatorId || 'unknown_operator',
+            // Phase AUTH-B: created_by is server-derived from the
+            // session. Forwarded to mock-mode mutators via the
+            // notificationsApi adapter; the real-mode wire body
+            // drops it.
+            created_by:         operatorId,
           }, mockDb);
           nextMap.set(evt, created);
         }

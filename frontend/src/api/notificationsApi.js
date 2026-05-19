@@ -42,12 +42,14 @@ export async function listSubscriptions(filters = {}, mockDb) {
 /**
  * createSubscription — POST /api/v1/notifications/subscriptions
  *
+ * Phase AUTH-B: `created_by` removed from the wire body — the
+ * backend derives it from the session.
+ *
  * @param {object} body - matches NotificationSubscriptionCreate:
  *   - trigger_event_type   (string, required)
  *   - target_kind          ('phone'|'entity'|'task'|'global')
  *   - target_id            (number|null)
  *   - recipients           (string[], 1..50)
- *   - created_by           (string, operator_id)
  *   - title_template?      (string|null)
  *   - body_template?       (string|null)
  *   - extra_data?          (object|null)
@@ -56,7 +58,8 @@ export async function listSubscriptions(filters = {}, mockDb) {
  */
 export async function createSubscription(body, mockDb) {
   if (!MOCK_MODE) {
-    const { data } = await apiClient.post('/notifications/subscriptions', body);
+    const { created_by: _legacy, ...wireBody } = body;
+    const { data } = await apiClient.post('/notifications/subscriptions', wireBody);
     return data;
   }
   await mockDelay(300);

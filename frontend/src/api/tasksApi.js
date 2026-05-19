@@ -89,13 +89,17 @@ export async function getTaskDetail(id, mockDb) {
  */
 export async function openTask(body, mockDb) {
   if (!MOCK_MODE) {
-    const { data } = await apiClient.post('/tasks', {
+    // Phase AUTH-B: requested_by is OPTIONAL on the wire. The
+    // backend reads from current_user when a session is present;
+    // automation callers (no session) still set it explicitly.
+    const payload = {
       phone_id:             body.phone_id,
       task_type:            body.task_type,
-      requested_by:         body.requested_by,
       source_action_log_id: body.source_action_log_id ?? null,
       extra_data:           body.extra_data           ?? null,
-    });
+    };
+    if (body.requested_by) payload.requested_by = body.requested_by;
+    const { data } = await apiClient.post('/tasks', payload);
     await mockDb.refetchTasks();
     return enrichTask(data);
   }
@@ -126,8 +130,9 @@ export async function openTask(body, mockDb) {
  */
 export async function resolveTask(id, body, mockDb) {
   if (!MOCK_MODE) {
+    // Phase AUTH-B: operator_id is server-derived from the session.
+    // The wire body only carries outcome + optional resolution_note.
     const { data } = await apiClient.post(`/tasks/${id}/resolve`, {
-      operator_id:     body.operator_id,
       outcome:         body.outcome,
       resolution_note: body.resolution_note ?? null,
     });
@@ -158,15 +163,12 @@ export async function resolveTask(id, body, mockDb) {
  */
 export async function bulkUpdateTasks(body, mockDb) {
   if (!MOCK_MODE) {
+    // Phase AUTH-B: operator_id is server-derived from the session.
     const { data } = await apiClient.post('/tasks/bulk-status', {
       task_ids:        body.task_ids,
-      operator_id:     body.operator_id,
       outcome:         body.outcome,
       resolution_note: body.resolution_note ?? null,
     });
-    // Wholesale refetch — settling N tasks may flip N rows' statuses
-    // and the narrowed refetchTaskById is awkward to apply in a loop.
-    // The list endpoint is cheap (one round-trip).
     await mockDb.refetchTasks();
     return data;
   }

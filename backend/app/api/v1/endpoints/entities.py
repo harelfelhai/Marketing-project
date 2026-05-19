@@ -20,11 +20,14 @@ injection, exception translation, and response serialization. All
 business logic lives in `EntityIngestionService`.
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
-from app.api.deps import get_entity_ingestion_service
+from app.api.deps import get_current_user, get_entity_ingestion_service
 from app.schemas.api_contracts import BulkIngestSummary
 from exceptions import TargetNotFoundError
+from models.user import User
 from schemas.entity_ingestion import (
     EntityBulkTextIn,
     EntitySingleCreateIn,
@@ -127,6 +130,7 @@ def bulk_upload_template(
 )
 def create_single_entity(
     payload: EntitySingleCreateIn,
+    current_user: Optional[User] = Depends(get_current_user),
     service: EntityIngestionService = Depends(get_entity_ingestion_service),
 ) -> EntitySingleCreateOut:
     """
@@ -160,6 +164,7 @@ def create_single_entity(
             relation_type=payload.relation_type.value,
             target_entity_id=payload.target_entity_id,
             extra_data=payload.extra_data,
+            created_by_user_id=current_user.id if current_user else None,
         )
     except TargetNotFoundError as exc:
         # Target missing OR target is not a root — both map to 422 per
@@ -220,6 +225,7 @@ def create_single_entity(
 )
 def bulk_text_ingest(
     body: EntityBulkTextIn,
+    current_user: Optional[User] = Depends(get_current_user),
     service: EntityIngestionService = Depends(get_entity_ingestion_service),
 ) -> BulkIngestSummary:
     """
@@ -257,6 +263,7 @@ def bulk_text_ingest(
             rows=rows,
             default_relation_type=body.default_relation_type.value,
             default_target_entity_id=body.default_target_entity_id,
+            created_by_user_id=current_user.id if current_user else None,
         )
     except TargetNotFoundError as exc:
         raise HTTPException(
@@ -295,6 +302,7 @@ def bulk_text_ingest(
 )
 async def bulk_upload_ingest(
     file: UploadFile = File(..., description="The .xlsx or .csv file to ingest."),
+    current_user: Optional[User] = Depends(get_current_user),
     service: EntityIngestionService = Depends(get_entity_ingestion_service),
 ) -> BulkIngestSummary:
     """
@@ -326,6 +334,7 @@ async def bulk_upload_ingest(
         summary = service.ingest_bulk_upload(
             file_bytes=file_bytes,
             filename=file.filename or "",
+            created_by_user_id=current_user.id if current_user else None,
         )
     except ValueError as exc:
         raise HTTPException(
