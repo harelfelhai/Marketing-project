@@ -21,12 +21,13 @@ import { useState, useEffect } from 'react';
 import { User, ClipboardList, FileSpreadsheet } from 'lucide-react';
 
 import Modal from '../primitives/Modal';
-import SingleEntityPanel from './SingleEntityPanel';
+import SingleEntityPanel       from './SingleEntityPanel';
+import MultiEntityIngestionPanel from './MultiEntityIngestionPanel';
+import EntityFileUploadPanel   from './EntityFileUploadPanel';
 import { useUI } from '../../contexts/UIContext';
 import {
   ENTITY_MODAL_TITLE,
   ENTITY_TAB_SINGLE, ENTITY_TAB_MULTI_TEXT, ENTITY_TAB_FILE,
-  ENTITY_TAB_COMING_SOON,
 } from '../../config/strings.he';
 
 const TABS = [
@@ -95,17 +96,8 @@ export default function EntityIngestionModal() {
             active={isEntityIngestionModalOpen && activeTab === 'single'}
           />
         )}
-        {activeTab !== 'single' && (
-          // Placeholder for E2-D — three-tab strip is structurally complete
-          // now so the visual layout matches the final design. Tab content
-          // lands in the next PR.
-          <div
-            data-testid="entity-tab-placeholder"
-            className="py-10 text-center text-sm text-slate-400"
-          >
-            {ENTITY_TAB_COMING_SOON}
-          </div>
-        )}
+        {activeTab === 'multi-text' && <MultiEntityIngestionPanel />}
+        {activeTab === 'file'       && <EntityFileUploadPanel />}
       </div>
     </Modal>
   );

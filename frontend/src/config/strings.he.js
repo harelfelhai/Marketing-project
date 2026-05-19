@@ -659,3 +659,75 @@ export const ENTITY_SUCCESS_DISMISS   = 'סיום';
 // Toasts.
 export const ENTITY_TOAST_SUCCESS     = 'האדם נוצר בהצלחה.';
 export const ENTITY_TOAST_ERROR       = (msg) => `יצירת אדם נכשלה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Phase E2-D — Multi-Entity (Two-Step grid) Tab 3
+// ---------------------------------------------------------------------------
+
+// Step 1 — raw paste.
+export const ENTITY_BULK_TEXT_INTRO         =
+  'הדבק רשימת שמות. כל שורה תהפוך לאדם חדש. ניתן להפריד בפסיק, שורה חדשה, או טאב.';
+export const ENTITY_BULK_TEXT_PASTE_LABEL   = 'רשימת שמות';
+export const ENTITY_BULK_TEXT_PASTE_PLACE   = 'דנה כהן, יוסי לוי\nשירה מזרחי';
+export const ENTITY_BULK_TEXT_PASTE_HELP    =
+  'כל שם בשורה משלו. שם פרטי בלבד מקובל. ניתן להוסיף שם משפחה אחרי הרווח.';
+export const ENTITY_BULK_TEXT_TOKEN_COUNT   = (n) => `${n} שמות זוהו`;
+export const ENTITY_BULK_TEXT_CONTINUE      = 'המשך לעריכה';
+
+// Step 1 — defaults.
+export const ENTITY_BULK_DEFAULT_RELATION   = 'סוג קרבה (ברירת מחדל)';
+export const ENTITY_BULK_DEFAULT_CLIENT     = 'לקוח';
+export const ENTITY_BULK_DEFAULT_TARGET     = 'ישות ראשית (ברירת מחדל)';
+export const ENTITY_BULK_DEFAULTS_HELP      =
+  'הערכים האלה יחולו על כל שורה שלא תעקוף אותם בעצמה בשלב הבא.';
+
+// Step 1 — validation errors.
+export const ENTITY_BULK_ERR_EMPTY_TEXT     = 'נא להדביק לפחות שם אחד.';
+export const ENTITY_BULK_ERR_MISSING_TARGET = 'יש לבחור ישות ראשית.';
+
+// Step 2 — grid editor.
+export const ENTITY_BULK_GRID_HEADER_TOKEN     = 'מקור';
+export const ENTITY_BULK_GRID_HEADER_FIRST     = 'שם פרטי';
+export const ENTITY_BULK_GRID_HEADER_LAST      = 'שם משפחה';
+export const ENTITY_BULK_GRID_HEADER_RELATION  = 'קרבה';
+export const ENTITY_BULK_GRID_HEADER_TARGET    = 'יעד';
+export const ENTITY_BULK_GRID_HEADER_REMOVE    = '';
+export const ENTITY_BULK_GRID_INHERIT          = 'ברירת מחדל';
+export const ENTITY_BULK_GRID_BACK             = 'חזור לעריכת רשימה';
+export const ENTITY_BULK_GRID_BACK_CONFIRM     =
+  'חזרה תאפס את העריכות. להמשיך?';
+export const ENTITY_BULK_GRID_REMOVE_ROW       = 'מחק שורה';
+export const ENTITY_BULK_GRID_ERR_FIRST        = 'שם פרטי חובה';
+export const ENTITY_BULK_GRID_SUMMARY_ISSUES   = (n) => `${n} שורות עם בעיות`;
+
+// Step 3/4 — submit + result + toasts.
+export const ENTITY_BULK_BTN_SUBMIT_ALL        = 'שמור הכל';
+export const ENTITY_BULK_BTN_SUBMITTING        = 'שומר…';
+export const ENTITY_BULK_BTN_NEW_BATCH         = 'אצווה חדשה';
+export const ENTITY_BULK_TOAST_PARTIAL  = (ok, fail) =>
+  `נקלטו ${ok} אנשים, ${fail} נכשלו.`;
+export const ENTITY_BULK_TOAST_ALL_OK   = (ok) => `נקלטו ${ok} אנשים בהצלחה.`;
+export const ENTITY_BULK_TOAST_NONE_OK  = 'אף שורה לא נקלטה — בדוק את השגיאות.';
+export const ENTITY_BULK_TOAST_ERROR    = (msg) => `קליטת אצווה נכשלה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Phase E2-D — Entity file-upload Tab 2
+// ---------------------------------------------------------------------------
+
+export const ENTITY_FILE_INTRO              =
+  'העלה קובץ Excel או CSV עם רשימת אנשים. כל שורה תקלוט אדם חדש.';
+export const ENTITY_FILE_BTN_DOWNLOAD       = 'הורד תבנית';
+export const ENTITY_FILE_DROPZONE           = 'גרור קובץ לכאן או לחץ לבחירה';
+export const ENTITY_FILE_DROPZONE_HINT      = '.xlsx או .csv · עד 5 מגה־בייט';
+export const ENTITY_FILE_BTN_BROWSE         = 'בחר קובץ';
+export const ENTITY_FILE_BTN_REMOVE         = 'הסר';
+export const ENTITY_FILE_BTN_SUBMIT         = 'קלוט קובץ';
+export const ENTITY_FILE_BTN_SUBMITTING     = 'קולט…';
+export const ENTITY_FILE_ERR_EMPTY          = 'יש לבחור קובץ.';
+export const ENTITY_FILE_ERR_EXTENSION      = (ext) =>
+  `סיומת לא נתמכת${ext ? ` (${ext})` : ''}. מותר: .xlsx, .csv`;
+export const ENTITY_FILE_ERR_SIZE           = (got, max) =>
+  `הקובץ גדול מדי (${got}). מקסימום ${max}.`;
+export const ENTITY_FILE_TOAST_TEMPLATE_OK  = 'התבנית הורדה.';
+export const ENTITY_FILE_TOAST_TEMPLATE_ERR = (msg) => `הורדת התבנית נכשלה: ${msg}`;
+export const ENTITY_FILE_TOAST_UPLOAD_ERR   = (msg) => `העלאת הקובץ נכשלה: ${msg}`;

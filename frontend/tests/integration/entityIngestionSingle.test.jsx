@@ -158,15 +158,17 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     expect(screen.queryByText(/האדם נוצר בהצלחה/)).not.toBeInTheDocument();
   });
 
-  it('switching to a placeholder tab shows the "coming soon" message', async () => {
+  it('switching tabs reveals the corresponding panel (E2-D wired)', async () => {
     const user = userEvent.setup();
     renderApp({ route: '/' });
     await openEntityModal(user);
 
+    // Multi-text tab now renders the two-step grid's paste step.
     await user.click(screen.getByRole('tab', { name: /הדבקת רשימה/ }));
-    expect(screen.getByTestId('entity-tab-placeholder')).toBeInTheDocument();
+    expect(screen.getByTestId('entity-bulk-paste')).toBeInTheDocument();
 
+    // File tab renders the dropzone.
     await user.click(screen.getByRole('tab', { name: /העלאת קובץ/ }));
-    expect(screen.getByTestId('entity-tab-placeholder')).toBeInTheDocument();
+    expect(screen.getByTestId('entity-file-dropzone')).toBeInTheDocument();
   });
 });

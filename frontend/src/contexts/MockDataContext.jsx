@@ -357,6 +357,291 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyEntityBulkText — mock-mode parity for POST /api/v1/entities/bulk-text.
+  //
+  // Mirrors EntityIngestionService.ingest_bulk_text on the backend:
+  //   - validate request-level default target (must exist + be root)
+  //     → throws on failure so the API client surfaces it like a 422
+  //   - per-row Pass 1: validate first_name, relation_type, target
+  //   - per-row Pass 2: create one Entity per surviving candidate
+  //   - bulk_submission_id stamped on every new entity's extra_data
+  // -------------------------------------------------------------------------
+  const applyEntityBulkText = useCallback((payload) => {
+    const ASSOCIATED = new Set(['family', 'friend', 'colleague', 'spouse']);
+    const submissionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `mock-${Date.now()}-${Math.random()}`;
+
+    let result;
+    setDb((prev) => {
+      // Pre-flight — default target validation. Throws so the API
+      // client maps it to an error toast (the backend returns 422).
+      const defaultTarget = prev.entities.find(
+        (e) => e.id === payload.default_target_entity_id,
+      );
+      if (!defaultTarget) {
+        throw new Error(`entity_id=${payload.default_target_entity_id} not found`);
+      }
+      if (defaultTarget.target_entity_id != null) {
+        throw new Error(
+          `entity_id=${payload.default_target_entity_id} is not a root target`,
+        );
+      }
+
+      // Pre-resolve every per-row target override in one pass.
+      const targetById = new Map();
+      targetById.set(defaultTarget.id, defaultTarget);
+      for (const r of (payload.rows || [])) {
+        const tgt = r.target_entity_id;
+        if (tgt != null && !targetById.has(tgt)) {
+          const ent = prev.entities.find((e) => e.id === tgt);
+          if (ent) targetById.set(tgt, ent);
+        }
+      }
+
+      const failedRows = [];
+      const candidates = [];
+
+      (payload.rows || []).forEach((row, idx) => {
+        const rowNum = idx + 1;
+        const token  = (row.row_token || '').slice(0, 200);
+
+        const first = String(row.first_name || '').trim();
+        if (!first) {
+          failedRows.push({ row: rowNum, input: token, error: 'first_name is required' });
+          return;
+        }
+
+        const relation = row.relation_type || payload.default_relation_type;
+        if (!ASSOCIATED.has(relation)) {
+          failedRows.push({
+            row: rowNum, input: token,
+            error: `Invalid relation_type '${relation}'`,
+          });
+          return;
+        }
+
+        const tgtId = row.target_entity_id != null
+          ? row.target_entity_id
+          : payload.default_target_entity_id;
+        const tgt = targetById.get(tgtId);
+        if (!tgt) {
+          failedRows.push({
+            row: rowNum, input: token,
+            error: `target_entity_id=${tgtId} not found`,
+          });
+          return;
+        }
+        if (tgt.target_entity_id != null) {
+          failedRows.push({
+            row: rowNum, input: token,
+            error: `target_entity_id=${tgtId} is not a root target`,
+          });
+          return;
+        }
+
+        const lastRaw = row.last_name == null ? null : String(row.last_name).trim();
+        candidates.push({
+          row: rowNum,
+          rowToken: row.row_token || '',
+          firstName: first,
+          lastName: lastRaw || null,
+          relation,
+          target: tgt,
+        });
+      });
+
+      // Pass 2 — build new entities.
+      let nextId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      const now  = new Date().toISOString();
+      const newEntities = candidates.map((c) => {
+        const extra = {
+          first_name:         c.firstName,
+          bulk_submission_id: submissionId,
+        };
+        if (c.lastName) extra.last_name = c.lastName;
+        if (c.rowToken) extra.row_token = c.rowToken;
+        const ent = {
+          id:               nextId,
+          client_id:        c.target.client_id,
+          relation_type:    'associated',
+          entity_type:      c.relation,
+          target_entity_id: c.target.id,
+          extra_data:       extra,
+          created_at:       now,
+          updated_at:       now,
+        };
+        nextId += 1;
+        return ent;
+      });
+
+      failedRows.sort((a, b) => a.row - b.row);
+      result = {
+        success_count:      newEntities.length,
+        failed_count:       failedRows.length,
+        phone_ids:          [],
+        entity_ids:         newEntities.map((e) => e.id),
+        failed_rows:        failedRows,
+        bulk_submission_id: submissionId,
+      };
+
+      return { ...prev, entities: [...prev.entities, ...newEntities] };
+    });
+    return result;
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // applyEntityBulkUploadCsv — mock-mode parity for /api/v1/entities/bulk-upload.
+  //
+  // Mirrors EntityIngestionService.ingest_bulk_upload (CSV path):
+  //   - header row required; required columns: first_name, relation_type,
+  //     target_entity_id. Optional: last_name.
+  //   - each row is its own ingestion context (own target, own relation)
+  //   - per-row validation; per-row failures land in failed_rows
+  //
+  // Throws Error on file-shape problems (missing required columns, empty
+  // file) so the API client surfaces them as 422-equivalent toasts.
+  // -------------------------------------------------------------------------
+  const applyEntityBulkUploadCsv = useCallback((csvText) => {
+    const REQUIRED = ['first_name', 'relation_type', 'target_entity_id'];
+    const ASSOCIATED = new Set(['family', 'friend', 'colleague', 'spouse']);
+    const INPUT_CAP = 200;
+
+    const lines = csvText.split(/\r?\n/);
+    if (lines.length === 0 || !lines[0].trim()) {
+      throw new Error('CSV is empty or has no header row');
+    }
+    // Strip UTF-8 BOM if present.
+    const bom = '﻿';
+    if (lines[0].startsWith(bom)) lines[0] = lines[0].slice(bom.length);
+
+    const header = lines[0].split(',').map((s) => s.trim());
+    const missing = REQUIRED.filter((c) => !header.includes(c));
+    if (missing.length) {
+      throw new Error(`CSV header missing required columns: ${missing.join(', ')}`);
+    }
+
+    // Parse rows (no quoted-comma support — matches the mock's phone bulk CSV).
+    const rows = [];
+    for (let i = 1; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      const cells = line.split(',').map((c) => c.trim());
+      const row = {};
+      header.forEach((col, idx) => { row[col] = cells[idx] ?? ''; });
+      rows.push(row);
+    }
+
+    const submissionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `mock-${Date.now()}-${Math.random()}`;
+
+    let result;
+    setDb((prev) => {
+      // Pre-resolve all referenced target_entity_id values in one pass.
+      const targetById = new Map();
+      for (const row of rows) {
+        const raw = row.target_entity_id;
+        if (raw == null || raw === '') continue;
+        const id = Number(raw);
+        if (!Number.isFinite(id) || targetById.has(id)) continue;
+        const ent = prev.entities.find((e) => e.id === id);
+        if (ent) targetById.set(id, ent);
+      }
+
+      const failedRows = [];
+      const candidates = [];
+
+      rows.forEach((row, idx) => {
+        const rowNum = idx + 1;
+        const echo   = JSON.stringify(row).slice(0, INPUT_CAP);
+
+        const first = String(row.first_name || '').trim();
+        if (!first) {
+          failedRows.push({ row: rowNum, input: echo, error: 'Missing first_name' });
+          return;
+        }
+        const relation = String(row.relation_type || '').trim();
+        if (!ASSOCIATED.has(relation)) {
+          failedRows.push({
+            row: rowNum, input: echo,
+            error: `Invalid relation_type '${relation}'`,
+          });
+          return;
+        }
+        const tgtRaw = row.target_entity_id;
+        if (tgtRaw == null || tgtRaw === '') {
+          failedRows.push({ row: rowNum, input: echo, error: 'Missing target_entity_id' });
+          return;
+        }
+        const tgtId = Number(tgtRaw);
+        if (!Number.isFinite(tgtId)) {
+          failedRows.push({
+            row: rowNum, input: echo,
+            error: 'target_entity_id must be an integer',
+          });
+          return;
+        }
+        const tgt = targetById.get(tgtId);
+        if (!tgt) {
+          failedRows.push({
+            row: rowNum, input: echo,
+            error: `target_entity_id=${tgtId} not found`,
+          });
+          return;
+        }
+        if (tgt.target_entity_id != null) {
+          failedRows.push({
+            row: rowNum, input: echo,
+            error: `target_entity_id=${tgtId} is not a root target`,
+          });
+          return;
+        }
+        const lastRaw = row.last_name == null ? null : String(row.last_name).trim();
+        candidates.push({
+          row: rowNum, firstName: first, lastName: lastRaw || null,
+          relation, target: tgt,
+        });
+      });
+
+      let nextId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      const now  = new Date().toISOString();
+      const newEntities = candidates.map((c) => {
+        const extra = {
+          first_name:         c.firstName,
+          bulk_submission_id: submissionId,
+        };
+        if (c.lastName) extra.last_name = c.lastName;
+        const ent = {
+          id:               nextId,
+          client_id:        c.target.client_id,
+          relation_type:    'associated',
+          entity_type:      c.relation,
+          target_entity_id: c.target.id,
+          extra_data:       extra,
+          created_at:       now,
+          updated_at:       now,
+        };
+        nextId += 1;
+        return ent;
+      });
+
+      failedRows.sort((a, b) => a.row - b.row);
+      result = {
+        success_count:      newEntities.length,
+        failed_count:       failedRows.length,
+        phone_ids:          [],
+        entity_ids:         newEntities.map((e) => e.id),
+        failed_rows:        failedRows,
+        bulk_submission_id: submissionId,
+      };
+
+      return { ...prev, entities: [...prev.entities, ...newEntities] };
+    });
+    return result;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // applyBulkIngest — mock-mode parity for POST /api/v1/phones/bulk-text.
   //
   // Mirrors BulkIngestionService.ingest_bulk_text on the backend:
@@ -1040,6 +1325,8 @@ export function MockDataProvider({ children }) {
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
     applyCreateEntity,
+    applyEntityBulkText,
+    applyEntityBulkUploadCsv,
     applyBulkIngest,
     applyBulkUploadCsv,
     applyPatchPhone,
