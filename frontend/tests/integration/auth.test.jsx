@@ -72,7 +72,10 @@ describe('Phase AUTH — login flow', () => {
     await user.type(screen.getByLabelText(/שם משתמש/), 'alice');
     await user.type(screen.getByLabelText(/^סיסמה/), 'pass1234');
     await user.type(screen.getByLabelText(/אישור סיסמה/), 'pass1234');
-    await user.click(screen.getByTestId('reg-client-1'));
+    // Phase AUTH-C — managed_client_ids picker is a searchable
+    // combobox. Focus opens the dropdown; click the option chip.
+    await user.click(screen.getByTestId('reg-client-picker-input'));
+    await user.click(await screen.findByTestId('client-option-1'));
     await user.click(screen.getByTestId('auth-register-submit'));
 
     // Registered → authenticated → app loads (no more auth card).
@@ -128,7 +131,10 @@ describe('Phase AUTH — register validation', () => {
     await user.type(screen.getByLabelText(/שם משתמש/), 'bob');
     await user.type(screen.getByLabelText(/^סיסמה/), 'pass1234');
     await user.type(screen.getByLabelText(/אישור סיסמה/), 'different');
-    await user.click(screen.getByTestId('reg-client-1'));
+    // Phase AUTH-C — managed_client_ids picker is a searchable
+    // combobox. Focus opens the dropdown; click the option chip.
+    await user.click(screen.getByTestId('reg-client-picker-input'));
+    await user.click(await screen.findByTestId('client-option-1'));
     await user.click(screen.getByTestId('auth-register-submit'));
 
     await screen.findByText(/הסיסמאות אינן תואמות/);
@@ -156,7 +162,10 @@ describe('Phase AUTH — register validation', () => {
     await user.type(screen.getByLabelText(/שם משתמש/), 'bob');
     await user.type(screen.getByLabelText(/^סיסמה/), 'pw');     // 2 chars
     await user.type(screen.getByLabelText(/אישור סיסמה/), 'pw');
-    await user.click(screen.getByTestId('reg-client-1'));
+    // Phase AUTH-C — managed_client_ids picker is a searchable
+    // combobox. Focus opens the dropdown; click the option chip.
+    await user.click(screen.getByTestId('reg-client-picker-input'));
+    await user.click(await screen.findByTestId('client-option-1'));
     await user.click(screen.getByTestId('auth-register-submit'));
 
     await screen.findByText(/לפחות 4 תווים/);

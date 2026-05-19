@@ -22,7 +22,7 @@ import { Loader2, UserPlus } from 'lucide-react';
 
 import { useAuth } from '../contexts/MockAuthContext';
 import { useUI }   from '../contexts/UIContext';
-import { CLIENT_REGISTRY } from '../config/clientRegistry';
+import ClientMultiPicker from '../components/primitives/ClientMultiPicker';
 import {
   AUTH_REGISTER_TITLE,
   AUTH_FIELD_USERNAME, AUTH_FIELD_PASSWORD, AUTH_FIELD_PASSWORD_CONFIRM,
@@ -61,13 +61,8 @@ export default function RegisterPage() {
     setErrors((e) => ({ ...e, [key]: '' }));
   };
 
-  const toggleClient = (id) => {
-    setForm((f) => {
-      const next = new Set(f.clientIds);
-      if (next.has(id)) next.delete(id);
-      else              next.add(id);
-      return { ...f, clientIds: next };
-    });
+  const updateClientIds = (nextSet) => {
+    setForm((f) => ({ ...f, clientIds: nextSet }));
     setErrors((e) => ({ ...e, clientIds: '' }));
   };
 
@@ -162,32 +157,23 @@ export default function RegisterPage() {
           disabled={submitting}
         />
 
-        {/* Client picker */}
-        <fieldset>
-          <legend className="text-xs font-medium text-slate-700 mb-1">
+        {/* Client picker — searchable combobox + chips. Scales to
+            hundreds of clients without a giant checkbox list. */}
+        <div>
+          <label htmlFor="reg-client-picker" className="block text-xs font-medium text-slate-700 mb-1">
             {AUTH_REGISTER_CLIENTS_LABEL}
-          </legend>
-          <ul className="space-y-1">
-            {CLIENT_REGISTRY.map((c) => (
-              <li key={c.id}>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.clientIds.has(c.id)}
-                    onChange={() => toggleClient(c.id)}
-                    data-testid={`reg-client-${c.id}`}
-                    className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-300"
-                    disabled={submitting}
-                  />
-                  {c.name}
-                </label>
-              </li>
-            ))}
-          </ul>
+          </label>
+          <ClientMultiPicker
+            inputId="reg-client-picker"
+            selected={form.clientIds}
+            onChange={updateClientIds}
+            disabled={submitting}
+            data-testid="reg-client-picker"
+          />
           {errors.clientIds && (
             <span className="text-xs text-rose-600 mt-1 block">{errors.clientIds}</span>
           )}
-        </fieldset>
+        </div>
 
         {/* Footer actions */}
         <div className="flex items-center justify-between pt-2">
