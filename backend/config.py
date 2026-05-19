@@ -97,6 +97,26 @@ class Settings(BaseSettings):
     Teams / Discord / generic-webhook adapter at deployment time.
     """
 
+    # ------------------------------------------------------------------
+    # Phase AUTH — admin sync file
+    # ------------------------------------------------------------------
+
+    admin_config_path: str = "admins.json"
+    """
+    Path to the static `admins.json` file (Phase AUTH).
+
+    Read once at startup by `services.admin_sync.sync_admins()` to
+    reconcile admin entries into the `user` table. Path is resolved
+    relative to the process working directory — the standard `cd
+    backend/ && uvicorn main:app` invocation looks for the file at
+    `backend/admins.json`.
+
+    The file is the SOURCE OF TRUTH for which usernames have
+    Admin role. Edit + restart to rotate. No API endpoint exists for
+    admin creation (that's the safety-via-friction the requirement
+    asks for).
+    """
+
     scoring_default_confidence: float = 50.0
     """
     Baseline confidence_score written on every newly-ingested PhoneNumber

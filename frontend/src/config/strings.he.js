@@ -491,6 +491,54 @@ export const NOTIF_TOAST_UPDATED          = 'הגדרות ההתראות עוד�
 export const NOTIF_TOAST_DELETED          = 'ההתראות בוטלו.';
 export const NOTIF_TOAST_ERROR            = (msg) => `שגיאה בהגדרת התראות: ${msg}`;
 
+// ---------------------------------------------------------------------------
+// Phase AUTH — login / register / guest landing page
+// ---------------------------------------------------------------------------
+
+// Login landing page.
+export const AUTH_LANDING_TITLE       = 'ברוכים הבאים';
+export const AUTH_LANDING_SUBTITLE    = 'אוטומציה שיווקית — דף כניסה';
+export const AUTH_FIELD_USERNAME      = 'שם משתמש';
+export const AUTH_FIELD_PASSWORD      = 'סיסמה';
+export const AUTH_FIELD_PASSWORD_CONFIRM = 'אישור סיסמה';
+export const AUTH_FIELD_DISPLAY_NAME  = 'שם תצוגה (אופציונלי)';
+
+// Login form.
+export const AUTH_BTN_LOGIN           = 'התחבר';
+export const AUTH_BTN_LOGGING_IN      = 'מתחבר…';
+export const AUTH_DIVIDER_OR          = 'או';
+export const AUTH_BTN_GOTO_REGISTER   = 'הירשם כעת';
+export const AUTH_REGISTER_PROMPT     = 'אין לך משתמש?';
+export const AUTH_GUEST_PROMPT        = 'ללא משתמש?';
+export const AUTH_BTN_CONTINUE_GUEST  = 'המשך כאורח';
+
+// Register form.
+export const AUTH_REGISTER_TITLE      = 'הרשמת משתמש חדש';
+export const AUTH_REGISTER_CLIENTS_LABEL = 'באחריותי הלקוחות הבאים:';
+export const AUTH_BTN_REGISTER        = 'הירשם';
+export const AUTH_BTN_REGISTERING     = 'נרשם…';
+export const AUTH_BTN_BACK_TO_LOGIN   = 'חזור לכניסה';
+export const AUTH_BTN_CANCEL          = 'ביטול';
+
+// Validation.
+export const AUTH_ERR_REQUIRED        = (label) => `${label} הוא שדה חובה.`;
+export const AUTH_ERR_MIN_USERNAME    = 'שם משתמש חייב להכיל לפחות 2 תווים.';
+export const AUTH_ERR_MIN_PASSWORD    = 'סיסמה חייבת להכיל לפחות 4 תווים.';
+export const AUTH_ERR_PASSWORDS_MISMATCH = 'הסיסמאות אינן תואמות.';
+export const AUTH_ERR_NO_CLIENTS      = 'יש לבחור לפחות לקוח אחד.';
+
+// Toasts.
+export const AUTH_TOAST_LOGIN_SUCCESS = (name) => `שלום, ${name}!`;
+export const AUTH_TOAST_LOGIN_ERROR   = 'שם משתמש או סיסמה שגויים.';
+export const AUTH_TOAST_REGISTER_SUCCESS = 'הרשמה הושלמה. ברוכים הבאים!';
+export const AUTH_TOAST_REGISTER_TAKEN = 'שם המשתמש כבר תפוס.';
+export const AUTH_TOAST_REGISTER_ERROR = (msg) => `הרשמה נכשלה: ${msg}`;
+export const AUTH_TOAST_LOGOUT        = 'התנתקת בהצלחה.';
+
+// Header — logged-in state.
+export const AUTH_HEADER_GUEST_BADGE  = 'אורח';
+export const AUTH_HEADER_LOGOUT       = 'התנתק';
+
 // Default-hide toggle for resolved/rejected tasks. Off (= hide) by
 // default so managers land on a clean "action required now" queue;
 // when the operator wants the historical audit view, flipping this

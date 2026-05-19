@@ -19,6 +19,7 @@ from models.phone_number import PhoneNumber
 from models.action_log import ActionLog
 from models.pipeline_task import PipelineTask
 from models.notification import NotificationSubscription, NotificationDelivery
+from models.user import User, Session
 
 __all__ = [
     "Entity",
@@ -27,4 +28,6 @@ __all__ = [
     "PipelineTask",
     "NotificationSubscription",
     "NotificationDelivery",
+    "User",
+    "Session",
 ]

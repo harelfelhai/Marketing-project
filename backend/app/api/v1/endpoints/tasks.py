@@ -33,7 +33,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from app.api.deps import get_export_service, get_pipeline_task_service
+from app.api.deps import get_export_service, get_pipeline_task_service, require_admin
+from models.user import User
 from app.schemas.api_contracts import (
     BulkResolveTaskRequest,
     BulkResolveTaskResponse,
@@ -115,6 +116,10 @@ def _row_to_response(row: TaskJoinRow) -> PipelineTaskResponse:
     ),
 )
 def list_tasks(
+    # // PHASE AUTH guardrail — Task Center is Admin-only. The
+    # // unused `_admin` arg invokes the dep solely for its 401/403
+    # // side effect.
+    _admin: User = Depends(require_admin),
     status_filter: Optional[str] = Query(
         default=None,
         alias="status",
@@ -211,6 +216,7 @@ def list_tasks(
 )
 def get_task(
     task_id: int,
+    _admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
     """
@@ -322,6 +328,7 @@ def open_task(
 )
 def export_tasks(
     body: TableExportRequest,
+    _admin: User = Depends(require_admin),     # Task Center guardrail
     service: ExportService = Depends(get_export_service),
 ) -> Response:
     """
@@ -379,6 +386,7 @@ def export_tasks(
 )
 def bulk_resolve_tasks(
     body: BulkResolveTaskRequest,
+    _admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> BulkResolveTaskResponse:
     """
@@ -422,6 +430,7 @@ def bulk_resolve_tasks(
 def resolve_task(
     task_id: int,
     body: ResolveTaskRequest,
+    _admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
     """

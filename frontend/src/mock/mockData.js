@@ -1028,6 +1028,12 @@ export function buildInitialDb() {
     // Operators populate inline via NotificationOptInPanel.
     notificationSubscriptions: [],
     notificationDeliveries:    [],
+    // Phase AUTH — mock users + the "currently logged-in" pointer.
+    // Seeded empty; tests inject identity via <AuthProvider
+    // initialState={...}> rather than seeding here. Production
+    // mock-mode operators register through the LoginPage.
+    users:               [],
+    currentMockUserId:   null,
   };
 }
 

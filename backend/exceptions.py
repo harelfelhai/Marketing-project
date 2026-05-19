@@ -167,6 +167,40 @@ class PipelineTaskNotFoundError(Exception):
         )
 
 
+class UserAlreadyExistsError(Exception):
+    """
+    Raised when registration is attempted with a username that already
+    exists in the `user` table.
+
+    The /auth/register endpoint catches this and returns 409 Conflict.
+    The error message intentionally does NOT distinguish "exists" from
+    "valid format" — but since this is a guardrail not a security wall,
+    we lean toward the friendlier "this username is taken" wording.
+    """
+
+    def __init__(self, username: str) -> None:
+        self.username = username
+        super().__init__(
+            f"Username '{username}' is already taken. Choose a different one."
+        )
+
+
+class InvalidCredentialsError(Exception):
+    """
+    Raised by `AuthService.login()` when either the username doesn't
+    exist OR the password verification fails.
+
+    Deliberately non-distinguishing: the endpoint returns the same
+    error message for both cases. This isn't a security hardening
+    measure (the system is internal-trust); it's just operator
+    courtesy — they don't need to know whether they mistyped the
+    username or the password.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Invalid username or password.")
+
+
 class NotificationSubscriptionNotFoundError(Exception):
     """
     Raised when a NotificationSubscription lookup by id misses.

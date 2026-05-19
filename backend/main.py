@@ -73,6 +73,18 @@ def on_startup() -> None:
 
     create_db_and_tables()
 
+    # Phase AUTH — reconcile static admins.json into the user table.
+    # Runs once per boot. Failure modes (file missing, malformed) are
+    # logged but do not crash the app — see services/admin_sync.py for
+    # the documented behavior.
+    from database import get_session
+    from services.admin_sync import sync_admins
+    db = next(get_session())
+    try:
+        sync_admins(session=db)
+    finally:
+        db.close()
+
 # ------------------------------------------------------------------
 # Routers — Milestone 4: v1 API
 # ------------------------------------------------------------------

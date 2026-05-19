@@ -163,7 +163,31 @@ def client():
     entity_svc = EntityIngestionService(session=test_session)
     app.dependency_overrides[get_entity_ingestion_service] = lambda: entity_svc
 
+    # Phase AUTH — seed an admin user + session row so the TestClient
+    # is "logged in as admin" by default. Existing Task Center tests
+    # keep working transparently; new RBAC tests can explicitly clear
+    # the cookie via tc.cookies.clear() to assert the 401/403 path.
+    import secrets as _secrets
+    from models.user import User as _User, Session as _Session
+    from services.auth import hash_password as _hash, AuthService as _Auth
+    admin_user = _User(
+        username="test_admin",
+        password_hash=_hash("test-password"),
+        role="admin",
+        active=True,
+    )
+    test_session.add(admin_user)
+    test_session.commit()
+    test_session.refresh(admin_user)
+    admin_token = _secrets.token_urlsafe(32)
+    test_session.add(_Session(token=admin_token, user_id=admin_user.id))
+    test_session.commit()
+
     with TestClient(app) as tc:
+        # Pre-set the auth cookie so existing tests that hit
+        # admin-gated endpoints (Task Center) succeed without per-test
+        # login boilerplate.
+        tc.cookies.set(_Auth.COOKIE_NAME, admin_token)
         yield tc, test_session
 
     app.dependency_overrides.clear()
@@ -2287,3 +2311,245 @@ class TestNotificationDeliveriesEndpoint:
         assert all(row["status"] == "sent" for row in r.json())
         r = tc.get("/api/v1/notifications/deliveries?status=failed")
         assert r.json() == []
+
+
+# ===========================================================================
+# Phase AUTH — auth endpoints + Task Center RBAC gate
+# ===========================================================================
+
+
+def _logout(tc):
+    """Drop the auto-set admin cookie so the next request is anonymous."""
+    tc.cookies.clear()
+
+
+class TestAuthRegisterEndpoint:
+    def test_happy_path_creates_user_and_issues_cookie(self, client):
+        tc, _ = client
+        _logout(tc)  # start fresh — no pre-existing session
+        r = tc.post("/api/v1/auth/register", json={
+            "username": "alice",
+            "password": "hunter2",
+            "managed_client_ids": [1, 2],
+            "display_name": "Alice",
+        })
+        assert r.status_code == 201
+        body = r.json()
+        assert body["username"] == "alice"
+        assert body["role"] == "regular"
+        assert body["managed_client_ids"] == [1, 2]
+        # Cookie was set as part of the response.
+        assert "marketing_session" in tc.cookies
+
+    def test_duplicate_username_returns_409(self, client):
+        tc, _ = client
+        _logout(tc)
+        body = {"username": "dup", "password": "pass1234", "managed_client_ids": [1]}
+        tc.post("/api/v1/auth/register", json=body)
+        r2 = tc.post("/api/v1/auth/register", json=body)
+        assert r2.status_code == 409
+
+    def test_empty_managed_client_ids_returns_422(self, client):
+        tc, _ = client
+        _logout(tc)
+        r = tc.post("/api/v1/auth/register", json={
+            "username": "alice", "password": "pass1234",
+            "managed_client_ids": [],
+        })
+        assert r.status_code == 422
+
+    def test_short_username_returns_422(self, client):
+        tc, _ = client
+        _logout(tc)
+        r = tc.post("/api/v1/auth/register", json={
+            "username": "a",  # min_length=2
+            "password": "pass1234",
+            "managed_client_ids": [1],
+        })
+        assert r.status_code == 422
+
+    def test_short_password_returns_422(self, client):
+        """Schema-level floor at min_length=4 catches typos."""
+        tc, _ = client
+        _logout(tc)
+        r = tc.post("/api/v1/auth/register", json={
+            "username": "alice",
+            "password": "pw",   # below min_length=4
+            "managed_client_ids": [1],
+        })
+        assert r.status_code == 422
+
+
+class TestAuthLoginEndpoint:
+    def _register(self, tc, username="alice", password="pass1234"):
+        # 4+ char password satisfies the schema's min_length floor.
+        return tc.post("/api/v1/auth/register", json={
+            "username": username,
+            "password": password,
+            "managed_client_ids": [1],
+        })
+
+    def test_happy_path_sets_cookie_and_returns_user(self, client):
+        tc, _ = client
+        _logout(tc)
+        self._register(tc)
+        _logout(tc)  # clear the cookie register set
+        r = tc.post("/api/v1/auth/login", json={
+            "username": "alice", "password": "pass1234",
+        })
+        assert r.status_code == 200
+        assert r.json()["username"] == "alice"
+        assert "marketing_session" in tc.cookies
+
+    def test_wrong_password_returns_401(self, client):
+        tc, _ = client
+        _logout(tc)
+        self._register(tc)
+        _logout(tc)
+        r = tc.post("/api/v1/auth/login", json={
+            "username": "alice", "password": "wrong-pw",
+        })
+        assert r.status_code == 401
+
+    def test_unknown_user_returns_401(self, client):
+        tc, _ = client
+        _logout(tc)
+        r = tc.post("/api/v1/auth/login", json={
+            "username": "ghost", "password": "anything",
+        })
+        assert r.status_code == 401
+
+
+class TestAuthMeEndpoint:
+    def test_returns_admin_in_default_client_fixture(self, client):
+        # The fixture auto-logs-in as test_admin.
+        tc, _ = client
+        r = tc.get("/api/v1/auth/me")
+        assert r.status_code == 200
+        assert r.json()["username"] == "test_admin"
+        assert r.json()["role"] == "admin"
+
+    def test_unauthenticated_returns_401(self, client):
+        tc, _ = client
+        _logout(tc)
+        r = tc.get("/api/v1/auth/me")
+        assert r.status_code == 401
+
+    def test_patch_updates_managed_client_ids(self, client):
+        tc, _ = client
+        _logout(tc)
+        tc.post("/api/v1/auth/register", json={
+            "username": "alice", "password": "pass1234",
+            "managed_client_ids": [1],
+        })
+        # The register call set the cookie; the next PATCH uses it.
+        r = tc.patch("/api/v1/auth/me", json={"managed_client_ids": [2, 3]})
+        assert r.status_code == 200
+        assert r.json()["managed_client_ids"] == [2, 3]
+
+
+class TestAuthLogoutEndpoint:
+    def test_logout_clears_cookie_and_invalidates_session(self, client):
+        tc, _ = client
+        # Auto-logged-in via fixture. Logout, then /me must 401.
+        r = tc.post("/api/v1/auth/logout")
+        assert r.status_code == 204
+        r2 = tc.get("/api/v1/auth/me")
+        assert r2.status_code == 401
+
+    def test_logout_idempotent_when_already_logged_out(self, client):
+        tc, _ = client
+        _logout(tc)
+        r = tc.post("/api/v1/auth/logout")
+        # Still 204 — no error, just a no-op.
+        assert r.status_code == 204
+
+
+# ===========================================================================
+# Phase AUTH — Task Center RBAC gate (the guardrail)
+# ===========================================================================
+
+
+class TestTaskCenterRBACGate:
+    """Every Task Center endpoint must 401 anonymous + 403 a regular user."""
+
+    def _register_regular(self, tc):
+        # Returns to the caller a TestClient with a regular-user cookie set.
+        _logout(tc)
+        tc.post("/api/v1/auth/register", json={
+            "username": "regular_alice", "password": "pass1234",
+            "managed_client_ids": [1],
+        })
+        # The register response set the cookie automatically.
+
+    def test_anonymous_get_tasks_returns_401(self, client):
+        tc, _ = client
+        _logout(tc)
+        assert tc.get("/api/v1/tasks").status_code == 401
+
+    def test_regular_user_get_tasks_returns_403(self, client):
+        tc, _ = client
+        self._register_regular(tc)
+        assert tc.get("/api/v1/tasks").status_code == 403
+
+    def test_admin_get_tasks_succeeds(self, client):
+        # Fixture seeds admin auth — no change needed.
+        tc, _ = client
+        assert tc.get("/api/v1/tasks").status_code == 200
+
+    def test_regular_user_resolve_returns_403(self, client):
+        tc, session = client
+        # First create a task as admin so the row exists.
+        phone = _seed_target(session)
+        opened = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "approval_required",
+            "requested_by": "automation",
+        }).json()
+        # Switch to regular user.
+        self._register_regular(tc)
+        r = tc.post(f"/api/v1/tasks/{opened['id']}/resolve", json={
+            "operator_id": "alice", "outcome": "resolved",
+        })
+        assert r.status_code == 403
+
+    def test_regular_user_bulk_status_returns_403(self, client):
+        tc, _ = client
+        self._register_regular(tc)
+        r = tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids": [1], "operator_id": "alice", "outcome": "resolved",
+        })
+        assert r.status_code == 403
+
+    def test_regular_user_export_returns_403(self, client):
+        tc, _ = client
+        self._register_regular(tc)
+        r = tc.post("/api/v1/tasks/export", json={
+            "filters": {},
+            "columns": [{"key": "task_type", "label": "X", "format": "text"}],
+        })
+        assert r.status_code == 403
+
+    def test_POST_tasks_open_is_NOT_gated_for_regular_user(self, client):
+        """Automation + low-tier ops can OPEN tasks (per the docstring).
+        The gate only applies to operator-facing actions (read, resolve,
+        bulk-status, export). POST /tasks stays open by design."""
+        tc, session = client
+        phone = _seed_target(session)
+        self._register_regular(tc)
+        r = tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id,
+            "task_type": "approval_required",
+            "requested_by": "regular_alice",
+        })
+        # 201 — successfully opened. Not 403.
+        assert r.status_code == 201
+
+    def test_non_task_endpoints_remain_unauthenticated(self, client):
+        """Sanity — Task Center gate doesn't bleed into other surfaces.
+        AUTH-A scopes the guardrail to /tasks/* only."""
+        tc, session = client
+        _logout(tc)
+        # Phone list endpoint should still work without auth.
+        assert tc.get("/api/v1/phones").status_code == 200
+        # Dashboard metrics too.
+        assert tc.get("/api/v1/dashboard/metrics").status_code == 200

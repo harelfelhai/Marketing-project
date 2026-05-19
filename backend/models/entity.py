@@ -184,6 +184,24 @@ class Entity(SQLModel, table=True):
     """
 
     # ------------------------------------------------------------------
+    # Audit attribution (Phase AUTH)
+    # ------------------------------------------------------------------
+
+    created_by_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="user.id",
+        index=True,
+        description=(
+            "FK to the User who created this entity. Nullable for "
+            "legacy rows (created before Phase AUTH), guest-mode "
+            "creates, and automation-driven inserts. Populated by "
+            "the entity-ingestion endpoints when a logged-in user is "
+            "present on the request. The personalization filter joins "
+            "on this column to surface 'my entities' to operators."
+        ),
+    )
+
+    # ------------------------------------------------------------------
     # Proprietary Payload Bucket
     # ------------------------------------------------------------------
 

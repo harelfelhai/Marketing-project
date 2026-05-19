@@ -1,0 +1,16 @@
+{
+  "_comment": "Phase AUTH — static admin roster. Reconciled into the `user` table on every app startup by services/admin_sync.sync_admins(). Edit + restart to rotate.",
+  "_format": "Plaintext passwords are accepted here (the deployer's trust boundary). The startup sync hashes them via bcrypt before persistence. To rotate a password: change the value, restart. To add an admin: append an entry, restart. To revoke: remove the entry; the next boot deactivates the row + deletes their open sessions.",
+  "admins": [
+    {
+      "username": "alice",
+      "password": "change-me-on-first-deploy",
+      "display_name": "Alice Admin"
+    },
+    {
+      "username": "bob",
+      "password": "change-me-on-first-deploy",
+      "display_name": "Bob Admin"
+    }
+  ]
+}

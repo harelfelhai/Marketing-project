@@ -19,6 +19,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     actions,
+    auth,
     dashboard,
     entities,
     ingestion,
@@ -55,3 +56,6 @@ router.include_router(entities.router, prefix="/entities", tags=["Entities"])
 
 # Domain H — Chat Notifications (Phase NOTIF)
 router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+
+# Domain I — Auth (Phase AUTH)
+router.include_router(auth.router, prefix="/auth", tags=["Auth"])

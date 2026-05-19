@@ -308,6 +308,26 @@ class PhoneNumber(SQLModel, table=True):
     Read-only at the application layer.
     """
 
+    # ------------------------------------------------------------------
+    # Audit attribution (Phase AUTH)
+    # ------------------------------------------------------------------
+
+    uploaded_by_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="user.id",
+        index=True,
+        description=(
+            "FK to the User who ingested this phone number. Nullable "
+            "for legacy rows (ingested before Phase AUTH), guest-mode "
+            "ingests, and automation-driven inserts. Populated by the "
+            "ingestion endpoints (single + bulk-text + bulk-upload) "
+            "when a logged-in user is present on the request. The "
+            "personalization filter unions this with the client-based "
+            "filter to surface 'phones I uploaded OR phones for my "
+            "managed clients' to operators."
+        ),
+    )
+
     extra_data: Optional[dict] = Field(
         default=None,
         sa_column=Column(JSON),

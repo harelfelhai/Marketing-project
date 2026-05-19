@@ -40,6 +40,15 @@ const EMPTY_DB = {
   // defaults so the seed file can stay focused on phone / task data.
   notificationSubscriptions: [],
   notificationDeliveries:    [],
+  // Phase AUTH — mock users + the "currently logged-in" pointer.
+  // In real mode the backend tracks this via the session cookie;
+  // here we keep an in-memory mirror so the AuthContext's mock
+  // mode can hydrate from existing state. Seeded empty — tests
+  // that need a pre-logged-in operator inject initialState on
+  // <AuthProvider initialState={...}> directly rather than going
+  // through this layer.
+  users:               [],
+  currentMockUserId:   null,
 };
 
 export function MockDataProvider({ children }) {
@@ -1473,6 +1482,100 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // Phase AUTH — mock-mode auth parity.
+  //
+  // Mirrors the backend's /api/v1/auth/* contract just well enough
+  // for the AuthContext + LoginPage + RegisterPage to function in
+  // MOCK_MODE without a live server. Throws operator-friendly
+  // errors on the same conditions the real backend would (duplicate
+  // username, wrong password, unauthenticated).
+  // -------------------------------------------------------------------------
+
+  const _userToResponse = useCallback((u) => ({
+    id:                  u.id,
+    username:            u.username,
+    role:                u.role,
+    managed_client_ids:  u.managed_client_ids || [],
+    display_name:        u.display_name || null,
+    created_at:          u.created_at,
+  }), []);
+
+  const getCurrentMockUser = useCallback(() => {
+    // /auth/me equivalent — throws when nobody is "logged in" in
+    // the mock layer (same semantics as the real 401 path).
+    const cur = (db.users || []).find((u) => u.id === db.currentMockUserId);
+    if (!cur) throw new Error('Not authenticated');
+    return _userToResponse(cur);
+  }, [db.users, db.currentMockUserId, _userToResponse]);
+
+  const applyAuthRegister = useCallback((body) => {
+    // Validate BEFORE setDb — throwing inside a state-updater
+    // callback would propagate to React's reconciler as an uncaught
+    // error, never reaching the caller's try/catch. So we read the
+    // current users list from the closure, validate, then setDb.
+    if ((db.users || []).some((u) => u.username === body.username)) {
+      throw new Error(`Username '${body.username}' is already taken.`);
+    }
+    const nextId = Math.max(0, ...(db.users || []).map((u) => u.id)) + 1;
+    const user = {
+      id:                  nextId,
+      username:            body.username,
+      password_hash:       `mock:${body.password}`,
+      role:                'regular',
+      active:              true,
+      managed_client_ids:  [...(body.managed_client_ids || [])],
+      display_name:        body.display_name || null,
+      created_at:          new Date().toISOString(),
+    };
+    setDb((prev) => ({
+      ...prev,
+      users:             [...(prev.users || []), user],
+      currentMockUserId: nextId,
+    }));
+    return _userToResponse(user);
+  }, [db.users, _userToResponse]);
+
+  const applyAuthLogin = useCallback((body) => {
+    // Same rationale as applyAuthRegister — validate first, mutate
+    // second.
+    const u = (db.users || []).find((u) => u.username === body.username);
+    if (!u || !u.active) {
+      throw new Error('Invalid username or password.');
+    }
+    if (u.password_hash !== `mock:${body.password}`) {
+      throw new Error('Invalid username or password.');
+    }
+    setDb((prev) => ({ ...prev, currentMockUserId: u.id }));
+    return _userToResponse(u);
+  }, [db.users, _userToResponse]);
+
+  const applyAuthLogout = useCallback(() => {
+    setDb((prev) => ({ ...prev, currentMockUserId: null }));
+  }, []);
+
+  const applyAuthPatchMe = useCallback((body) => {
+    // Validate-then-mutate (same rationale as the auth login/register
+    // mutators above).
+    const cur = (db.users || []).find((u) => u.id === db.currentMockUserId);
+    if (!cur) throw new Error('Not authenticated');
+    if (body.managed_client_ids !== undefined && body.managed_client_ids.length === 0) {
+      throw new Error('managed_client_ids must contain at least one entry.');
+    }
+    const next = { ...cur };
+    if (body.managed_client_ids !== undefined) {
+      next.managed_client_ids = [...body.managed_client_ids];
+    }
+    if (body.display_name !== undefined) {
+      next.display_name = body.display_name;
+    }
+    setDb((prev) => {
+      const users = (prev.users || []).map((u) => (u.id === cur.id ? next : u));
+      return { ...prev, users };
+    });
+    return _userToResponse(next);
+  }, [db.users, db.currentMockUserId, _userToResponse]);
+
+  // -------------------------------------------------------------------------
   // applyTableExport — mock-mode parity for POST /api/v1/{table}/export.
   //
   // Mirrors ExportService on the backend at the contract level (same
@@ -1593,6 +1696,12 @@ export function MockDataProvider({ children }) {
     applyUpdateNotificationSubscription,
     applyDeleteNotificationSubscription,
     applyNotificationTestFire,
+    // Phase AUTH (mock-mode parity)
+    getCurrentMockUser,
+    applyAuthRegister,
+    applyAuthLogin,
+    applyAuthLogout,
+    applyAuthPatchMe,
     setEngineExecuting,
     // Derived helpers
     getClientMetrics,

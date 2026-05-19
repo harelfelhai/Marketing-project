@@ -31,6 +31,7 @@ EXPECTED CLASS NAMES BY MODULE
 """
 
 import importlib
+from typing import Optional
 
 from fastapi import Depends
 from sqlmodel import Session
@@ -41,7 +42,11 @@ from interfaces.dispatcher import BaseActionHandler
 from interfaces.ingestion import BaseIngestionRoutingEngine
 from interfaces.scoring import BaseScoringStrategy
 from interfaces.verification import BaseVerificationStrategy
+from fastapi import HTTPException, Request, status as http_status
+
 from interfaces.notifications import BaseNotificationChannel
+from models.user import User
+from services.auth import AuthService
 from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDispatcher
 from services.entity_ingestion import EntityIngestionService
@@ -53,6 +58,7 @@ from services.notifications import (
     NotificationSubscriptionService,
 )
 from services.scoring import ScoringService
+from services.user import UserService
 from services.verification import VerificationEngine, VerificationService
 
 
@@ -436,3 +442,104 @@ def get_bulk_ingestion_service(
         session=session,
         scoring_service=scoring_service,
     )
+
+
+# ===========================================================================
+# PHASE AUTH — authentication + role-gating dependencies
+# ===========================================================================
+#
+# Three layered deps:
+#
+#   get_current_user            → User | None    (no error on absence)
+#   require_authenticated_user  → User           (401 when absent)
+#   require_admin               → User           (403 when not admin)
+#
+# Endpoint handlers compose them via the standard FastAPI Depends()
+# chain. The `require_admin` dep is the guardrail wired onto the
+# Task Center surface (/tasks read + resolve + bulk-status + export).
+
+
+def get_auth_service(
+    session: Session = Depends(get_session),
+) -> AuthService:
+    """
+    Compose an `AuthService` for the current request. Used by the
+    login / logout endpoints AND internally by the get_current_user
+    dep below.
+    """
+    return AuthService(session=session)
+
+
+def get_user_service(
+    session: Session = Depends(get_session),
+) -> UserService:
+    """
+    Compose a `UserService` for CRUD over the user table. Used by
+    the registration + /auth/me PATCH endpoints.
+    """
+    return UserService(session=session)
+
+
+def get_current_user(
+    request: Request,
+    auth: AuthService = Depends(get_auth_service),
+) -> Optional[User]:
+    """
+    Resolve the request's `marketing_session` cookie to the owning
+    User row. Returns None when:
+        - the cookie is missing (guest / not logged in)
+        - the cookie value doesn't match a session row (revoked)
+        - the user row is missing or `active=False`
+
+    Never raises. Endpoints that want to enforce auth use the
+    `require_authenticated_user` / `require_admin` wrappers below;
+    endpoints that want soft-personalization (e.g., list endpoints
+    that adapt their default filter when a user is logged in) read
+    this directly.
+
+    Args:
+        request (Request):       FastAPI Request, for cookie access.
+        auth    (AuthService):   Injected.
+
+    Returns:
+        Optional[User]: The authenticated user, or None.
+    """
+    token = request.cookies.get(AuthService.COOKIE_NAME)
+    return auth.session_user(token)
+
+
+def require_authenticated_user(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """
+    Reject the request with 401 when no valid session is present.
+    Use for endpoints that require ANY logged-in user (admin OR
+    regular) — distinguished from the open-to-all endpoints which
+    use `get_current_user` directly.
+    """
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required.",
+        )
+    return user
+
+
+def require_admin(
+    user: User = Depends(require_authenticated_user),
+) -> User:
+    """
+    Reject the request with 403 when the current user isn't an
+    admin. Wired onto every Task Center endpoint to enforce the
+    Phase AUTH guardrail.
+
+    The 403 message is deliberately friendly (this is a guardrail,
+    not a security wall): operators landing here by accident see a
+    clear "Admins only" toast rather than a generic forbidden.
+    """
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Admins only — this action is restricted to the Task Center role.",
+        )
+    return user

@@ -43,6 +43,10 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 10_000,
   headers: { 'Content-Type': 'application/json' },
+  // Phase AUTH — required so the browser sends + accepts the
+  // marketing_session cookie on every request. Same-origin only
+  // (backend's CORS allow_credentials=True permits this).
+  withCredentials: true,
 });
 
 // Stamp every outgoing request with a correlation ID for end-to-end log tracing.
