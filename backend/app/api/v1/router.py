@@ -22,6 +22,7 @@ from app.api.v1.endpoints import (
     dashboard,
     entities,
     ingestion,
+    notifications,
     phones,
     schema,
     system,
@@ -51,3 +52,6 @@ router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 
 # Domain G — Entity Ingestion (Phase E2)
 router.include_router(entities.router, prefix="/entities", tags=["Entities"])
+
+# Domain H — Chat Notifications (Phase NOTIF)
+router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])

@@ -41,11 +41,17 @@ from interfaces.dispatcher import BaseActionHandler
 from interfaces.ingestion import BaseIngestionRoutingEngine
 from interfaces.scoring import BaseScoringStrategy
 from interfaces.verification import BaseVerificationStrategy
+from interfaces.notifications import BaseNotificationChannel
 from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDispatcher
 from services.entity_ingestion import EntityIngestionService
 from services.export import ExportService
 from services.ingestion import IngestionService
+from services.notifications import (
+    EventDispatcher,
+    NotificationDispatcher,
+    NotificationSubscriptionService,
+)
 from services.scoring import ScoringService
 from services.verification import VerificationEngine, VerificationService
 
@@ -293,6 +299,68 @@ def get_scoring_service(
         ScoringService: Ready to recalculate any phone's priority score.
     """
     return ScoringService(session=session, strategy=strategy)
+
+
+# ===========================================================================
+# PHASE NOTIF — CHAT NOTIFICATIONS
+# ===========================================================================
+
+
+def get_notification_channel() -> BaseNotificationChannel:
+    """
+    Resolve and return the active NotificationChannel instance.
+
+    The concrete class is determined by the `NOTIFICATION_MODULE` env
+    var (default: `modules.mock_chat`). The returned object is
+    guaranteed to implement `BaseNotificationChannel`.
+
+    HOOK FOR INTERNAL ENGINEERS:
+        Set NOTIFICATION_MODULE to your proprietary module path.
+        The class inside must be named `NotificationChannel` and
+        must subclass `interfaces.notifications.BaseNotificationChannel`.
+
+    Returns:
+        BaseNotificationChannel: Fresh instance of the configured class.
+    """
+    cls = _load_class(settings.notification_module, "NotificationChannel")
+    return cls()
+
+
+def get_notification_dispatcher(
+    session: Session = Depends(get_session),
+    channel: BaseNotificationChannel = Depends(get_notification_channel),
+) -> NotificationDispatcher:
+    """
+    Compose and return a `NotificationDispatcher` for the current
+    request. Holds the per-request session + the configured channel.
+    """
+    return NotificationDispatcher(session=session, channel=channel)
+
+
+def get_notification_subscription_service(
+    session: Session = Depends(get_session),
+) -> NotificationSubscriptionService:
+    """
+    Compose and return a `NotificationSubscriptionService`. CRUD-only;
+    no chat-channel dependency.
+    """
+    return NotificationSubscriptionService(session=session)
+
+
+def get_event_dispatcher(
+    session: Session = Depends(get_session),
+    dispatcher: NotificationDispatcher = Depends(get_notification_dispatcher),
+) -> EventDispatcher:
+    """
+    Compose and return an `EventDispatcher` — the trigger seam business
+    code calls into. Wraps subscription lookup + template rendering +
+    fan-out via NotificationDispatcher.
+
+    Future business services (IngestionService, VerificationService,
+    PipelineTaskService) will accept this as an optional constructor
+    arg and call `.fire(event_type, ...)` at their commit points.
+    """
+    return EventDispatcher(session=session, dispatcher=dispatcher)
 
 
 # ===========================================================================

@@ -86,6 +86,17 @@ class Settings(BaseSettings):
     hybrid formula that is workable but generic.
     """
 
+    notification_module: str = "modules.mock_chat"
+    """
+    Dotted path to the module containing `NotificationChannel`
+    (Phase NOTIF). Must implement:
+    interfaces.notifications.BaseNotificationChannel.
+
+    The open-source default `mock_chat` logs every delivery to stdout
+    and always returns success. Internal teams swap in their Slack /
+    Teams / Discord / generic-webhook adapter at deployment time.
+    """
+
     scoring_default_confidence: float = 50.0
     """
     Baseline confidence_score written on every newly-ingested PhoneNumber

@@ -167,6 +167,23 @@ class PipelineTaskNotFoundError(Exception):
         )
 
 
+class NotificationSubscriptionNotFoundError(Exception):
+    """
+    Raised when a NotificationSubscription lookup by id misses.
+
+    Mirrors PipelineTaskNotFoundError — the API layer catches it and
+    translates to 404. The subscription_id is stored on the exception
+    so the error message can include it without re-querying.
+    """
+
+    def __init__(self, subscription_id: int) -> None:
+        self.subscription_id = subscription_id
+        super().__init__(
+            f"NotificationSubscription with id={subscription_id} was not found "
+            "in the system."
+        )
+
+
 class TaskStateTransitionError(Exception):
     """
     Raised when `PipelineTaskService.resolve_task()` is called on a task that

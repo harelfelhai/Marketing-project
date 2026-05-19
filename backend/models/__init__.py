@@ -18,5 +18,13 @@ from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.action_log import ActionLog
 from models.pipeline_task import PipelineTask
+from models.notification import NotificationSubscription, NotificationDelivery
 
-__all__ = ["Entity", "PhoneNumber", "ActionLog", "PipelineTask"]
+__all__ = [
+    "Entity",
+    "PhoneNumber",
+    "ActionLog",
+    "PipelineTask",
+    "NotificationSubscription",
+    "NotificationDelivery",
+]

@@ -2066,3 +2066,224 @@ class TestListEndpointsAcceptQParam:
         r = tc.get("/api/v1/phones?q=zzz_no_match")
         assert r.status_code == 200
         assert r.json()["total"] == 0
+
+
+# ===========================================================================
+# Phase NOTIF — Notification subscription + delivery + test-fire endpoints
+# ===========================================================================
+
+
+def _create_sub_via_api(tc, **overrides):
+    body = {
+        "trigger_event_type": "phone.ingested",
+        "target_kind": "phone",
+        "target_id": 1,
+        "recipients": ["ops-alerts"],
+        "created_by": "manager_1",
+    }
+    body.update(overrides)
+    return tc.post("/api/v1/notifications/subscriptions", json=body)
+
+
+class TestNotificationSubscriptionCRUD:
+    # --- POST /subscriptions ---
+
+    def test_create_returns_201(self, client):
+        tc, _ = client
+        r = _create_sub_via_api(tc)
+        assert r.status_code == 201
+        body = r.json()
+        assert body["id"] is not None
+        assert body["active"] is True
+        assert body["target_kind"] == "phone"
+
+    def test_create_global_subscription(self, client):
+        tc, _ = client
+        r = _create_sub_via_api(tc, target_kind="global", target_id=None)
+        assert r.status_code == 201
+        assert r.json()["target_kind"] == "global"
+        assert r.json()["target_id"] is None
+
+    def test_global_with_target_id_returns_422(self, client):
+        tc, _ = client
+        r = _create_sub_via_api(tc, target_kind="global", target_id=5)
+        assert r.status_code == 422
+        assert "NULL" in r.json()["detail"]
+
+    def test_scoped_without_target_id_returns_422(self, client):
+        tc, _ = client
+        r = _create_sub_via_api(tc, target_kind="phone", target_id=None)
+        assert r.status_code == 422
+
+    def test_invalid_target_kind_returns_422_at_schema_layer(self, client):
+        tc, _ = client
+        r = _create_sub_via_api(tc, target_kind="phantom", target_id=1)
+        assert r.status_code == 422
+
+    def test_empty_recipients_returns_422(self, client):
+        tc, _ = client
+        r = _create_sub_via_api(tc, recipients=[])
+        assert r.status_code == 422
+
+    # --- GET /subscriptions (listing + filters) ---
+
+    def test_list_returns_all_subscriptions_unfiltered(self, client):
+        tc, _ = client
+        _create_sub_via_api(tc)
+        _create_sub_via_api(tc, target_id=2)
+        r = tc.get("/api/v1/notifications/subscriptions")
+        assert r.status_code == 200
+        assert len(r.json()) == 2
+
+    def test_list_filter_by_target_kind_and_id(self, client):
+        tc, _ = client
+        _create_sub_via_api(tc, target_kind="phone", target_id=1)
+        _create_sub_via_api(tc, target_kind="phone", target_id=99)
+        _create_sub_via_api(tc, target_kind="entity", target_id=1)
+        r = tc.get("/api/v1/notifications/subscriptions?target_kind=phone&target_id=1")
+        assert r.status_code == 200
+        rows = r.json()
+        assert len(rows) == 1
+        assert rows[0]["target_id"] == 1
+
+    def test_list_filter_by_active(self, client):
+        tc, _ = client
+        opened = _create_sub_via_api(tc).json()
+        tc.patch(
+            f"/api/v1/notifications/subscriptions/{opened['id']}",
+            json={"active": False},
+        )
+        r = tc.get("/api/v1/notifications/subscriptions?active=true")
+        assert r.json() == []
+        r = tc.get("/api/v1/notifications/subscriptions?active=false")
+        assert len(r.json()) == 1
+
+    # --- GET /subscriptions/{id} ---
+
+    def test_get_existing(self, client):
+        tc, _ = client
+        opened = _create_sub_via_api(tc).json()
+        r = tc.get(f"/api/v1/notifications/subscriptions/{opened['id']}")
+        assert r.status_code == 200
+        assert r.json()["id"] == opened["id"]
+
+    def test_get_missing_returns_404(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/notifications/subscriptions/99999")
+        assert r.status_code == 404
+
+    # --- PATCH /subscriptions/{id} ---
+
+    def test_patch_toggles_active(self, client):
+        tc, _ = client
+        opened = _create_sub_via_api(tc).json()
+        r = tc.patch(
+            f"/api/v1/notifications/subscriptions/{opened['id']}",
+            json={"active": False},
+        )
+        assert r.status_code == 200
+        assert r.json()["active"] is False
+
+    def test_patch_recipients(self, client):
+        tc, _ = client
+        opened = _create_sub_via_api(tc).json()
+        r = tc.patch(
+            f"/api/v1/notifications/subscriptions/{opened['id']}",
+            json={"recipients": ["mgrs", "oncall"]},
+        )
+        assert r.status_code == 200
+        assert r.json()["recipients"] == ["mgrs", "oncall"]
+
+    def test_patch_empty_recipients_returns_422(self, client):
+        tc, _ = client
+        opened = _create_sub_via_api(tc).json()
+        r = tc.patch(
+            f"/api/v1/notifications/subscriptions/{opened['id']}",
+            json={"recipients": []},
+        )
+        assert r.status_code == 422
+
+    def test_patch_missing_returns_404(self, client):
+        tc, _ = client
+        r = tc.patch(
+            "/api/v1/notifications/subscriptions/99999",
+            json={"active": False},
+        )
+        assert r.status_code == 404
+
+    # --- DELETE /subscriptions/{id} ---
+
+    def test_delete_returns_204_then_404_on_re_get(self, client):
+        tc, _ = client
+        opened = _create_sub_via_api(tc).json()
+        r = tc.delete(f"/api/v1/notifications/subscriptions/{opened['id']}")
+        assert r.status_code == 204
+        r = tc.get(f"/api/v1/notifications/subscriptions/{opened['id']}")
+        assert r.status_code == 404
+
+    def test_delete_missing_returns_404(self, client):
+        tc, _ = client
+        r = tc.delete("/api/v1/notifications/subscriptions/99999")
+        assert r.status_code == 404
+
+
+class TestNotificationTestFireEndpoint:
+    def test_happy_path_emits_sent_delivery(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/notifications/test-fire", json={
+            "recipients": ["#smoke"],
+            "title": "Pipe check",
+            "body": "Validating the chat channel.",
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "sent"
+        assert body["trigger_event_type"] == "manual.test"
+        assert body["subscription_id"] is None
+
+    def test_test_fire_appears_in_deliveries_list(self, client):
+        tc, _ = client
+        tc.post("/api/v1/notifications/test-fire", json={
+            "recipients": ["X"], "title": "t", "body": "b",
+        })
+        r = tc.get("/api/v1/notifications/deliveries")
+        assert r.status_code == 200
+        rows = r.json()
+        assert len(rows) >= 1
+        assert rows[0]["trigger_event_type"] == "manual.test"
+
+    def test_empty_recipients_blocked_by_schema_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/notifications/test-fire", json={
+            "recipients": [], "title": "t", "body": "b",
+        })
+        assert r.status_code == 422
+
+
+class TestNotificationDeliveriesEndpoint:
+    def test_filter_by_subscription_id(self, client):
+        tc, _ = client
+        a = _create_sub_via_api(tc, target_id=1).json()
+        b = _create_sub_via_api(tc, target_id=2).json()
+
+        # Fire two test-fires (subscription_id null) + one targeted
+        # delivery via the dispatcher would need an event-trigger
+        # path; for this test we just verify the filter works on a
+        # known-empty bucket.
+        tc.post("/api/v1/notifications/test-fire", json={
+            "recipients": ["x"], "title": "t", "body": "b",
+        })
+        r = tc.get(f"/api/v1/notifications/deliveries?subscription_id={a['id']}")
+        assert r.status_code == 200
+        assert r.json() == []   # no deliveries on that subscription yet
+
+    def test_filter_by_status(self, client):
+        tc, _ = client
+        tc.post("/api/v1/notifications/test-fire", json={
+            "recipients": ["x"], "title": "t", "body": "b",
+        })
+        r = tc.get("/api/v1/notifications/deliveries?status=sent")
+        assert r.status_code == 200
+        assert all(row["status"] == "sent" for row in r.json())
+        r = tc.get("/api/v1/notifications/deliveries?status=failed")
+        assert r.json() == []
