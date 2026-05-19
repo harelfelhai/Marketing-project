@@ -96,18 +96,25 @@ class TestFormatNumber2:
 
 
 class TestFormatDatetime:
-    def test_aware_datetime_passes_through(self):
+    def test_aware_datetime_is_normalised_to_naive_utc(self):
+        # UAT round-3: openpyxl rejects tz-aware datetimes outright,
+        # so the formatter strips tzinfo after converting to UTC.
         dt = datetime(2026, 5, 19, 12, 0, tzinfo=timezone.utc)
-        assert format_value(dt, "datetime") is dt
+        out = format_value(dt, "datetime")
+        assert isinstance(out, datetime)
+        assert out.tzinfo is None
+        assert out == datetime(2026, 5, 19, 12, 0)
 
     def test_iso_string_parses(self):
         result = format_value("2026-05-19T12:00:00+00:00", "datetime")
         assert isinstance(result, datetime)
+        # Normalised to naive UTC for openpyxl compatibility.
+        assert result.tzinfo is None
 
     def test_iso_string_with_trailing_z_parses(self):
         result = format_value("2026-05-19T12:00:00Z", "datetime")
         assert isinstance(result, datetime)
-        assert result.tzinfo is not None
+        assert result.tzinfo is None      # stripped for openpyxl
 
     def test_garbage_string_left_as_string(self):
         # Defensive — operator sees the literal value rather than an

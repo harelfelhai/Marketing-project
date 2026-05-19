@@ -88,6 +88,23 @@ class TestExportPhonesHappyPath:
         assert filename.startswith("phones_")
         assert filename.endswith(".xlsx")
 
+    def test_tz_aware_datetime_columns_serialise(self, svc, seeded_phones):
+        # UAT round-3 regression: PhoneNumber.ingested_at lands as a
+        # tz-aware UTC datetime via the UTCDateTime TypeDecorator, but
+        # openpyxl raises TypeError on tz-aware cells. The formatter
+        # must strip tzinfo before the cell is written. Passing here
+        # means a full workbook builds without that crash.
+        xlsx_bytes, _ = svc.export_phones(
+            filters={},
+            columns=[
+                _col("phone_number"),
+                _col("ingested_at", fmt="datetime"),
+                _col("created_at",  fmt="datetime"),
+            ],
+        )
+        assert xlsx_bytes[:2] == b"PK"   # workbook actually written
+        assert len(xlsx_bytes) > 100     # not just the header bytes
+
     def test_header_row_uses_caller_supplied_labels(self, svc, seeded_phones):
         xlsx_bytes, _ = svc.export_phones(
             filters={},

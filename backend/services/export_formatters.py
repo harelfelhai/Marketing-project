@@ -13,7 +13,7 @@ module deliberately knows nothing about which keys are safe — it just
 walks the dict.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -115,13 +115,23 @@ def format_value(value: Any, fmt: str) -> Any:
             return str(value)
 
     if fmt == "datetime":
+        # openpyxl rejects tz-aware datetimes with a TypeError. Our
+        # UTCDateTime TypeDecorator hands back tz-aware UTC objects, so
+        # we must strip the tzinfo before handing off to the Workbook
+        # writer. We normalise to UTC first (no-op when already UTC)
+        # so naive cells remain comparable across timezones in Excel.
         if isinstance(value, datetime):
+            if value.tzinfo is not None:
+                value = value.astimezone(timezone.utc).replace(tzinfo=None)
             return value
         if isinstance(value, str):
             try:
                 # Accept ISO strings (with or without trailing Z).
                 trimmed = value.replace("Z", "+00:00") if value.endswith("Z") else value
-                return datetime.fromisoformat(trimmed)
+                dt = datetime.fromisoformat(trimmed)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
             except ValueError:
                 return value      # leave the literal string for the cell
         return str(value)
