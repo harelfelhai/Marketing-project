@@ -379,6 +379,19 @@ class ExportService:
         flat["entity_type"] = entity_type
         flat["client_id"] = client_id
         flat["customer_tier"] = customer_tier
+
+        # UAT round-3 fix: the export allowlist exposes BOTH phone-level
+        # (`extra_data.row_token`, `extra_data.bulk_submission_id`) and
+        # ENTITY-level (`extra_data.first_name`, `extra_data.last_name`,
+        # `extra_data.envelope_id`, …) subkeys under the same dotted
+        # prefix. Previously `flat["extra_data"]` carried only the phone
+        # blob, so entity-level columns silently exported as empty cells.
+        # Merge the entity blob in first, phone blob second — phone keys
+        # win on conflict (rare; nothing actually overlaps in practice).
+        flat["extra_data"] = {
+            **(effective_extra or {}),
+            **(phone.extra_data or {}),
+        }
         return flat
 
     @staticmethod

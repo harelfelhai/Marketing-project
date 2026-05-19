@@ -120,12 +120,28 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
                 {ENVELOPE_LABEL(entity?.extra_data?.envelope_id)}
               </span>
             ) : (
-              <span
-                className="text-xs text-slate-500 truncate"
-                title={`Entity #${entity?.id} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`}
-              >
-                Entity #{entity?.id} · {ENTITY_TYPE_DISPLAY(entity?.entity_type)}
-              </span>
+              (() => {
+                // UAT round-3: prefer the entity's name when present
+                // (it was previously "Entity #N" even after a rename).
+                // Falls back to "Entity #N" when the entity has no
+                // first/last name in extra_data (envelopes already
+                // got their own branch above).
+                const nm = [
+                  entity?.extra_data?.first_name,
+                  entity?.extra_data?.last_name,
+                ].filter(Boolean).join(' ');
+                const label = nm
+                  ? `${nm} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`
+                  : `Entity #${entity?.id} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`;
+                return (
+                  <span
+                    className="text-xs text-slate-500 truncate"
+                    title={label}
+                  >
+                    {label}
+                  </span>
+                );
+              })()
             )}
             {phone.customer_tier != null && (
               <Badge variant={tierVariant(phone.customer_tier)} size="xs">
