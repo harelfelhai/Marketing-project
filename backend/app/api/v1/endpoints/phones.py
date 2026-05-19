@@ -806,7 +806,6 @@ class _PhonePatchIn(_AdminBaseModel):
 def admin_patch_phone(
     phone_id: int,
     body: _PhonePatchIn,
-    _admin_user: User = Depends(require_admin),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -827,7 +826,6 @@ def admin_patch_phone(
 )
 def soft_delete_phone(
     phone_id: int,
-    _admin_user: User = Depends(require_admin),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -843,7 +841,6 @@ def soft_delete_phone(
 )
 def restore_phone(
     phone_id: int,
-    _admin_user: User = Depends(require_admin),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:

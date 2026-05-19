@@ -55,13 +55,17 @@ class TestRegister:
         with pytest.raises(UserAlreadyExistsError):
             svc.register(username="alice", password="y", managed_client_ids=[2])
 
-    def test_empty_managed_client_ids_raises(self, svc):
-        with pytest.raises(ValueError, match="at least one"):
-            svc.register(
-                username="bob",
-                password="x",
-                managed_client_ids=[],
-            )
+    def test_empty_managed_client_ids_is_accepted(self, svc):
+        # UAT round-3: registration with no managed clients is now
+        # valid. The operator can add clients later from /profile.
+        user = svc.register(
+            username="bob",
+            password="x",
+            managed_client_ids=[],
+        )
+        # Empty list flows through to extra_data.
+        from services.user import managed_client_ids_of
+        assert managed_client_ids_of(user) == []
 
     def test_display_name_optional(self, svc):
         u = svc.register(username="bob", password="x", managed_client_ids=[1])
@@ -149,10 +153,12 @@ class TestUpdateManagedClients:
         updated = svc.update_managed_client_ids(u.id, [2, 3])
         assert updated.extra_data["managed_client_ids"] == [2, 3]
 
-    def test_empty_list_rejected(self, svc):
+    def test_empty_list_now_accepted_clears_managed_clients(self, svc):
+        # UAT round-3: clearing the list opts the operator out of
+        # personalization. No exception.
         u = svc.register(username="alice", password="pw", managed_client_ids=[1])
-        with pytest.raises(ValueError):
-            svc.update_managed_client_ids(u.id, [])
+        updated = svc.update_managed_client_ids(u.id, [])
+        assert updated.extra_data["managed_client_ids"] == []
 
     def test_unknown_user_rejected(self, svc):
         with pytest.raises(ValueError, match="not found"):

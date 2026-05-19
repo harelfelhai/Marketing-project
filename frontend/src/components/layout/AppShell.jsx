@@ -14,6 +14,7 @@
  */
 
 import { Activity, Filter, Globe, LogOut } from 'lucide-react';
+import { Link as RouterLink } from 'react-router-dom';
 
 import NavTabs       from './NavTabs';
 import HeaderActions from './HeaderActions';
@@ -155,19 +156,25 @@ function OperatorChip({ status, operatorId, operatorRole, displayName, onLogout,
     );
   }
 
-  // Authenticated — avatar + name + logout.
+  // Authenticated — avatar + name (links to /profile) + logout.
   const initials = (displayName || operatorId || '??').slice(0, 2).toUpperCase();
   return (
     <div className="inline-flex items-center gap-2 ps-3 border-s border-slate-200">
-      <div
-        className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center"
-        title={ROLE_TITLE(operatorRole)}
+      <RouterLink
+        to="/profile"
+        title="פרופיל"
+        data-testid="auth-profile-link"
+        className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity"
       >
-        {initials}
-      </div>
-      <span className="text-xs text-slate-600 truncate max-w-[120px]">
-        {displayName || operatorId}
-      </span>
+        <div
+          className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center"
+        >
+          {initials}
+        </div>
+        <span className="text-xs text-slate-600 truncate max-w-[120px]" title={ROLE_TITLE(operatorRole)}>
+          {displayName || operatorId}
+        </span>
+      </RouterLink>
       <button
         type="button"
         onClick={handleLogout}

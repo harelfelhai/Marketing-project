@@ -78,7 +78,9 @@ export default function RegisterPage() {
     if (form.password && form.confirm !== form.password) {
       errs.confirm = AUTH_ERR_PASSWORDS_MISMATCH;
     }
-    if (form.clientIds.size === 0) errs.clientIds = AUTH_ERR_NO_CLIENTS;
+    // UAT round-3: managed_client_ids is OPTIONAL on registration —
+    // some operators start without any client assignments and pick them
+    // up later from the profile editor. No min-size validation here.
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };

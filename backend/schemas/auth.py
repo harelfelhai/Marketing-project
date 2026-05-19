@@ -55,14 +55,15 @@ class RegisterRequest(BaseModel):
         ),
     )
     managed_client_ids: List[int] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
         max_length=50,
         description=(
             "Integer ids of the clients the operator is responsible "
-            "for. Drives the personalization default filter. Must "
-            "carry at least one entry — a registered user with no "
-            "managed clients is operationally meaningless."
+            "for. Drives the personalization default filter. May be "
+            "empty at registration — operators can add or remove "
+            "managed clients later from the profile editor (UAT "
+            "round-3 change). Personalization toggle stays inert "
+            "while the list is empty (nothing to filter to)."
         ),
     )
     display_name: Optional[str] = Field(

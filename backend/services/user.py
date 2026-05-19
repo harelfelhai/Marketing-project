@@ -75,11 +75,9 @@ class UserService:
         Raises:
             UserAlreadyExistsError: A row with this username already
                 exists. The endpoint maps to 409.
-            ValueError: managed_client_ids is empty (defensive guard).
         """
-        if not managed_client_ids:
-            raise ValueError("managed_client_ids must contain at least one entry.")
-
+        # UAT round-3: managed_client_ids may be empty at registration.
+        # The operator can add clients later from the profile editor.
         existing = self.session.exec(
             select(User).where(User.username == username)
         ).first()
@@ -217,12 +215,10 @@ class UserService:
         """
         Replace the operator's managed-client list.
 
-        Empty lists are rejected (a registered user with no clients
-        is operationally meaningless — they'd see nothing under
-        personalization).
+        UAT round-3: empty lists are now ACCEPTED — an operator can
+        opt out of personalization by clearing their managed-client
+        list entirely. The toggle simply has no narrowing effect.
         """
-        if not client_ids:
-            raise ValueError("managed_client_ids must contain at least one entry.")
         user = self.session.get(User, user_id)
         if user is None:
             raise ValueError(f"User id={user_id} not found.")

@@ -2359,14 +2359,18 @@ class TestAuthRegisterEndpoint:
         r2 = tc.post("/api/v1/auth/register", json=body)
         assert r2.status_code == 409
 
-    def test_empty_managed_client_ids_returns_422(self, client):
+    def test_empty_managed_client_ids_is_accepted(self, client):
+        # UAT round-3: empty managed_client_ids list is valid on
+        # registration. The operator can add clients later from
+        # the profile editor.
         tc, _ = client
         _logout(tc)
         r = tc.post("/api/v1/auth/register", json={
-            "username": "alice", "password": "pass1234",
+            "username": "alice_no_clients", "password": "pass1234",
             "managed_client_ids": [],
         })
-        assert r.status_code == 422
+        assert r.status_code == 201
+        assert r.json()["managed_client_ids"] == []
 
     def test_short_username_returns_422(self, client):
         tc, _ = client

@@ -22,7 +22,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pencil, Trash2, RotateCcw, X, Loader2 } from 'lucide-react';
 
-import RequireRole from '../components/primitives/RequireRole';
 import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
 import {
@@ -43,27 +42,10 @@ import {
   ADMIN_TOAST_ERROR,
   ADMIN_FIELD_FIRST_NAME, ADMIN_FIELD_LAST_NAME, ADMIN_FIELD_RELATION,
   ADMIN_FIELD_PHONE_NUMBER, ADMIN_FIELD_VERIFICATION,
-  PERMISSION_DENIED_NOTICE,
 } from '../config/strings.he';
 
 
 export default function DataAdminPage() {
-  return (
-    <RequireRole
-      role="admin"
-      fallback={
-        <section className="bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-500">
-          {PERMISSION_DENIED_NOTICE}
-        </section>
-      }
-    >
-      <DataAdminInner />
-    </RequireRole>
-  );
-}
-
-
-function DataAdminInner() {
   const [subTab, setSubTab]           = useState('persons');
   const [includeDeleted, setInclDel]  = useState(false);
 

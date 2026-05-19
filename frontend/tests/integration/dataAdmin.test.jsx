@@ -24,12 +24,14 @@ beforeEach(() => {
 });
 
 
-describe('DataAdminPage — role gate', () => {
-  it('regular user at /admin sees the permission-denied notice', async () => {
+describe('DataAdminPage — open to all roles', () => {
+  // UAT round-3 follow-up: the data-admin tab is INTENTIONALLY open to
+  // every authenticated user (including regulars). It is not a Task
+  // Center, and edit/delete here are operational maintenance available
+  // to anyone on the team.
+  it('regular user at /admin reaches the persons tab', async () => {
     renderApp({ route: '/admin', as: 'regular' });
-    await waitFor(() => {
-      expect(screen.queryByTestId('admin-tab-persons')).not.toBeInTheDocument();
-    });
+    expect(await screen.findByTestId('admin-tab-persons')).toBeInTheDocument();
   });
 
   it('admin reaches the persons tab by default', async () => {

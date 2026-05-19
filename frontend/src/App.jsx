@@ -40,6 +40,7 @@ import DashboardPage       from './pages/DashboardPage';
 import OperationsQueuePage from './pages/OperationsQueuePage';
 import EntitiesPage        from './pages/EntitiesPage';
 import DataAdminPage       from './pages/DataAdminPage';
+import ProfilePage         from './pages/ProfilePage';
 import LoginPage           from './pages/LoginPage';
 import RegisterPage        from './pages/RegisterPage';
 
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="/operations" element={<OperationsQueuePage />} />
               <Route path="/dashboard"  element={<DashboardPage />} />
               <Route path="/admin"      element={<DataAdminPage />} />
+              <Route path="/profile"    element={<ProfilePage />} />
               <Route path="*"           element={<ClientHubPage />} />
             </Routes>
           </AppShell>

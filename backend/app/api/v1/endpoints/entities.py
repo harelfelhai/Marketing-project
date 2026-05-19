@@ -435,7 +435,6 @@ def get_entity(
 def patch_entity(
     entity_id: int,
     body: EntityPatchIn,
-    _admin_user: User = Depends(require_admin),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -459,7 +458,6 @@ def patch_entity(
 )
 def soft_delete_entity(
     entity_id: int,
-    _admin_user: User = Depends(require_admin),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -474,7 +472,6 @@ def soft_delete_entity(
 )
 def restore_entity(
     entity_id: int,
-    _admin_user: User = Depends(require_admin),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:

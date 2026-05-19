@@ -142,17 +142,23 @@ describe('Phase AUTH — register validation', () => {
     expect(screen.getByTestId('auth-register-card')).toBeInTheDocument();
   });
 
-  it('no-clients-picked blocks submit', async () => {
+  it('no-clients-picked still allows submission (UAT round-3)', async () => {
+    // UAT round-3 change: managed_client_ids is optional on
+    // registration. Operators can join without any client
+    // assignments and add them later from /profile.
     const user = userEvent.setup();
     renderApp({ route: '/register', as: 'anonymous' });
 
     await user.type(screen.getByLabelText(/שם משתמש/), 'bob');
     await user.type(screen.getByLabelText(/^סיסמה/), 'pass1234');
     await user.type(screen.getByLabelText(/אישור סיסמה/), 'pass1234');
-    // NO client checkboxes ticked.
+    // NO clients selected — should still succeed.
     await user.click(screen.getByTestId('auth-register-submit'));
 
-    await screen.findByText(/יש לבחור לפחות לקוח אחד/);
+    // The register card disappears, indicating successful submit.
+    await waitFor(() => {
+      expect(screen.queryByTestId('auth-register-card')).not.toBeInTheDocument();
+    });
   });
 
   it('short password blocked by min-length validator', async () => {

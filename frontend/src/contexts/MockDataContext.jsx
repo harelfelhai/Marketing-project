@@ -1638,9 +1638,8 @@ export function MockDataProvider({ children }) {
     // mutators above).
     const cur = (db.users || []).find((u) => u.id === db.currentMockUserId);
     if (!cur) throw new Error('Not authenticated');
-    if (body.managed_client_ids !== undefined && body.managed_client_ids.length === 0) {
-      throw new Error('managed_client_ids must contain at least one entry.');
-    }
+    // UAT round-3: empty managed_client_ids is now valid (operator can
+    // opt out of personalization). Backend mirrors the same relaxation.
     const next = { ...cur };
     if (body.managed_client_ids !== undefined) {
       next.managed_client_ids = [...body.managed_client_ids];

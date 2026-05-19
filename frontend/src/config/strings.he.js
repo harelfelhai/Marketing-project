@@ -64,6 +64,19 @@ export const ADMIN_FIELD_LAST_NAME     = 'שם משפחה';
 export const ADMIN_FIELD_RELATION      = 'סוג קרבה';
 export const ADMIN_FIELD_PHONE_NUMBER  = 'מספר טלפון';
 export const ADMIN_FIELD_VERIFICATION  = 'סטטוס אימות';
+
+// ProfilePage — UAT round-3 user profile editor.
+export const PROFILE_TITLE                  = 'הפרופיל שלי';
+export const PROFILE_SUB                    = 'עדכן את שם התצוגה ואת רשימת הלקוחות שבמעקב שלך.';
+export const PROFILE_FIELD_DISPLAY_NAME     = 'שם תצוגה';
+export const PROFILE_FIELD_MANAGED_CLIENTS  = 'לקוחות במעקב שלי';
+export const PROFILE_HINT_EMPTY_CLIENTS     =
+  'ניתן להשאיר ריק — במצב זה כפתור הפרסונליזציה לא יסנן.';
+export const PROFILE_BTN_SAVE     = 'שמור שינויים';
+export const PROFILE_BTN_SAVING   = 'שומר…';
+export const PROFILE_BTN_BACK     = 'חזרה';
+export const PROFILE_TOAST_SAVED  = 'הפרופיל עודכן.';
+export const PROFILE_TOAST_ERROR  = (msg) => `שגיאה: ${msg}`;
 export const BTN_INGEST_NEW    = 'קליטת מספר חדש';
 export const ROLE_TITLE        = (role) => `תפקיד: ${role}`;
 
