@@ -52,7 +52,11 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
 
   const filtered = rows.filter(({ phone, entity, client }) => {
     if (clientIdsAllowed && !clientIdsAllowed.has(entity?.client_id))                              return false;
-    if (filters.clientId           && entity?.client_id           !== filters.clientId)           return false;
+    // UAT regression: the PhoneFilterBar's <select> emits e.target.value
+    // as a string ("1"), but the real-mode entity.client_id arrives as
+    // an integer. A strict `!==` always tripped, emptying the table.
+    // Stringify both sides to match the §5.1 cross-link coercion rule.
+    if (filters.clientId && String(entity?.client_id) !== String(filters.clientId))               return false;
     if (filters.verificationStatus && phone.verification_status   !== filters.verificationStatus) return false;
     if (filters.ingestionSource    && phone.ingestion_source      !== filters.ingestionSource)    return false;
     if (filters.classificationType && phone.classification_type   !== filters.classificationType) return false;

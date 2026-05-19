@@ -100,6 +100,37 @@ describe('applyFilters — Phase DY sortBy', () => {
 });
 
 
+describe('applyFilters — clientId string/number coercion', () => {
+  // UAT regression: the filter dropdown's e.target.value is always a
+  // string, but real-mode entity.client_id is an integer. applyFilters
+  // must compare both sides as strings or the table goes empty.
+  const NUM_ENTITIES = [
+    { id: 1, entity_type: 'target', client_id: 1 },
+    { id: 2, entity_type: 'target', client_id: 2 },
+  ];
+  const NUM_CLIENTS = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }];
+  const NUM_PHONES  = [
+    { id: 100, entity_id: 1, phone_number: '+a', ingested_at: '2026-05-01',
+      verification_status: 'pending', priority_score: 10 },
+    { id: 200, entity_id: 2, phone_number: '+b', ingested_at: '2026-05-02',
+      verification_status: 'pending', priority_score: 20 },
+  ];
+
+  it('string filter value matches integer client_id (dropdown emits string)', () => {
+    const rows = applyFilters(NUM_PHONES, NUM_ENTITIES, NUM_CLIENTS, [],
+                              { ...NO_FILTERS, clientId: '1' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].phone.id).toBe(100);
+  });
+
+  it('integer filter value matches integer client_id (cross-link case)', () => {
+    const rows = applyFilters(NUM_PHONES, NUM_ENTITIES, NUM_CLIENTS, [],
+                              { ...NO_FILTERS, clientId: 1 });
+    expect(rows).toHaveLength(1);
+  });
+});
+
+
 describe('applyFilters — Phase AUTH-C clientIds personalization', () => {
   const MIXED_ENTITIES = [
     { id: 1, entity_type: 'target', client_id: 1 },

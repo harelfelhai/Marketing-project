@@ -164,6 +164,27 @@ describe('Phase E2-D — entity bulk-text (two-step grid)', () => {
     expect(within(result).getByText(/אין שורות שנכשלו/)).toBeInTheDocument();
   });
 
+  it('default relation chosen in step 1 is pre-filled into every step-2 row', async () => {
+    // UAT regression: the operator picked "family" at the paste step
+    // but the edit grid showed "ירש" on every row. The default looked
+    // dropped even though it was still applied server-side. The fix
+    // pre-fills each row's relationType from state.defaultRelation.
+    const user = userEvent.setup();
+    renderApp({ route: '/' });
+    await openMultiTextTab(user);
+
+    await configureDefaults(user);
+    await user.type(await screen.findByLabelText(/רשימת שמות/), 'Jane Doe, Bob Roe');
+    await user.click(screen.getByTestId('entity-bulk-continue'));
+
+    const rows = screen.getAllByTestId('entity-bulk-row');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      const relationSelect = within(row).getAllByRole('combobox')[0];
+      expect(relationSelect.value).toBe('family');
+    }
+  });
+
   it('per-row relation override changes the resulting entity_type', async () => {
     const user = userEvent.setup();
     renderApp({ route: '/' });

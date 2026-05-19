@@ -153,6 +153,25 @@ class TestPerRowFailures:
         assert summary["failed_count"] == 1
         assert summary["failed_rows"][0]["row"] == 2
 
+    def test_only_last_name_row_is_reported_as_failed(self, svc, root_target):
+        # UAT regression: an operator filled ONLY the last_name cell on
+        # a row (everything else blank). The row must NOT be silently
+        # dropped — it must surface in failed_rows so the operator sees
+        # what went wrong.
+        payload = _build_xlsx(
+            header=list(BULK_ENTITY_ALL_COLUMNS),
+            rows=[
+                ["Jane", "family", root_target.id, "Doe"],     # good
+                [None,   None,     None,           "Solo"],    # only last_name
+            ],
+        )
+        summary = svc.ingest_bulk_upload(payload, "upload.xlsx")
+        assert summary["success_count"] == 1
+        assert summary["failed_count"] == 1
+        assert summary["failed_rows"][0]["row"] == 2
+        # The first validation that trips is the missing first_name.
+        assert "first_name" in summary["failed_rows"][0]["error"].lower()
+
     def test_invalid_relation_type(self, svc, root_target):
         payload = _build_xlsx(
             header=list(BULK_ENTITY_ALL_COLUMNS),

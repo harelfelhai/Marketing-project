@@ -187,8 +187,12 @@ export default function MultiEntityIngestionPanel() {
       setState((s) => ({ ...s, defaultsErr }));
       return;
     }
-    // Build the grid rows. relation/target overrides default to null
-    // (= inherit). row_token is the immutable original input string.
+    // Build the grid rows. Pre-fill relationType + targetEntityId with
+    // the modal-level defaults so the operator SEES their step-1 choice
+    // carried through into the editor — without this the dropdowns
+    // showed "ירש" (inherit) and the picked קרבה looked dropped, even
+    // though the payload still applied it server-side. The operator
+    // can still change per-row.
     const rows = tokens.map((token) => {
       const { firstName, lastName } = parseName(token);
       return {
@@ -196,8 +200,10 @@ export default function MultiEntityIngestionPanel() {
         rowToken:        token,
         firstName,
         lastName:        lastName || '',
-        relationType:    null,
-        targetEntityId:  null,
+        relationType:    state.defaultRelation || null,
+        targetEntityId:  state.defaultTargetId
+                            ? Number(state.defaultTargetId)
+                            : null,
       };
     });
     setState((s) => ({ ...s, step: 'edit', rows, pasteErr: '', defaultsErr: {} }));

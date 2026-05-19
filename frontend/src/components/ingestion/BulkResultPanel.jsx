@@ -71,6 +71,26 @@ export default function BulkResultPanel({ summary }) {
         />
       </div>
 
+      {/* UAT addition — show the actual server-assigned IDs so the
+          operator has a concrete artifact to verify against the live
+          table view. Without this, "2 הצליחו" felt unverifiable. */}
+      {(summary.entity_ids?.length || summary.phone_ids?.length) ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900 space-y-1">
+          {summary.entity_ids?.length > 0 && (
+            <div>
+              <span className="font-semibold">מזהי ישויות שנוצרו: </span>
+              <span className="font-mono">{summary.entity_ids.join(', ')}</span>
+            </div>
+          )}
+          {summary.phone_ids?.length > 0 && (
+            <div>
+              <span className="font-semibold">מזהי טלפונים שנוצרו: </span>
+              <span className="font-mono">{summary.phone_ids.join(', ')}</span>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div>
         <h4 className="text-xs font-semibold text-slate-700 mb-2">
           {BULK_SUMMARY_FAILED_HEADER}
