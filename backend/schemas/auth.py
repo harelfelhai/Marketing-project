@@ -107,11 +107,12 @@ class PatchMeRequest(BaseModel):
 
     managed_client_ids: Optional[List[int]] = Field(
         default=None,
-        min_length=1,
         max_length=50,
         description=(
-            "Replace the operator's managed-client list. Empty list "
-            "is rejected (same constraint as registration)."
+            "Replace the operator's managed-client list. UAT round-3: "
+            "an empty list is ACCEPTED — operators can opt out of "
+            "personalization entirely. None (the field omitted) means "
+            "'leave it untouched'; [] means 'clear it'."
         ),
     )
     display_name: Optional[str] = Field(default=None, max_length=80)

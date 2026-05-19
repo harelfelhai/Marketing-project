@@ -2461,6 +2461,20 @@ class TestAuthMeEndpoint:
         assert r.status_code == 200
         assert r.json()["managed_client_ids"] == [2, 3]
 
+    def test_patch_with_empty_managed_client_ids_clears_the_list(self, client):
+        # UAT round-3: an operator can clear their managed-client list
+        # entirely from /profile. The personalization toggle becomes
+        # inert (nothing to filter to) but no 422 is raised.
+        tc, _ = client
+        _logout(tc)
+        tc.post("/api/v1/auth/register", json={
+            "username": "carol", "password": "pass1234",
+            "managed_client_ids": [1, 2],
+        })
+        r = tc.patch("/api/v1/auth/me", json={"managed_client_ids": []})
+        assert r.status_code == 200
+        assert r.json()["managed_client_ids"] == []
+
 
 class TestAuthLogoutEndpoint:
     def test_logout_clears_cookie_and_invalidates_session(self, client):
