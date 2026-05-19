@@ -145,14 +145,27 @@ export function AuthProvider({ children, initialState }) {
   // Actions
   // -----------------------------------------------------------------
 
+  // Phase AUTH-C — after a privilege change (login / register), refire
+  // the auth-gated data slices. The boot Promise.allSettled runs once
+  // on mount, so a guest who later logs in as admin would otherwise
+  // never get /tasks (which 403s for anyone non-admin) into context.
+  // Each refetch is fire-and-forget; failures stay quiet because the
+  // route gate already hides surfaces that the new role can't access.
+  const _refetchAuthGatedSlices = useCallback(() => {
+    mockDb.refetchPhones?.().catch(() => {});
+    mockDb.refetchActionLogs?.().catch(() => {});
+    mockDb.refetchTasks?.().catch(() => {});
+  }, [mockDb]);
+
   const login = useCallback(async (username, password) => {
     const u = await apiLogin({ username, password }, mockDb);
     setUser(u);
     setStatus('authenticated');
     _writeGuestFlag(false);
     setPersonalizationActive(_readPersonalizationFlag(u.role !== 'admin'));
+    _refetchAuthGatedSlices();
     return u;
-  }, [mockDb]);
+  }, [mockDb, _refetchAuthGatedSlices]);
 
   const register = useCallback(async (body) => {
     const u = await apiRegister(body, mockDb);
@@ -160,8 +173,9 @@ export function AuthProvider({ children, initialState }) {
     setStatus('authenticated');
     _writeGuestFlag(false);
     setPersonalizationActive(_readPersonalizationFlag(true));  // regulars default ON
+    _refetchAuthGatedSlices();
     return u;
-  }, [mockDb]);
+  }, [mockDb, _refetchAuthGatedSlices]);
 
   const logout = useCallback(async () => {
     await apiLogout(mockDb);
