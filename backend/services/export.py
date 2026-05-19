@@ -62,6 +62,10 @@ ALLOWED_EXPORT_COLUMNS_PHONES: frozenset[str] = frozenset({
     "id", "phone_number", "entity_id",
     # Entity JOIN
     "entity_type", "client_id",
+    # UAT round-3 — root-target name (the head of the circle this
+    # phone belongs to). Distinct from extra_data.first_name (which
+    # is the IMMEDIATE entity's name).
+    "root_first_name", "root_last_name",
     # Phase 1 ingestion block
     "ingestion_source", "ingestion_reason", "ingested_at",
     # Phase 3 verification block
@@ -380,18 +384,29 @@ class ExportService:
         flat["client_id"] = client_id
         flat["customer_tier"] = customer_tier
 
-        # UAT round-3 fix: the export allowlist exposes BOTH phone-level
-        # (`extra_data.row_token`, `extra_data.bulk_submission_id`) and
-        # ENTITY-level (`extra_data.first_name`, `extra_data.last_name`,
-        # `extra_data.envelope_id`, …) subkeys under the same dotted
-        # prefix. Previously `flat["extra_data"]` carried only the phone
-        # blob, so entity-level columns silently exported as empty cells.
-        # Merge the entity blob in first, phone blob second — phone keys
-        # win on conflict (rare; nothing actually overlaps in practice).
+        # UAT round-3 fix (round 2): `extra_data.first_name` /
+        # `extra_data.last_name` must resolve to the IMMEDIATE entity's
+        # name (the person being called) — not the root target's. The
+        # previous merge used effective_extra (= root when present),
+        # which silently exported the root's name and missed the
+        # associated entity's name entirely. We now merge the immediate
+        # entity blob in first, then the phone blob, so:
+        #
+        #   extra_data.first_name → owning entity (Jane / Sam / envelope = none)
+        #   extra_data.last_name  → owning entity
+        #
+        # The root-target's name is exposed separately on flat top-level
+        # keys (`root_first_name`, `root_last_name`) so an operator can
+        # build an export that shows BOTH "person called" and "client
+        # head-of-circle" side by side. customer_tier stays as the
+        # envelope-propagated value (root wins) — that's the Phase DY
+        # invariant, unchanged.
         flat["extra_data"] = {
-            **(effective_extra or {}),
+            **(immediate_extra or {}),
             **(phone.extra_data or {}),
         }
+        flat["root_first_name"] = (root_extra or {}).get("first_name")
+        flat["root_last_name"]  = (root_extra or {}).get("last_name")
         return flat
 
     @staticmethod

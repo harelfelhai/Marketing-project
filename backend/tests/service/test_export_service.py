@@ -151,25 +151,40 @@ class TestExportPhonesHappyPath:
         Previously the flatten step copied phone.extra_data verbatim and
         the column came back empty. Now the entity blob is merged into
         the flat row so entity-level dotted keys resolve cleanly.
+
+        Round-2 of the same fix: the merged blob must come from the
+        IMMEDIATE owning entity, not the root target — otherwise
+        associated entities (Jane family of David) export the root's
+        name instead of their own.
         """
         from datetime import datetime, timezone
-        ent = Entity(
+        # Root target with its own name.
+        root = Entity(
             entity_type="target",
             client_id=7,
-            extra_data={"first_name": "Yossi", "last_name": "Cohen"},
+            extra_data={"first_name": "David", "last_name": "Levi"},
         )
-        session.add(ent)
+        session.add(root)
         session.commit()
-        session.refresh(ent)
+        session.refresh(root)
+        # Associated entity (Jane, family of David).
+        jane = Entity(
+            entity_type="family",
+            client_id=7,
+            target_entity_id=root.id,
+            extra_data={"first_name": "Jane", "last_name": "Cohen"},
+        )
+        session.add(jane)
+        session.commit()
+        session.refresh(jane)
+        # Phone attached to Jane (not to the root).
         ph = PhoneNumber(
-            entity_id=ent.id,
+            entity_id=jane.id,
             phone_number="+972500000777",
             classification_type="type_a",
             ingestion_source="manual",
             verification_status="pending",
             ingested_at=datetime.now(timezone.utc),
-            # Crucially: phone's own extra_data is empty — the name is
-            # ONLY on the entity. Pre-fix this exported as None.
             extra_data={},
         )
         session.add(ph)
@@ -181,12 +196,16 @@ class TestExportPhonesHappyPath:
                 _col("phone_number"),
                 _col("extra_data.first_name", label="שם"),
                 _col("extra_data.last_name",  label="משפחה"),
+                _col("root_first_name",       label="שם-שורש"),
+                _col("root_last_name",        label="משפחה-שורש"),
             ],
         )
         wb = _read_workbook(xlsx_bytes)
         rows = _data_rows(wb)
-        # 1 header + 1 phone
-        assert rows[1] == ("+972500000777", "Yossi", "Cohen")
+        # extra_data.* → Jane Cohen (immediate); root_* → David Levi.
+        assert rows[1] == (
+            "+972500000777", "Jane", "Cohen", "David", "Levi",
+        )
 
     def test_customer_tier_resolved_from_root_target(self, svc, seeded_phones):
         """customer_tier is a computed flat column — Phase DY pulled it

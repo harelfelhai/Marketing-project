@@ -60,9 +60,15 @@ export const PHONES_EXPORT_CATALOG = {
     { key: 'classification_type',      label: 'סיווג',                    format: 'text'     },
     { key: 'created_at',               label: 'תאריך יצירה',              format: 'datetime' },
     { key: 'updated_at',               label: 'עודכן לאחרונה',             format: 'datetime' },
-    // Allowlisted extra_data (Phase E2 names + DX audit fields)
-    { key: 'extra_data.first_name',    label: 'שם פרטי',                   format: 'text'     },
-    { key: 'extra_data.last_name',     label: 'שם משפחה',                  format: 'text'     },
+    // Allowlisted extra_data (Phase E2 names + DX audit fields).
+    // UAT round-3 — `extra_data.first_name` / `_last_name` resolve from
+    // the IMMEDIATE owning entity (the person being called). The
+    // root-target's name (head of the circle / "client head") sits on
+    // separate flat fields below so an export can carry BOTH.
+    { key: 'extra_data.first_name',    label: 'שם פרטי (ישות)',            format: 'text'     },
+    { key: 'extra_data.last_name',     label: 'שם משפחה (ישות)',           format: 'text'     },
+    { key: 'root_first_name',          label: 'שם פרטי (לקוח-שורש)',       format: 'text'     },
+    { key: 'root_last_name',           label: 'שם משפחה (לקוח-שורש)',      format: 'text'     },
     { key: 'extra_data.customer_tier', label: 'דרגת לקוח (גולמי)',         format: 'number'   },
     { key: 'extra_data.bulk_submission_id', label: 'מזהה אצווה',           format: 'text'     },
     { key: 'extra_data.envelope_id',   label: 'מזהה מעטפת',               format: 'text'     },
