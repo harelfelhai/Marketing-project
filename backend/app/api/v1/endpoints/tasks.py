@@ -31,9 +31,9 @@ via `MockAuthContext`. Phase G replaces the body fields with a
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from app.api.deps import get_pipeline_task_service
+from app.api.deps import get_export_service, get_pipeline_task_service
 from app.schemas.api_contracts import (
     BulkResolveTaskRequest,
     BulkResolveTaskResponse,
@@ -41,13 +41,20 @@ from app.schemas.api_contracts import (
     PipelineTaskListResponse,
     PipelineTaskResponse,
     ResolveTaskRequest,
+    TableExportRequest,
 )
 from exceptions import (
     PhoneNumberNotFoundError,
     PipelineTaskNotFoundError,
     TaskStateTransitionError,
 )
+from services.export import ExportService
 from services.tasks import PipelineTaskService, TaskJoinRow
+
+
+_XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 
 router = APIRouter()
@@ -140,6 +147,18 @@ def list_tasks(
             "passes `?status=resolved` and expects to see them)."
         ),
     ),
+    q: Optional[str] = Query(
+        default=None,
+        max_length=200,
+        description=(
+            "Free-text substring search across phone_number, "
+            "requested_by, resolved_by, and client_id (stringified). "
+            "Match is case-insensitive. Used by the Task Center search "
+            "bar so the same intent applies to both the live list and "
+            "the .xlsx export. Frontend-resolved client names are NOT "
+            "matched — filter by the client_id dropdown for that."
+        ),
+    ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     page_size: int = Query(
         default=20,
@@ -168,6 +187,7 @@ def list_tasks(
         task_type_filter=task_type,
         phone_id_filter=phone_id,
         exclude_terminal=exclude_terminal,
+        q=q,
         page=page,
         page_size=page_size,
     )
@@ -272,6 +292,63 @@ def open_task(
 
     # Re-fetch with the JOIN so the response carries the convenience fields.
     return _row_to_response(service.get_task_with_join(task_id=task.id))
+
+
+@router.post(
+    "/export",
+    summary="Export the /tasks table to Excel (.xlsx)",
+    description=(
+        "Streams an .xlsx workbook containing the rows matching "
+        "`filters` (same shape as the GET /tasks query params), "
+        "projected onto the operator-supplied `columns`."
+        "\n\n"
+        "**Privacy gate:** every column `key` is validated against "
+        "`ALLOWED_EXPORT_COLUMNS_TASKS` server-side. Out-of-allowlist "
+        "keys (including arbitrary `extra_data.*` subkeys) are "
+        "rejected with 422."
+        "\n\n"
+        "**Row cap:** 10,000. Requests yielding more rows return 422 "
+        "with the actual count so the operator can narrow filters."
+        "\n\n"
+        "Registered BEFORE `/{task_id}/resolve` so the literal "
+        "`/export` segment isn't captured by the dynamic param."
+    ),
+    responses={
+        200: {
+            "content": {_XLSX_MEDIA_TYPE: {}},
+            "description": "The .xlsx workbook bytes.",
+        }
+    },
+)
+def export_tasks(
+    body: TableExportRequest,
+    service: ExportService = Depends(get_export_service),
+) -> Response:
+    """
+    Delegate to `ExportService.export_tasks` and stream the .xlsx
+    bytes with download headers.
+
+    Raises:
+        HTTPException 422: column key outside allowlist OR row count
+            exceeds MAX_EXPORT_ROWS.
+    """
+    try:
+        xlsx_bytes, filename = service.export_tasks(
+            filters=body.filters,
+            columns=[c.model_dump() for c in body.columns],
+            filename_hint=body.filename_hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post(

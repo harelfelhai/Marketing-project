@@ -20,13 +20,14 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import func, nullslast, select as sa_select
+from sqlalchemy import func, nullslast, or_, select as sa_select
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
 
 from app.api.deps import (
     get_action_data_trigger_service,
     get_bulk_ingestion_service,
+    get_export_service,
     get_scoring_service,
 )
 from app.schemas.api_contracts import (
@@ -40,6 +41,7 @@ from app.schemas.api_contracts import (
     PhoneSummary,
     PhoneUpdateRequest,
     PhoneUpdateResponse,
+    TableExportRequest,
 )
 from database import get_session
 from exceptions import PhoneNumberNotFoundError, TargetNotFoundError
@@ -49,9 +51,18 @@ from models.phone_number import PhoneNumber
 from models.types import utc_now
 from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDataTriggerService
+from services.export import ExportService
 from services.scoring import ScoringService
 
 router = APIRouter()
+
+
+# Excel MIME — used by both the Phase EXP table export and the Phase E1-B
+# template download below. Declared up here so both endpoints share one
+# string literal.
+_XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 
 @router.get(
@@ -115,6 +126,18 @@ def list_phones(
             "priority_score DESC with NULLS LAST and `id DESC` as a "
             "tiebreaker so paginated cursors stay stable across requests. "
             "'ingested_at' preserves the legacy chronological ordering."
+        ),
+    ),
+    q: Optional[str] = Query(
+        default=None,
+        max_length=200,
+        description=(
+            "Free-text substring search across phone_number, entity_id "
+            "(stringified), and client_id (stringified). Match is "
+            "case-insensitive. Lets the PhoneGrid search bar push the "
+            "same intent through to the .xlsx export endpoint. "
+            "Frontend-resolved client names are NOT matched server-side "
+            "— filter by client_id directly for that."
         ),
     ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
@@ -183,6 +206,17 @@ def list_phones(
         filters.append(PhoneNumber.classification_type == classification_type)
     if client_id is not None:
         filters.append(Entity.client_id == client_id)
+    if q:
+        like = f"%{q}%"
+        # Substring across the operator-visible text in PhoneGrid. The
+        # client display name lives only in the frontend's
+        # clientRegistry; we match the integer client_id stringified
+        # so a search for "1" still hits Client Alpha rows.
+        filters.append(or_(
+            PhoneNumber.phone_number.ilike(like),
+            func.cast(PhoneNumber.entity_id, type_=PhoneNumber.phone_number.type).ilike(like),
+            func.cast(Entity.client_id, type_=PhoneNumber.phone_number.type).ilike(like),
+        ))
 
     for f in filters:
         base = base.where(f)
@@ -245,6 +279,68 @@ def list_phones(
 
 
 # ===========================================================================
+# Phase EXP — Table export to .xlsx
+# ===========================================================================
+#
+# Registered BEFORE `/{phone_id}` GET so the literal "/export" segment
+# isn't captured as a path parameter and forced through int() (→ 422).
+
+
+@router.post(
+    "/export",
+    summary="Export the /phones table to Excel (.xlsx)",
+    description=(
+        "Streams an .xlsx workbook containing the rows matching "
+        "`filters` (same shape as the GET /phones query params), "
+        "projected onto the operator-supplied `columns`."
+        "\n\n"
+        "**Privacy gate:** every column `key` is validated against "
+        "`ALLOWED_EXPORT_COLUMNS_PHONES` server-side. Out-of-allowlist "
+        "keys (including arbitrary `extra_data.*` subkeys) are "
+        "rejected with 422."
+        "\n\n"
+        "**Row cap:** 10,000. Requests yielding more rows return 422 "
+        "with the actual count so the operator can narrow filters."
+    ),
+    responses={
+        200: {
+            "content": {_XLSX_MEDIA_TYPE: {}},
+            "description": "The .xlsx workbook bytes.",
+        }
+    },
+)
+def export_phones(
+    body: TableExportRequest,
+    service: ExportService = Depends(get_export_service),
+) -> Response:
+    """
+    Delegate to `ExportService.export_phones` and stream the .xlsx
+    bytes with download headers.
+
+    Raises:
+        HTTPException 422: column key outside allowlist OR row count
+            exceeds MAX_EXPORT_ROWS.
+    """
+    try:
+        xlsx_bytes, filename = service.export_phones(
+            filters=body.filters,
+            columns=[c.model_dump() for c in body.columns],
+            filename_hint=body.filename_hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ===========================================================================
 # Phase E1-B — Excel template download
 # ===========================================================================
 #
@@ -253,9 +349,8 @@ def list_phones(
 # the {phone_id} path param and fail int conversion (→ 422).
 
 _TEMPLATE_FILENAME = "bulk_phones_template.xlsx"
-_XLSX_MEDIA_TYPE = (
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+# _XLSX_MEDIA_TYPE is declared at the top of the module — shared with
+# the Phase EXP `/export` endpoint above.
 
 
 @router.get(

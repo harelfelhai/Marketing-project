@@ -1893,3 +1893,176 @@ class TestEntityBulkTemplate:
         # editing in a valid target_entity_id.
         assert body["success_count"] == 2
         assert body["failed_count"] == 0
+
+
+# ===========================================================================
+# Phase EXP — Table export endpoints
+# ===========================================================================
+
+
+class TestPhoneExportEndpoint:
+    """POST /api/v1/phones/export — happy path + privacy gate + 422s."""
+
+    def test_happy_path_returns_xlsx_with_download_headers(self, client):
+        tc, session = client
+        _seed_target(session)
+        r = tc.post("/api/v1/phones/export", json={
+            "filters": {},
+            "columns": [
+                {"key": "phone_number", "label": "מספר טלפון", "format": "text"},
+                {"key": "verification_status", "label": "אימות", "format": "text"},
+            ],
+        })
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        assert "phones_" in r.headers.get("content-disposition", "")
+        assert ".xlsx" in r.headers.get("content-disposition", "")
+        assert r.content[:2] == b"PK"
+
+    def test_filters_narrow_the_export(self, client):
+        tc, session = client
+        _seed_target(session)
+        # Ingest a second number under a different status path —
+        # actually the seeded target is `pending`. We'll just check
+        # the filter is honored at the SQL level by passing a status
+        # nothing matches and expecting an empty data sheet.
+        import io as _io
+        import openpyxl as _openpyxl
+
+        r = tc.post("/api/v1/phones/export", json={
+            "filters": {"verification_status": "no_such_status"},
+            "columns": [{"key": "phone_number", "label": "P", "format": "text"}],
+        })
+        assert r.status_code == 200
+        wb = _openpyxl.load_workbook(_io.BytesIO(r.content), read_only=True)
+        rows = list(wb["data"].iter_rows(values_only=True))
+        # Just the header — no matching rows.
+        assert rows == [("P",)]
+
+    def test_disallowed_column_key_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/phones/export", json={
+            "filters": {},
+            "columns": [{"key": "extra_data.api_key", "label": "x", "format": "text"}],
+        })
+        assert r.status_code == 422
+        assert "extra_data.api_key" in r.json()["detail"]
+
+    def test_empty_columns_list_returns_422(self, client):
+        # Pydantic's min_length=1 catches this at parse time.
+        tc, _ = client
+        r = tc.post("/api/v1/phones/export", json={"filters": {}, "columns": []})
+        assert r.status_code == 422
+
+    def test_invalid_format_token_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/phones/export", json={
+            "filters": {},
+            "columns": [{"key": "phone_number", "label": "p", "format": "weird"}],
+        })
+        assert r.status_code == 422
+
+    def test_filename_hint_appears_in_content_disposition(self, client):
+        tc, session = client
+        _seed_target(session)
+        r = tc.post("/api/v1/phones/export", json={
+            "filters": {},
+            "columns": [{"key": "phone_number", "label": "p", "format": "text"}],
+            "filename_hint": "pending_audit",
+        })
+        assert r.status_code == 200
+        assert "pending_audit" in r.headers["content-disposition"]
+
+
+class TestTaskExportEndpoint:
+    """POST /api/v1/tasks/export — happy path + 422s."""
+
+    def _seed_two_tasks(self, tc, session):
+        phone = _seed_target(session)
+        tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "approval_required",
+            "requested_by": "alice",
+        })
+        tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "remediation_failure",
+            "requested_by": "bob",
+        })
+
+    def test_happy_path(self, client):
+        tc, session = client
+        self._seed_two_tasks(tc, session)
+
+        r = tc.post("/api/v1/tasks/export", json={
+            "filters": {},
+            "columns": [
+                {"key": "task_type", "label": "סוג", "format": "text"},
+                {"key": "requested_by", "label": "פתח", "format": "text"},
+            ],
+        })
+        assert r.status_code == 200
+        import io as _io
+        import openpyxl as _openpyxl
+        wb = _openpyxl.load_workbook(_io.BytesIO(r.content), read_only=True)
+        rows = list(wb["data"].iter_rows(values_only=True))
+        assert rows[0] == ("סוג", "פתח")
+        assert len(rows) == 3   # header + 2 tasks
+
+    def test_q_filter_narrows_tasks(self, client):
+        tc, session = client
+        self._seed_two_tasks(tc, session)
+        r = tc.post("/api/v1/tasks/export", json={
+            "filters": {"q": "alice"},
+            "columns": [{"key": "task_type", "label": "x", "format": "text"}],
+        })
+        assert r.status_code == 200
+        import io as _io
+        import openpyxl as _openpyxl
+        wb = _openpyxl.load_workbook(_io.BytesIO(r.content), read_only=True)
+        rows = list(wb["data"].iter_rows(values_only=True))
+        assert len(rows) == 2   # header + alice's task only
+
+    def test_disallowed_column_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/tasks/export", json={
+            "filters": {},
+            "columns": [{"key": "extra_data.secret_field", "label": "x", "format": "text"}],
+        })
+        assert r.status_code == 422
+
+
+class TestListEndpointsAcceptQParam:
+    """GET /tasks?q=... and /phones?q=... — added so live tables and
+    exports apply the same search intent."""
+
+    def test_tasks_q_param_narrows_list_result(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "approval_required",
+            "requested_by": "alice",
+        })
+        tc.post("/api/v1/tasks", json={
+            "phone_id": phone.id, "task_type": "remediation_failure",
+            "requested_by": "bob",
+        })
+        r = tc.get("/api/v1/tasks?q=alice")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_phones_q_param_narrows_list_result(self, client):
+        tc, session = client
+        _seed_target(session)
+        # The seeded target is phone +15550001111. q matching a
+        # substring of that number should return it.
+        r = tc.get("/api/v1/phones?q=1111")
+        assert r.status_code == 200
+        assert r.json()["total"] >= 1
+
+    def test_phones_q_param_no_match_returns_empty(self, client):
+        tc, session = client
+        _seed_target(session)
+        r = tc.get("/api/v1/phones?q=zzz_no_match")
+        assert r.status_code == 200
+        assert r.json()["total"] == 0

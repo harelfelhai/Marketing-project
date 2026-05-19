@@ -987,6 +987,99 @@ class OpenTaskRequest(BaseModel):
     )
 
 
+# ===========================================================================
+# DOMAIN H — TABLE EXPORT (Phase EXP)
+# ===========================================================================
+# Generic Excel-export contracts shared by every exportable tabular view.
+# Each table has its own endpoint (POST /api/v1/{table}/export) but the
+# request and column-descriptor shapes are identical.
+
+
+class TableExportColumn(BaseModel):
+    """
+    One column descriptor inside a TableExportRequest.
+
+    The frontend supplies BOTH the structural `key` (what to look up
+    server-side) AND the operator-facing `label` (what to write into
+    the .xlsx header row). Keeping the label here — rather than
+    server-side — preserves the Secrets-Free Mandate: the backend
+    never stores Hebrew display strings, but operators still see
+    Hebrew column headers in their exported files because the request
+    body carries them through.
+    """
+
+    key: str = Field(
+        ...,
+        min_length=1,
+        max_length=80,
+        description=(
+            "Column identifier. Either a flat field on the row "
+            "(`phone_number`, `status`) or a dotted path into the "
+            "opaque `extra_data` blob (`extra_data.first_name`). "
+            "Validated against the per-table allowlist server-side; "
+            "out-of-allowlist keys are rejected with 422."
+        ),
+    )
+    label: str = Field(
+        ...,
+        min_length=1,
+        max_length=80,
+        description=(
+            "Display string written verbatim into the .xlsx header "
+            "row. Typically a Hebrew string from the frontend's "
+            "exportCatalog. The backend does NOT validate or "
+            "translate this — it's pass-through data."
+        ),
+    )
+    format: Optional[str] = Field(
+        default="text",
+        pattern="^(text|number|number2|datetime)$",
+        description=(
+            "Cell-type token. `text` (default), `number`, `number2` "
+            "(2-decimal float), or `datetime`. Drives openpyxl cell "
+            "typing so operators can sort and filter natively in Excel."
+        ),
+    )
+
+
+class TableExportRequest(BaseModel):
+    """
+    Request body for POST /api/v1/{table}/export.
+
+    The `filters` shape mirrors the corresponding list endpoint's
+    query params — same keys, same semantics — so "what you see is
+    what you export" is enforced at the query layer. Unknown filter
+    keys are ignored server-side (forward-compatible).
+    """
+
+    filters: dict = Field(
+        default_factory=dict,
+        description=(
+            "Same key/value shape as the list endpoint's query string. "
+            "Example for /phones: "
+            "`{verification_status: 'pending', client_id: 1, q: '+972'}`."
+        ),
+    )
+    columns: List[TableExportColumn] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description=(
+            "1..50 column descriptors. Order in the list is the "
+            "column order in the exported sheet."
+        ),
+    )
+    filename_hint: Optional[str] = Field(
+        default=None,
+        max_length=40,
+        description=(
+            "Optional operator-supplied label inserted into the "
+            "default `{table}_{label}_{date}.xlsx` filename. Safe-"
+            "sanitized server-side to A-Za-z0-9_-."
+        ),
+    )
+
+
 class BulkResolveTaskRequest(BaseModel):
     """
     Request body for POST /api/v1/tasks/bulk-status.

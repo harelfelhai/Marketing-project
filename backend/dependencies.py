@@ -44,6 +44,7 @@ from interfaces.verification import BaseVerificationStrategy
 from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDispatcher
 from services.entity_ingestion import EntityIngestionService
+from services.export import ExportService
 from services.ingestion import IngestionService
 from services.scoring import ScoringService
 from services.verification import VerificationEngine, VerificationService
@@ -292,6 +293,29 @@ def get_scoring_service(
         ScoringService: Ready to recalculate any phone's priority score.
     """
     return ScoringService(session=session, strategy=strategy)
+
+
+# ===========================================================================
+# PHASE EXP — TABLE EXPORT
+# ===========================================================================
+
+
+def get_export_service(
+    session: Session = Depends(get_session),
+) -> ExportService:
+    """
+    Compose and return an `ExportService` for the current request.
+
+    The service is read-only — no scoring / dispatcher / routing
+    dependencies needed; just the per-request DB session.
+
+    Args:
+        session (Session): Per-request DB session.
+
+    Returns:
+        ExportService: Ready to handle one phones/tasks export.
+    """
+    return ExportService(session=session)
 
 
 # ===========================================================================

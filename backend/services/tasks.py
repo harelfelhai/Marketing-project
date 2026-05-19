@@ -26,7 +26,7 @@ replace it with a `get_current_operator` FastAPI dependency.
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-from sqlalchemy import func, select as sa_select
+from sqlalchemy import func, or_, select as sa_select
 from sqlmodel import Session, select
 
 from exceptions import (
@@ -296,6 +296,7 @@ class PipelineTaskService:
         task_type_filter: Optional[str] = None,
         phone_id_filter: Optional[int] = None,
         exclude_terminal: bool = False,
+        q: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[TaskJoinRow], int]:
@@ -354,6 +355,20 @@ class PipelineTaskService:
         # toggle the UI defaults to ON.
         if exclude_terminal and status_filter is None:
             filters.append(PipelineTask.status.notin_(_TERMINAL_STATUSES))
+        # Substring search — mirrors TaskTable.applyFilters' frontend
+        # search semantics: matches phone_number, requested_by,
+        # resolved_by, and client_id (stringified) so an operator
+        # filtering on screen sees the same set the server exports.
+        # `client_name` is intentionally NOT matched — that's a
+        # frontend-resolved display name the backend doesn't store.
+        if q:
+            like = f"%{q}%"
+            filters.append(or_(
+                PhoneNumber.phone_number.ilike(like),
+                PipelineTask.requested_by.ilike(like),
+                PipelineTask.resolved_by.ilike(like),
+                func.cast(Entity.client_id, type_=PhoneNumber.phone_number.type).ilike(like),
+            ))
 
         for f in filters:
             base = base.where(f)

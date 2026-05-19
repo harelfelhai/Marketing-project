@@ -28,6 +28,7 @@ from dependencies import (  # noqa: F401  (re-exported for router convenience)
     get_action_dispatcher,
     get_bulk_ingestion_service,
     get_entity_ingestion_service,
+    get_export_service,
     get_ingestion_service,
     get_scoring_service,
     get_verification_engine,
