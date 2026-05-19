@@ -15,19 +15,21 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, Upload } from 'lucide-react';
+import { Check, Loader2, Upload } from 'lucide-react';
 
 import DynamicField from './DynamicField';
 import { getLeadFormSchema }  from '../../api/schemaApi';
 import { ingestCircleMember } from '../../api/ingestionApi';
 import { useMockData }        from '../../contexts/MockDataContext';
 import { useUI }              from '../../contexts/UIContext';
+import NotificationOptInPanel from '../notifications/NotificationOptInPanel';
 import {
   INGEST_MODAL_LOADING, INGEST_MODAL_SCHEMA_ERROR,
   INGEST_MODAL_BTN_CANCEL, INGEST_MODAL_BTN_SUBMIT, INGEST_MODAL_BTN_SUBMITTING,
   INGEST_MODAL_REQUIRED_NOTE,
   INGEST_TOAST_SCHEMA_ERROR, INGEST_TOAST_SUCCESS, INGEST_TOAST_ERROR,
   INGEST_FIELD_REQUIRED, INGEST_FIELD_JSON_ERR,
+  ENTITY_SUCCESS_DISMISS,    // 'סיום' — reused for the success state
 } from '../../config/strings.he';
 
 export default function SingleIngestionPanel({ active }) {
@@ -39,6 +41,11 @@ export default function SingleIngestionPanel({ active }) {
   const [values,        setValues]        = useState({});
   const [fieldErrors,   setFieldErrors]   = useState({});
   const [submitting,    setSubmitting]    = useState(false);
+  // Phase NOTIF-C — SUCCESS state. After a successful ingest the
+  // form swaps to a success card carrying the inline NotificationOptInPanel
+  // for the freshly-ingested phone. Operator dismisses manually
+  // (mirrors the entity-success UX).
+  const [ingestedPhone, setIngestedPhone] = useState(null);
 
   // Fetch the schema once per activation of this tab. Re-fetches if the
   // operator switches away and back (cheap; mock-mode has a 200ms delay).
@@ -53,6 +60,9 @@ export default function SingleIngestionPanel({ active }) {
     setLoadingSchema(true);
     setValues({});
     setFieldErrors({});
+    // Phase NOTIF-C — re-opening the tab always returns to the form,
+    // not a stale success card from a previous ingestion.
+    setIngestedPhone(null);
     getLeadFormSchema()
       .then((s) => {
         setSchema(s);
@@ -118,9 +128,13 @@ export default function SingleIngestionPanel({ active }) {
 
     setSubmitting(true);
     try {
-      await ingestCircleMember(payload, mockDb);
+      const created = await ingestCircleMember(payload, mockDb);
       pushToast({ variant: 'success', message: INGEST_TOAST_SUCCESS });
-      closeIngestionModal();
+      // Phase NOTIF-C — instead of closing immediately, swap to a
+      // success card so the operator can opt-in to alerts for this
+      // phone. `created.id` is the new PhoneNumber.id (real + mock
+      // modes both return it in IngestionResponse shape).
+      setIngestedPhone(created);
     } catch (err) {
       pushToast({ variant: 'error', message: INGEST_TOAST_ERROR(err.message) });
     } finally {
@@ -142,6 +156,42 @@ export default function SingleIngestionPanel({ active }) {
       <p className="text-sm text-rose-600 py-6 text-center">
         {INGEST_MODAL_SCHEMA_ERROR}
       </p>
+    );
+  }
+
+  // Phase NOTIF-C — SUCCESS state. Mirrors the SingleEntityPanel
+  // success card structure (green confirmation + inline opt-in +
+  // dismiss button). The previous behavior closed the modal
+  // immediately on success; we now let the operator opt-in to
+  // alerts about the new phone first.
+  if (ingestedPhone) {
+    return (
+      <div className="space-y-4" data-testid="phone-ingest-success-panel">
+        <div className="flex items-start gap-3 rounded-md bg-emerald-50 border border-emerald-200 p-4">
+          <Check className="w-5 h-5 mt-0.5 text-emerald-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-emerald-900">
+              {INGEST_TOAST_SUCCESS}
+            </p>
+          </div>
+        </div>
+
+        <NotificationOptInPanel
+          contextKind="phone"
+          contextId={ingestedPhone.id}
+        />
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={closeIngestionModal}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors"
+            data-testid="phone-ingest-success-dismiss"
+          >
+            {ENTITY_SUCCESS_DISMISS}
+          </button>
+        </div>
+      </div>
     );
   }
 

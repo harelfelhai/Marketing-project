@@ -28,6 +28,7 @@ import { X, ExternalLink } from 'lucide-react';
 import Badge          from '../primitives/Badge';
 import RequireRole    from '../primitives/RequireRole';
 import ResolveTaskModal from './ResolveTaskModal';
+import NotificationOptInPanel from '../notifications/NotificationOptInPanel';
 import { useMockData } from '../../contexts/MockDataContext';
 import {
   taskStatusVariant, taskStatusLabel,
@@ -185,6 +186,16 @@ export default function TaskDetailDrawer({ taskId, onClose }) {
             </h3>
             <SourceActionLogCard log={sourceLog} hasRef={task.source_action_log_id != null} />
           </section>
+
+          {/* Phase NOTIF-C — inline opt-in for alerts about this task.
+              Useful for non-terminal tasks (operator wants to know
+              when someone else resolves it / it escalates) and also
+              after settlement (operator wants to know if it gets
+              re-opened or new actions land against it). */}
+          <NotificationOptInPanel
+            contextKind="task"
+            contextId={task.id}
+          />
         </div>
 
         {/* ---------- Footer (sticky, opaque) ---------- */}
