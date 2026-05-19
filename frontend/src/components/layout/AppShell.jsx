@@ -27,7 +27,7 @@ import {
 
 
 export default function AppShell({ children }) {
-  const { status, operatorId, operatorRole, user, logout } = useAuth();
+  const { status, operatorId, operatorRole, user, logout, exitGuest } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -65,6 +65,7 @@ export default function AppShell({ children }) {
               operatorRole={operatorRole}
               displayName={user?.display_name}
               onLogout={logout}
+              onExitGuest={exitGuest}
             />
           </div>
         </div>
@@ -115,7 +116,7 @@ function PersonalizationToggle() {
  * ========================================================================= */
 
 
-function OperatorChip({ status, operatorId, operatorRole, displayName, onLogout }) {
+function OperatorChip({ status, operatorId, operatorRole, displayName, onLogout, onExitGuest }) {
   const { pushToast } = useUI();
 
   const handleLogout = async () => {
@@ -127,7 +128,10 @@ function OperatorChip({ status, operatorId, operatorRole, displayName, onLogout 
     }
   };
 
-  // Guest mode — small static badge, no logout (there's no session).
+  // Guest mode — small static badge + exit-to-login link. Guests have
+  // no server session so there's nothing to terminate; the click just
+  // clears the localStorage guestMode flag and flips status back to
+  // 'unauthenticated' so the route gate redirects to /login.
   if (status === 'guest') {
     return (
       <div
@@ -138,6 +142,15 @@ function OperatorChip({ status, operatorId, operatorRole, displayName, onLogout 
           ?
         </div>
         <span>{AUTH_HEADER_GUEST_BADGE}</span>
+        <button
+          type="button"
+          onClick={onExitGuest}
+          data-testid="auth-exit-guest-btn"
+          aria-label={AUTH_HEADER_LOGOUT}
+          className="ms-1 text-slate-400 hover:text-slate-700 transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+        </button>
       </div>
     );
   }

@@ -176,6 +176,15 @@ export function AuthProvider({ children, initialState }) {
     _writeGuestFlag(true);
   }, []);
 
+  // Exit guest mode without logging anyone in. Clears the localStorage
+  // flag and flips status back to 'unauthenticated' so the route gate
+  // redirects to /login. Symmetric counterpart to continueAsGuest.
+  const exitGuest = useCallback(() => {
+    setUser(null);
+    setStatus('unauthenticated');
+    _writeGuestFlag(false);
+  }, []);
+
   const togglePersonalization = useCallback(() => {
     setPersonalizationActive((prev) => {
       const next = !prev;
@@ -211,6 +220,7 @@ export function AuthProvider({ children, initialState }) {
     logout,
     register,
     continueAsGuest,
+    exitGuest,
     patchMe,
     personalizationActive,
     togglePersonalization,
@@ -247,6 +257,7 @@ export function useAuth() {
       logout: async () => {},
       register: async () => {},
       continueAsGuest: () => {},
+      exitGuest:       () => {},
       patchMe: async () => {},
     };
   }
