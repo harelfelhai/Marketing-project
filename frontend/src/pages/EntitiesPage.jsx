@@ -11,9 +11,14 @@
  * Shows BOTH primary (target) and associated (family/friend/...)
  * entities. Personalization toggle narrows by managed_client_ids.
  * Soft-deleted rows are hidden — surface them in /admin instead.
+ *
+ * Clicking the "# Phones" cell opens a popover with the linked
+ * phones + their verification status + confidence score, so the
+ * operator gets the per-number context without navigating away.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Phone as PhoneIcon, X } from 'lucide-react';
 
 import { listEntities } from '../api/entityApi';
 import { useMockData } from '../contexts/MockDataContext';
@@ -24,6 +29,8 @@ import {
   ENTITIES_COL_ID, ENTITIES_COL_NAME, ENTITIES_COL_RELATION,
   ENTITIES_COL_CLIENT, ENTITIES_COL_PHONES, ENTITIES_COL_CREATED,
   ENTITIES_EMPTY,
+  ENTITIES_PHONES_POPOVER_TITLE, ENTITIES_PHONES_POPOVER_EMPTY,
+  ENTITIES_PHONES_POPOVER_CONFIDENCE,
 } from '../config/strings.he';
 
 
@@ -33,6 +40,7 @@ export default function EntitiesPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [openPhonesFor, setOpenPhonesFor] = useState(null);
 
   // Derive personalization narrowing.
   const personalizationClientIds =
@@ -58,15 +66,22 @@ export default function EntitiesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Phone-count lookup by entity_id (active phones only).
-  const phoneCountByEntity = useMemo(() => {
+  // Active phones grouped by entity_id — drives BOTH the count cell
+  // and the popover detail list.
+  const phonesByEntity = useMemo(() => {
     const map = new Map();
     for (const p of mockDb.phones) {
       if (p.deleted_at) continue;
-      map.set(p.entity_id, (map.get(p.entity_id) || 0) + 1);
+      if (!map.has(p.entity_id)) map.set(p.entity_id, []);
+      map.get(p.entity_id).push(p);
     }
     return map;
   }, [mockDb.phones]);
+
+  const openEntity = openPhonesFor
+    ? items.find((e) => e.id === openPhonesFor)
+    : null;
+  const openPhones = openEntity ? (phonesByEntity.get(openEntity.id) || []) : [];
 
   return (
     <section className="space-y-4" dir="rtl">
@@ -94,7 +109,7 @@ export default function EntitiesPage() {
               <th className="text-start px-3 py-2 font-medium">{ENTITIES_COL_NAME}</th>
               <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_RELATION}</th>
               <th className="text-start px-3 py-2 font-medium w-36">{ENTITIES_COL_CLIENT}</th>
-              <th className="text-start px-3 py-2 font-medium w-24">{ENTITIES_COL_PHONES}</th>
+              <th className="text-start px-3 py-2 font-medium w-28">{ENTITIES_COL_PHONES}</th>
               <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_CREATED}</th>
             </tr>
           </thead>
@@ -108,6 +123,7 @@ export default function EntitiesPage() {
                 const name = [e.first_name, e.last_name].filter(Boolean).join(' ') || `#${e.id}`;
                 const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
                 const created = e.created_at ? new Date(e.created_at).toLocaleDateString('he-IL') : '—';
+                const phoneCount = (phonesByEntity.get(e.id) || []).length;
                 return (
                   <tr
                     key={e.id}
@@ -118,7 +134,23 @@ export default function EntitiesPage() {
                     <td className="px-3 py-2 text-slate-900">{name}</td>
                     <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>
-                    <td className="px-3 py-2 text-slate-700">{phoneCountByEntity.get(e.id) || 0}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setOpenPhonesFor(e.id)}
+                        disabled={phoneCount === 0}
+                        data-testid={`entity-phones-count-${e.id}`}
+                        className={[
+                          'inline-flex items-center gap-1.5 h-7 px-2 rounded text-xs transition-colors',
+                          phoneCount === 0
+                            ? 'text-slate-400 cursor-default'
+                            : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 cursor-pointer',
+                        ].join(' ')}
+                      >
+                        <PhoneIcon className="w-3 h-3" />
+                        {phoneCount}
+                      </button>
+                    </td>
                     <td className="px-3 py-2 text-slate-500 text-xs">{created}</td>
                   </tr>
                 );
@@ -127,6 +159,76 @@ export default function EntitiesPage() {
           </tbody>
         </table>
       </div>
+
+      {openEntity && (
+        <PhonesPopover
+          entity={openEntity}
+          phones={openPhones}
+          onClose={() => setOpenPhonesFor(null)}
+        />
+      )}
     </section>
+  );
+}
+
+
+/**
+ * PhonesPopover — compact modal listing the phones attached to one
+ * entity. Kept simple because the count is small (5 phones is the
+ * 99th-percentile case based on the seed); a virtualized scroller
+ * would be overkill.
+ */
+function PhonesPopover({ entity, phones, onClose }) {
+  const name = [entity.first_name, entity.last_name].filter(Boolean).join(' ') || `#${entity.id}`;
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4"
+      onClick={onClose}
+      data-testid="entity-phones-popover"
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-lg border border-slate-200 shadow-lg p-5 space-y-3"
+        dir="rtl"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <header className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">
+            {ENTITIES_PHONES_POPOVER_TITLE(name)}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="סגור"
+            className="text-slate-400 hover:text-slate-700"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </header>
+
+        {phones.length === 0 ? (
+          <p className="text-sm text-slate-500 py-2">{ENTITIES_PHONES_POPOVER_EMPTY}</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {phones.map((p) => (
+              <li key={p.id} className="py-2 flex items-center justify-between gap-3">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-mono text-sm text-slate-900" dir="ltr">
+                    {p.phone_number}
+                  </span>
+                  <span className="text-[11px] text-slate-500 mt-0.5">
+                    {p.verification_status}
+                  </span>
+                </div>
+                <span className="text-xs text-slate-600 whitespace-nowrap">
+                  {ENTITIES_PHONES_POPOVER_CONFIDENCE(
+                    p.confidence_score != null ? Math.round(p.confidence_score * 100) : null,
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }

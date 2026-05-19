@@ -84,4 +84,20 @@ describe('EntitiesPage — view tab', () => {
     const rows = await screen.findAllByTestId('entity-row');
     expect(rows.length).toBeGreaterThan(0);
   });
+
+  it('clicking the phones-count opens a popover listing the linked phones', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/entities', as: 'admin' });
+    await screen.findAllByTestId('entity-row');
+    // Find the first count button that is enabled (>0 phones).
+    const allCountBtns = screen.getAllByRole('button').filter(
+      (b) => b.getAttribute('data-testid')?.startsWith('entity-phones-count-')
+              && !b.disabled,
+    );
+    expect(allCountBtns.length).toBeGreaterThan(0);
+    await user.click(allCountBtns[0]);
+    const popover = await screen.findByTestId('entity-phones-popover');
+    // Popover shows at least one אמינות line.
+    expect(within(popover).getAllByText(/אמינות/).length).toBeGreaterThan(0);
+  });
 });

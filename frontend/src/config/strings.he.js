@@ -33,6 +33,10 @@ export const ENTITIES_COL_CLIENT  = 'לקוח';
 export const ENTITIES_COL_PHONES  = 'מספרי טלפון';
 export const ENTITIES_COL_CREATED = 'נוצר';
 export const ENTITIES_EMPTY       = 'לא נמצאו ישויות.';
+export const ENTITIES_PHONES_POPOVER_TITLE = (name) => `מספרים של ${name}`;
+export const ENTITIES_PHONES_POPOVER_EMPTY = 'אין מספרים מקושרים לישות זו.';
+export const ENTITIES_PHONES_POPOVER_CONFIDENCE = (pct) =>
+  pct == null ? 'אמינות: —' : `אמינות: ${pct}%`;
 
 // DataAdminPage (UAT round-3 admin tab).
 export const ADMIN_PAGE_TITLE  = 'ניהול נתונים';
