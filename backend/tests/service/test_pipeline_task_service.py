@@ -284,3 +284,149 @@ class TestListAndGet:
         assert len(rows) == 2
         rows2, _ = svc.list_tasks_with_join(page=3, page_size=2)
         assert len(rows2) == 1
+
+
+class TestExcludeTerminal:
+    """Phase: Task Center default-hide toggle. `exclude_terminal=True`
+    drops resolved + rejected rows from the result set; explicit
+    `status_filter` overrides the toggle."""
+
+    def _seed_mixed(self, session, seeded_target):
+        svc = PipelineTaskService(session=session)
+        t_pending  = svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
+        t_resolved = svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="op")
+        t_rejected = svc.open_task(phone_id=seeded_target.id, task_type="c", requested_by="op")
+        svc.resolve_task(task_id=t_resolved.id, operator_id="adm", outcome="resolved")
+        svc.resolve_task(task_id=t_rejected.id, operator_id="adm", outcome="rejected")
+        return svc, t_pending, t_resolved, t_rejected
+
+    def test_exclude_terminal_drops_resolved_and_rejected(
+        self, session, seeded_target
+    ):
+        svc, pending, _resolved, _rejected = self._seed_mixed(session, seeded_target)
+        rows, total = svc.list_tasks_with_join(exclude_terminal=True)
+        assert total == 1
+        assert rows[0][0].id == pending.id
+
+    def test_exclude_terminal_false_returns_everything(
+        self, session, seeded_target
+    ):
+        svc, *_ = self._seed_mixed(session, seeded_target)
+        rows, total = svc.list_tasks_with_join(exclude_terminal=False)
+        assert total == 3
+
+    def test_explicit_status_filter_overrides_exclude_terminal(
+        self, session, seeded_target
+    ):
+        """The toggle is a default-hide, NOT a hard mask. If the caller
+        explicitly asks for resolved tasks (the audit view), the toggle
+        must not silently shadow the request."""
+        svc, _pending, resolved, _rejected = self._seed_mixed(session, seeded_target)
+        rows, total = svc.list_tasks_with_join(
+            status_filter="resolved",
+            exclude_terminal=True,
+        )
+        assert total == 1
+        assert rows[0][0].id == resolved.id
+
+
+class TestBulkResolveTasks:
+    """Phase: Task Center bulk-update. Per-task resilience contract — a
+    bad id (missing or already-terminal) lands in `failed_rows` without
+    aborting the rest of the batch."""
+
+    def _seed_n_pending(self, session, seeded_target, n):
+        svc = PipelineTaskService(session=session)
+        ids = []
+        for i in range(n):
+            t = svc.open_task(phone_id=seeded_target.id, task_type=f"t{i}", requested_by="op")
+            ids.append(t.id)
+        return svc, ids
+
+    def test_happy_path_settles_all_to_resolved(self, session, seeded_target):
+        svc, ids = self._seed_n_pending(session, seeded_target, 3)
+        summary = svc.bulk_resolve_tasks(
+            task_ids=ids,
+            operator_id="manager_1",
+            outcome="resolved",
+        )
+        assert summary["success_count"] == 3
+        assert summary["failed_count"] == 0
+        assert sorted(summary["success_ids"]) == sorted(ids)
+        # Each task is settled with resolved_by + resolved_at populated.
+        for tid in ids:
+            task = session.get(PipelineTask, tid)
+            assert task.status == "resolved"
+            assert task.resolved_by == "manager_1"
+            assert task.resolved_at is not None
+
+    def test_rejected_outcome_writes_rejected_status(self, session, seeded_target):
+        svc, ids = self._seed_n_pending(session, seeded_target, 2)
+        summary = svc.bulk_resolve_tasks(
+            task_ids=ids,
+            operator_id="manager_1",
+            outcome="rejected",
+        )
+        assert summary["success_count"] == 2
+        for tid in ids:
+            assert session.get(PipelineTask, tid).status == "rejected"
+
+    def test_missing_id_lands_in_failed_rows(self, session, seeded_target):
+        svc, ids = self._seed_n_pending(session, seeded_target, 2)
+        summary = svc.bulk_resolve_tasks(
+            task_ids=[ids[0], 99_999, ids[1]],
+            operator_id="manager_1",
+            outcome="resolved",
+        )
+        assert summary["success_count"] == 2
+        assert summary["failed_count"] == 1
+        assert summary["failed_rows"][0]["task_id"] == 99_999
+        assert "not found" in summary["failed_rows"][0]["error"]
+
+    def test_already_terminal_lands_in_failed_rows(self, session, seeded_target):
+        svc, ids = self._seed_n_pending(session, seeded_target, 2)
+        # Pre-resolve one task via the singular path.
+        svc.resolve_task(task_id=ids[0], operator_id="adm", outcome="resolved")
+
+        # Now try to bulk-resolve both — the pre-settled one fails.
+        summary = svc.bulk_resolve_tasks(
+            task_ids=ids,
+            operator_id="manager_1",
+            outcome="resolved",
+        )
+        assert summary["success_count"] == 1
+        assert summary["failed_count"] == 1
+        assert summary["failed_rows"][0]["task_id"] == ids[0]
+        assert "terminal" in summary["failed_rows"][0]["error"]
+
+    def test_resolution_note_merged_into_each_extra_data(
+        self, session, seeded_target
+    ):
+        svc, ids = self._seed_n_pending(session, seeded_target, 2)
+        svc.bulk_resolve_tasks(
+            task_ids=ids,
+            operator_id="manager_1",
+            outcome="resolved",
+            resolution_note="batch handled in war-room 2026-05-19",
+        )
+        for tid in ids:
+            extra = session.get(PipelineTask, tid).extra_data
+            assert extra["resolution_note"] == "batch handled in war-room 2026-05-19"
+            assert extra["resolution_outcome"] == "resolved"
+            assert extra["resolved_by"] == "manager_1"
+
+    def test_partial_failure_does_not_block_other_settles(
+        self, session, seeded_target
+    ):
+        """The whole point of the resilience contract: a single bad
+        id must not stop the rest of the batch from committing."""
+        svc, ids = self._seed_n_pending(session, seeded_target, 3)
+        summary = svc.bulk_resolve_tasks(
+            task_ids=[ids[0], 99_999, ids[1], ids[2]],
+            operator_id="manager_1",
+            outcome="resolved",
+        )
+        assert summary["success_count"] == 3
+        # The valid ids are all settled despite the bad id in the middle.
+        for tid in ids:
+            assert session.get(PipelineTask, tid).status == "resolved"

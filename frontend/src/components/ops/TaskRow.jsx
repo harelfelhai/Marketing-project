@@ -26,18 +26,41 @@ import {
   TASK_ROW_REQUESTED_BY,
   TASK_ROW_RESOLVED_BY,
   TASK_ROW_ENTITY_LINE,
+  TASK_ROW_SELECT_ARIA,
 } from '../../config/strings.he';
 
-export default function TaskRow({ task, isSelected, onSelect }) {
+export default function TaskRow({ task, isSelected, onSelect, isChecked, onToggleRow }) {
   const handleClick = () => onSelect?.(task.id);
+
+  // Checkbox cell is a separate click target — stopPropagation here
+  // prevents the row's drawer-open handler from firing when the
+  // operator just wants to select for bulk action.
+  const handleCheckboxClick = (e) => e.stopPropagation();
+  const handleCheckboxChange = (e) => {
+    e.stopPropagation();
+    onToggleRow?.(task.id, e.target.checked);
+  };
 
   return (
     <tr
       onClick={handleClick}
       className={`cursor-pointer border-b border-slate-100 transition-colors ${
-        isSelected ? 'bg-slate-50' : 'hover:bg-slate-50/60'
+        isSelected ? 'bg-slate-50' : isChecked ? 'bg-slate-50/40' : 'hover:bg-slate-50/60'
       }`}
     >
+      {/* Column 0 — selection checkbox (bulk-action) */}
+      <td className="px-3 py-3 align-middle">
+        <input
+          type="checkbox"
+          checked={isChecked || false}
+          onClick={handleCheckboxClick}
+          onChange={handleCheckboxChange}
+          aria-label={TASK_ROW_SELECT_ARIA(task.id)}
+          data-testid={`task-select-${task.id}`}
+          className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-300"
+        />
+      </td>
+
       {/* Column 1 — task_type badge + created_at caption */}
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col gap-1 min-w-0">

@@ -34,6 +34,13 @@ const DEFAULT_TASK_FILTERS = {
   phoneId:  null,
   clientId: null,
   openOnly: false,
+  // Task Center default-hide for resolved/rejected rows. ON by default
+  // so managers land on an "action required now" view; flipping the
+  // toggle in TaskFilterBar brings the historical rows back for audit.
+  // Honored both client-side (TaskTable.applyFilters) and server-side
+  // (`?exclude_terminal=true` on GET /tasks when no explicit status
+  // filter is set).
+  hideResolved: true,
 };
 
 export function UIProvider({ children }) {

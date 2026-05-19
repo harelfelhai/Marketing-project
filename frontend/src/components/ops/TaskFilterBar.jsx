@@ -19,6 +19,7 @@ import {
   TASK_FILTER_PHONE_CHIP,
   TASK_FILTER_CLIENT_CHIP,
   TASK_FILTER_OPEN_ONLY_CHIP,
+  TASK_FILTER_SHOW_RESOLVED,
 } from '../../config/strings.he';
 
 const STATUS_OPTIONS = ['pending', 'assigned', 'resolved', 'rejected'];
@@ -76,6 +77,25 @@ export default function TaskFilterBar() {
           <option key={t} value={t}>{taskTypeLabel(t)}</option>
         ))}
       </select>
+
+      {/* Show-resolved toggle — Task Center default-hide for terminal
+          rows. Off (= hide) by default; flipping it brings resolved/
+          rejected back for audit. The label semantics map inversely to
+          the underlying `hideResolved` flag: checkbox checked == show
+          resolved == hideResolved=false. */}
+      <label
+        htmlFor="task-show-resolved-toggle"
+        className="inline-flex items-center gap-2 h-9 px-2 text-sm text-slate-700 cursor-pointer select-none"
+      >
+        <input
+          id="task-show-resolved-toggle"
+          type="checkbox"
+          checked={!taskFilters.hideResolved}
+          onChange={(e) => updateTaskFilters({ hideResolved: !e.target.checked })}
+          className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-300"
+        />
+        {TASK_FILTER_SHOW_RESOLVED}
+      </label>
 
       {/* Cross-link chips: shown when the filter was seeded from a URL param.
           No dedicated UI control — clear via the reset button. */}

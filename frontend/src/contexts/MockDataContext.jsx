@@ -1269,6 +1269,75 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyBulkResolveTasks — mock-mode parity for POST /api/v1/tasks/bulk-status.
+  //
+  // Mirrors PipelineTaskService.bulk_resolve_tasks on the backend:
+  //   - per-task processing with the same terminal-state guard the
+  //     singular path uses
+  //   - missing ids / already-terminal tasks land in failed_rows
+  //   - successful settlers go into success_ids
+  // Returns BulkResolveTaskResponse-shaped object.
+  // -------------------------------------------------------------------------
+  const applyBulkResolveTasks = useCallback((body) => {
+    const TERMINAL = new Set(['resolved', 'rejected']);
+    let result;
+    setDb((prev) => {
+      const successIds = [];
+      const failedRows = [];
+      const now = new Date().toISOString();
+
+      const updatedTasks = prev.tasks.map((t) => t);  // shallow array copy
+      for (const tid of (body.task_ids || [])) {
+        const idx = updatedTasks.findIndex((t) => t.id === tid);
+        if (idx === -1) {
+          failedRows.push({
+            task_id: tid,
+            error: `PipelineTask with id=${tid} was not found in the system.`,
+          });
+          continue;
+        }
+        const existing = updatedTasks[idx];
+        if (TERMINAL.has(existing.status)) {
+          failedRows.push({
+            task_id: tid,
+            error: (
+              `PipelineTask id=${tid} is already in terminal status ` +
+              `'${existing.status}'. Open a new task instead of re-settling this one.`
+            ),
+          });
+          continue;
+        }
+        const merged = {
+          ...(existing.extra_data || {}),
+          resolution_outcome: body.outcome,
+          resolved_by:        body.operator_id,
+        };
+        if (body.resolution_note != null) {
+          merged.resolution_note = body.resolution_note;
+        }
+        updatedTasks[idx] = {
+          ...existing,
+          status:      body.outcome,
+          resolved_by: body.operator_id,
+          resolved_at: now,
+          updated_at:  now,
+          extra_data:  merged,
+        };
+        successIds.push(tid);
+      }
+
+      result = {
+        success_count: successIds.length,
+        failed_count:  failedRows.length,
+        success_ids:   successIds,
+        failed_rows:   failedRows,
+      };
+      return { ...prev, tasks: updatedTasks };
+    });
+    return result;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
@@ -1337,6 +1406,7 @@ export function MockDataProvider({ children }) {
     applyWorkerRun,
     applyOpenTask,
     applyResolveTask,
+    applyBulkResolveTasks,
     setEngineExecuting,
     // Derived helpers
     getClientMetrics,

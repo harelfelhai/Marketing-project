@@ -51,15 +51,24 @@ describe('Bug 1 regression — ClientCard badge cross-link respects open-only', 
     expect(screen.getByText(/מסונן ללקוח/)).toBeInTheDocument();
   });
 
-  it('shows ALL tasks for the client when open=true is absent', async () => {
+  it('shows ALL tasks for the client when open=true is absent (after toggling show-resolved)', async () => {
     // Same client_id, no open=true → resolved/rejected tasks for that
-    // client should also appear. This proves open=true is doing the work,
-    // not the client_id filter alone.
+    // client should also appear. The Task Center now hides terminal
+    // rows by default (Requirement 1), so the operator must flip
+    // "Show resolved" on for them to appear — but the underlying
+    // client_id filter must still let the rejected task through.
+    const user = userEvent.setup();
     renderApp({ route: '/operations?client_id=epsilon' });
+
+    // Default-hide is on → terminal rows hidden even with client filter.
+    expect(screen.queryByText('+14155550133')).not.toBeInTheDocument();
+
+    // Flip the toggle on.
+    await user.click(screen.getByLabelText(/הצג משימות שטופלו/));
 
     // SEED_TASKS[4] is task #5, rejected, client_id='epsilon', phone +14155550133.
     expect(await screen.findByText('+14155550133')).toBeInTheDocument();
-    // Emerald chip NOT visible.
+    // Emerald chip NOT visible (open=true was never set).
     expect(screen.queryByText(/משימות פתוחות בלבד/)).not.toBeInTheDocument();
   });
 });

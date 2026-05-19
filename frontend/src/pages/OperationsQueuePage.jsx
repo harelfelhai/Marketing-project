@@ -18,12 +18,13 @@
  * preserves the operator's view.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import TaskFilterBar    from '../components/ops/TaskFilterBar';
 import TaskTable        from '../components/ops/TaskTable';
 import TaskDetailDrawer from '../components/ops/TaskDetailDrawer';
+import BulkActionBar    from '../components/ops/BulkActionBar';
 import RequireRole      from '../components/primitives/RequireRole';
 import { useUI }        from '../contexts/UIContext';
 import {
@@ -34,12 +35,47 @@ import {
 
 export default function OperationsQueuePage() {
   const [selectedId, setSelectedId]   = useState(null);
+  // Bulk-action selection state. Set<number> of task ids the operator
+  // has checkbox-selected. Local to this page — clearing on navigation
+  // is the right default (selections are an ephemeral UI concept tied
+  // to the current view, not a persistent filter).
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [searchParams]                = useSearchParams();
   const {
     seedTaskPhoneFilter,
     seedTaskClientFilter,
     updateTaskFilters,
   } = useUI();
+
+  // Row toggle — adds or removes one id without mutating the existing
+  // Set (React only re-renders when the reference changes, so we build
+  // a fresh Set on every flip).
+  const toggleRow = useCallback((id, checked) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  // Header "select all visible" — additive when toggling ON (preserves
+  // any prior cross-page selections); replaces with empty when OFF.
+  // The header's `allChecked` state is derived in TaskTable from
+  // `visibleIds ⊆ selectedIds`, so this naturally toggles correctly.
+  const toggleAll = useCallback((visibleIds, shouldCheckAll) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (shouldCheckAll) {
+        visibleIds.forEach((id) => next.add(id));
+      } else {
+        visibleIds.forEach((id) => next.delete(id));
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   // Phase DX cross-links — URL is authoritative for the phone_id /
   // client_id / open filters. Every URL change resets all three
@@ -76,9 +112,16 @@ export default function OperationsQueuePage() {
         </header>
 
         <TaskFilterBar />
-        <TaskTable selectedId={selectedId} onSelect={setSelectedId} />
+        <TaskTable
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          selectedIds={selectedIds}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
+        />
 
         <TaskDetailDrawer taskId={selectedId} onClose={() => setSelectedId(null)} />
+        <BulkActionBar selectedIds={selectedIds} onClear={clearSelection} />
       </section>
     </RequireRole>
   );

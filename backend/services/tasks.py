@@ -194,6 +194,98 @@ class PipelineTaskService:
         self.session.refresh(task)
         return task
 
+    def bulk_resolve_tasks(
+        self,
+        task_ids: List[int],
+        operator_id: str,
+        outcome: str,
+        resolution_note: Optional[str] = None,
+    ) -> dict:
+        """
+        Settle many tasks in a single request with per-task resilience.
+
+        Each task is attempted individually inside the same outer
+        transaction. Failures (task not found, already terminal) are
+        collected into `failed_rows`; successful resolutions land in
+        `success_ids`. The whole batch commits at the end — partial
+        success is the documented happy path, matching the Phase E1
+        bulk-ingestion resilience contract.
+
+        Args:
+            task_ids        (List[int]):     IDs to settle. Validated by the
+                                              caller / schema layer for size
+                                              and non-emptiness.
+            operator_id     (str):           Operator stamped on every settled task.
+            outcome         (str):           Terminal status to write
+                                              ('resolved' or 'rejected'). Schema
+                                              layer validates the enum.
+            resolution_note (Optional[str]): Optional free-text note merged
+                                              into every settled task's
+                                              `extra_data`.
+
+        Returns:
+            dict: {
+                success_count: int,
+                failed_count:  int,
+                success_ids:   List[int],   # ids that settled successfully
+                failed_rows:   List[{       # one entry per non-settling id
+                    task_id: int,
+                    error:   str,
+                }],
+            }
+        """
+        now = datetime.now(timezone.utc)
+        success_ids: List[int] = []
+        failed_rows: List[dict] = []
+
+        # Resolve each task one at a time. We deliberately do NOT use a
+        # single bulk-UPDATE statement because each task's pre-state must
+        # be inspected to enforce the terminal-state guard. The cost is
+        # N round-trips to SQLite/Postgres, which for the UI ceiling
+        # (200 task_ids per request) is well under the request budget.
+        for tid in task_ids:
+            task = self.session.get(PipelineTask, tid)
+            if task is None:
+                failed_rows.append({
+                    "task_id": tid,
+                    "error":   f"PipelineTask with id={tid} was not found in the system.",
+                })
+                continue
+            if task.status in _TERMINAL_STATUSES:
+                failed_rows.append({
+                    "task_id": tid,
+                    "error": (
+                        f"PipelineTask id={tid} is already in terminal status "
+                        f"'{task.status}'. Open a new task instead of re-settling this one."
+                    ),
+                })
+                continue
+
+            task.status = outcome
+            task.resolved_by = operator_id
+            task.resolved_at = now
+            task.updated_at = now
+
+            merged = dict(task.extra_data or {})
+            merged["resolution_outcome"] = outcome
+            merged["resolved_by"] = operator_id
+            if resolution_note is not None:
+                merged["resolution_note"] = resolution_note
+            task.extra_data = merged
+
+            self.session.add(task)
+            success_ids.append(tid)
+
+        # Single commit at the end — all surviving writes land atomically.
+        self.session.commit()
+
+        return {
+            "success_count": len(success_ids),
+            "failed_count":  len(failed_rows),
+            "success_ids":   success_ids,
+            "failed_rows":   failed_rows,
+        }
+
     # ======================================================================
     # READERS (always JOIN with PhoneNumber + Entity)
     # ======================================================================
@@ -203,6 +295,7 @@ class PipelineTaskService:
         status_filter: Optional[str] = None,
         task_type_filter: Optional[str] = None,
         phone_id_filter: Optional[int] = None,
+        exclude_terminal: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[TaskJoinRow], int]:
@@ -217,6 +310,12 @@ class PipelineTaskService:
             status_filter     (Optional[str]): Filter on `pipeline_task.status`.
             task_type_filter  (Optional[str]): Filter on `pipeline_task.task_type`.
             phone_id_filter   (Optional[int]): Filter on `pipeline_task.phone_id`.
+            exclude_terminal  (bool):          When True, hides rows whose status
+                                                is in _TERMINAL_STATUSES (resolved /
+                                                rejected). Used by the Task Center
+                                                UI's default-hide toggle. Has no
+                                                effect when `status_filter` is set
+                                                — explicit filter intent wins.
             page              (int):           1-based page number.
             page_size         (int):           Records per page.
 
@@ -249,6 +348,12 @@ class PipelineTaskService:
             filters.append(PipelineTask.task_type == task_type_filter)
         if phone_id_filter is not None:
             filters.append(PipelineTask.phone_id == phone_id_filter)
+        # `exclude_terminal` is a noop when status_filter is set — an
+        # explicit status query (e.g. "give me only resolved tasks for
+        # audit") must not be silently overridden by the default-hide
+        # toggle the UI defaults to ON.
+        if exclude_terminal and status_filter is None:
+            filters.append(PipelineTask.status.notin_(_TERMINAL_STATUSES))
 
         for f in filters:
             base = base.where(f)

@@ -431,6 +431,35 @@ export const TASK_FILTER_PHONE_CHIP         = (id) => `מסונן לטלפון #
 export const TASK_FILTER_CLIENT_CHIP        = (id) => `מסונן ללקוח #${id}`;
 export const TASK_FILTER_OPEN_ONLY_CHIP     = 'משימות פתוחות בלבד';
 
+// Default-hide toggle for resolved/rejected tasks. Off (= hide) by
+// default so managers land on a clean "action required now" queue;
+// when the operator wants the historical audit view, flipping this
+// checkbox brings everything back.
+export const TASK_FILTER_SHOW_RESOLVED       = 'הצג משימות שטופלו';
+
+// ---------------------------------------------------------------------------
+// Task Center bulk-action bar
+// ---------------------------------------------------------------------------
+
+export const TASK_BULK_BAR_SELECTED_COUNT   = (n) =>
+  `${n} משימות נבחרו`;
+export const TASK_BULK_BAR_CLEAR_SELECTION  = 'נקה בחירה';
+export const TASK_BULK_BAR_RESOLVE          = 'סמן כטופלו';
+export const TASK_BULK_BAR_REJECT           = 'סמן כנדחו';
+export const TASK_BULK_BAR_PROCESSING       = 'מעדכן…';
+
+export const TASK_BULK_TOAST_ALL_OK         = (n) =>
+  `${n} משימות עודכנו בהצלחה.`;
+export const TASK_BULK_TOAST_PARTIAL        = (ok, fail) =>
+  `${ok} משימות עודכנו, ${fail} נכשלו.`;
+export const TASK_BULK_TOAST_NONE_OK        = 'אף משימה לא עודכנה — ייתכן שכבר נסגרו.';
+export const TASK_BULK_TOAST_ERROR          = (msg) =>
+  `עדכון אצווה נכשל: ${msg}`;
+
+// Accessible labels on the row + header checkboxes.
+export const TASK_ROW_SELECT_ARIA           = (id) => `בחר משימה #${id}`;
+export const TASK_HEADER_SELECT_ALL_ARIA    = 'בחר את כל המשימות הגלויות';
+
 // 5-column table headers
 export const TASK_TABLE_COL_TYPE      = 'סוג משימה';
 export const TASK_TABLE_COL_PHONE     = 'טלפון';

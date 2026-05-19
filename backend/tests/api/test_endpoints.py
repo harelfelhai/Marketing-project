@@ -759,6 +759,116 @@ class TestTasksEndpoints:
         )
         assert r.status_code == 422
 
+    # -----------------------------------------------------------------
+    # GET /tasks?exclude_terminal=true (Task Center default-hide)
+    # -----------------------------------------------------------------
+
+    def test_exclude_terminal_hides_resolved_and_rejected(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        # Open 3 tasks; resolve one, reject another.
+        a = self._open_via_api(tc, phone.id, task_type="a").json()
+        b = self._open_via_api(tc, phone.id, task_type="b").json()
+        c = self._open_via_api(tc, phone.id, task_type="c").json()
+        tc.post(f"/api/v1/tasks/{a['id']}/resolve",
+                json={"operator_id": "adm", "outcome": "resolved"})
+        tc.post(f"/api/v1/tasks/{b['id']}/resolve",
+                json={"operator_id": "adm", "outcome": "rejected"})
+
+        r = tc.get("/api/v1/tasks?exclude_terminal=true")
+        assert r.status_code == 200
+        ids = [t["id"] for t in r.json()["items"]]
+        assert ids == [c["id"]]   # only the still-pending one
+
+    def test_explicit_status_filter_overrides_exclude_terminal(self, client):
+        """The toggle is a default-hide, NOT a hard mask. Passing
+        `status=resolved` together with `exclude_terminal=true` must
+        still return resolved tasks (the audit view use case)."""
+        tc, session = client
+        phone = _seed_target(session)
+        a = self._open_via_api(tc, phone.id, task_type="a").json()
+        tc.post(f"/api/v1/tasks/{a['id']}/resolve",
+                json={"operator_id": "adm", "outcome": "resolved"})
+
+        r = tc.get("/api/v1/tasks?status=resolved&exclude_terminal=true")
+        assert r.status_code == 200
+        assert [t["id"] for t in r.json()["items"]] == [a["id"]]
+
+    # -----------------------------------------------------------------
+    # POST /tasks/bulk-status
+    # -----------------------------------------------------------------
+
+    def test_bulk_resolve_happy_path_returns_200_with_success_ids(self, client):
+        tc, session = client
+        phone = _seed_target(session)
+        a = self._open_via_api(tc, phone.id, task_type="a").json()
+        b = self._open_via_api(tc, phone.id, task_type="b").json()
+
+        r = tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids":    [a["id"], b["id"]],
+            "operator_id": "manager_1",
+            "outcome":     "resolved",
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 0
+        assert sorted(body["success_ids"]) == sorted([a["id"], b["id"]])
+
+    def test_bulk_resolve_missing_id_lands_in_failed_rows_with_200(self, client):
+        """Partial success: one valid + one missing → 200 with the
+        bad id reported per-row, NOT a 4xx that aborts the whole batch."""
+        tc, session = client
+        phone = _seed_target(session)
+        a = self._open_via_api(tc, phone.id, task_type="a").json()
+
+        r = tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids":    [a["id"], 99_999],
+            "operator_id": "manager_1",
+            "outcome":     "resolved",
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 1
+        assert body["failed_count"] == 1
+        assert body["failed_rows"][0]["task_id"] == 99_999
+
+    def test_bulk_resolve_invalid_outcome_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids":    [1, 2],
+            "operator_id": "manager_1",
+            "outcome":     "approved",  # not in allowed regex
+        })
+        assert r.status_code == 422
+
+    def test_bulk_resolve_empty_task_ids_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids":    [],
+            "operator_id": "manager_1",
+            "outcome":     "resolved",
+        })
+        assert r.status_code == 422
+
+    def test_bulk_resolve_writes_resolution_note_to_every_settled_task(
+        self, client,
+    ):
+        tc, session = client
+        phone = _seed_target(session)
+        a = self._open_via_api(tc, phone.id, task_type="a").json()
+        b = self._open_via_api(tc, phone.id, task_type="b").json()
+
+        tc.post("/api/v1/tasks/bulk-status", json={
+            "task_ids":        [a["id"], b["id"]],
+            "operator_id":     "manager_1",
+            "outcome":         "resolved",
+            "resolution_note": "batch handled offline",
+        })
+        for tid in (a["id"], b["id"]):
+            detail = tc.get(f"/api/v1/tasks/{tid}").json()
+            assert detail["extra_data"]["resolution_note"] == "batch handled offline"
+
 
 # ===========================================================================
 # Phase DY — Scoring & priority-sort integration

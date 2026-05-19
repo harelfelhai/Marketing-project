@@ -27,6 +27,7 @@ import {
   TASK_TABLE_COL_TYPE, TASK_TABLE_COL_PHONE, TASK_TABLE_COL_CLIENT,
   TASK_TABLE_COL_STATUS, TASK_TABLE_COL_UPDATED,
   TASK_TABLE_EMPTY, TASK_TABLE_SHOWING,
+  TASK_HEADER_SELECT_ALL_ARIA,
 } from '../../config/strings.he';
 
 const SKELETON_ROW_COUNT = 8;
@@ -59,6 +60,14 @@ export function applyFilters(tasks, filters) {
     if (filters.openOnly && t.status !== 'pending' && t.status !== 'assigned') {
       return false;
     }
+    // Task Center default-hide: when `hideResolved` is on AND the
+    // operator has NOT chosen an explicit status filter, drop the
+    // terminal-state rows. Explicit `filters.status === 'resolved'`
+    // (the audit view) must NOT be silently shadowed by the toggle —
+    // matches the backend's exclude_terminal contract.
+    if (filters.hideResolved && !filters.status) {
+      if (t.status === 'resolved' || t.status === 'rejected') return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [
@@ -74,7 +83,13 @@ export function applyFilters(tasks, filters) {
   });
 }
 
-export default function TaskTable({ selectedId, onSelect }) {
+export default function TaskTable({
+  selectedId,
+  onSelect,
+  selectedIds,
+  onToggleRow,
+  onToggleAll,
+}) {
   const { tasks, loading } = useMockData();
   const { taskFilters }    = useUI();
 
@@ -83,6 +98,18 @@ export default function TaskTable({ selectedId, onSelect }) {
     [tasks, taskFilters]
   );
 
+  // Selection state semantics for the header checkbox:
+  //   - unchecked: no row in the current view is selected
+  //   - indeterminate: some but not all visible rows are selected
+  //   - checked: every visible row is selected
+  // Visible = post-filter. Selecting "all" only ever affects what the
+  // operator can see — the bulk action will then act on those ids.
+  const visibleIds = rows.map((r) => r.id);
+  const selectedSet = selectedIds || new Set();
+  const visibleSelectedCount = visibleIds.filter((id) => selectedSet.has(id)).length;
+  const allChecked  = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+  const someChecked = visibleSelectedCount > 0 && !allChecked;
+
   return (
     <div
       className="bg-white rounded-lg border border-slate-200"
@@ -90,6 +117,7 @@ export default function TaskTable({ selectedId, onSelect }) {
     >
       <table className="w-full table-fixed">
         <colgroup>
+          <col className="w-[40px]" />
           <col className="w-[180px]" />
           <col className="w-[180px]" />
           <col className="w-[180px]" />
@@ -98,6 +126,18 @@ export default function TaskTable({ selectedId, onSelect }) {
         </colgroup>
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
+            <th className="px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                onChange={() => onToggleAll?.(visibleIds, !allChecked)}
+                aria-label={TASK_HEADER_SELECT_ALL_ARIA}
+                disabled={visibleIds.length === 0}
+                data-testid="task-select-all"
+                className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-300"
+              />
+            </th>
             <Th>{TASK_TABLE_COL_TYPE}</Th>
             <Th>{TASK_TABLE_COL_PHONE}</Th>
             <Th>{TASK_TABLE_COL_CLIENT}</Th>
@@ -112,7 +152,7 @@ export default function TaskTable({ selectedId, onSelect }) {
             ))
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
+              <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-400">
                 {TASK_TABLE_EMPTY}
               </td>
             </tr>
@@ -123,6 +163,8 @@ export default function TaskTable({ selectedId, onSelect }) {
                 task={task}
                 isSelected={selectedId === task.id}
                 onSelect={onSelect}
+                isChecked={selectedSet.has(task.id)}
+                onToggleRow={onToggleRow}
               />
             ))
           )}
@@ -147,6 +189,9 @@ function Th({ children }) {
 function TaskSkeletonRow() {
   return (
     <tr className="border-b border-slate-100">
+      <td className="px-3 py-3">
+        <Skeleton width={16} height={16} rounded="rounded" />
+      </td>
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1.5 min-w-0">
           <Skeleton height={14} width={90} rounded="rounded-full" />

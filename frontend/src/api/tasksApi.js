@@ -140,3 +140,37 @@ export async function resolveTask(id, body, mockDb) {
   const updated = mockDb.tasks.find((t) => t.id === id);
   return enrichTask(updated);
 }
+
+
+/**
+ * bulkUpdateTasks — settle many tasks in one request (Task Center bulk).
+ *
+ * Hits POST /api/v1/tasks/bulk-status. Per-task failures (already
+ * terminal, missing) land in the response's `failed_rows`; only
+ * request-shape errors (empty `task_ids`, invalid `outcome`) raise 4xx.
+ *
+ * @param {object} body   - { task_ids: number[], operator_id: string,
+ *                             outcome: 'resolved'|'rejected',
+ *                             resolution_note?: string }.
+ * @param {object} mockDb - MockDataContext value.
+ * @returns {Promise<object>} BulkResolveTaskResponse-shaped object:
+ *   { success_count, failed_count, success_ids, failed_rows }.
+ */
+export async function bulkUpdateTasks(body, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post('/tasks/bulk-status', {
+      task_ids:        body.task_ids,
+      operator_id:     body.operator_id,
+      outcome:         body.outcome,
+      resolution_note: body.resolution_note ?? null,
+    });
+    // Wholesale refetch — settling N tasks may flip N rows' statuses
+    // and the narrowed refetchTaskById is awkward to apply in a loop.
+    // The list endpoint is cheap (one round-trip).
+    await mockDb.refetchTasks();
+    return data;
+  }
+
+  await mockDelay(500);
+  return mockDb.applyBulkResolveTasks(body);
+}

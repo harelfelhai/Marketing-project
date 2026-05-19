@@ -987,6 +987,100 @@ class OpenTaskRequest(BaseModel):
     )
 
 
+class BulkResolveTaskRequest(BaseModel):
+    """
+    Request body for POST /api/v1/tasks/bulk-status.
+
+    Lets a manager settle many tasks in one round-trip — e.g., after
+    handling a wave of related approval requests offline, mark all of
+    them resolved with one click rather than N drawer-opens.
+
+    Per-task failures (task already terminal, task missing) land in the
+    response's `failed_rows`. Only request-shape errors (empty id list,
+    bad outcome, etc.) raise 4xx — matches the Phase E1 bulk-ingestion
+    resilience contract.
+    """
+
+    task_ids: List[int] = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description=(
+            "PKs to settle. 1..200 entries per request. Larger batches "
+            "should be split client-side — 200 is the UI ceiling and "
+            "also the per-request transaction budget."
+        ),
+    )
+    outcome: str = Field(
+        ...,
+        pattern="^(resolved|rejected)$",
+        description=(
+            "Terminal status to write on every settled task. Must be "
+            "'resolved' or 'rejected' — same vocabulary as the singular "
+            "resolve endpoint."
+        ),
+    )
+    # // HOOK FOR ENTERPRISE AUTH — operator_id is a request-body field
+    # // today, same as ResolveTaskRequest. Phase G replaces both with a
+    # // server-side `Depends(get_current_operator)`.
+    operator_id: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "operator_id of the manager settling these tasks. Recorded "
+            "verbatim on every settled `pipeline_task.resolved_by` AND "
+            "duplicated into `extra_data.resolved_by` for audit-trail "
+            "redundancy."
+        ),
+    )
+    resolution_note: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional free-text justification. Merged into every "
+            "settled task's `extra_data['resolution_note']`. Stored "
+            "as a single shared string across all settled tasks — the "
+            "audit trail records the batch decision."
+        ),
+    )
+
+
+class BulkResolveTaskFailedRow(BaseModel):
+    """One per-task failure inside a BulkResolveTaskResponse."""
+
+    task_id: int = Field(..., description="The id that failed to settle.")
+    error: str = Field(
+        ...,
+        description=(
+            "Operator-friendly cause of failure (Hebrew or English). "
+            "Examples: 'PipelineTask id=42 is already in terminal status "
+            "resolved.', 'PipelineTask with id=999 was not found in the "
+            "system.'"
+        ),
+    )
+
+
+class BulkResolveTaskResponse(BaseModel):
+    """
+    Response shape for POST /api/v1/tasks/bulk-status.
+
+    Returns HTTP 200 even when failed_count > 0 — partial success is
+    the documented contract, mirroring `BulkIngestSummary`. Operators
+    see exactly which tasks settled and which didn't, plus the reason
+    per failure.
+    """
+
+    success_count: int = Field(..., ge=0, description="Tasks settled to the requested outcome.")
+    failed_count:  int = Field(..., ge=0, description="Equals len(failed_rows); convenience.")
+    success_ids:   List[int] = Field(
+        default_factory=list,
+        description="Task ids that settled successfully, in submission order.",
+    )
+    failed_rows:   List[BulkResolveTaskFailedRow] = Field(
+        default_factory=list,
+        description="Per-task failure details. Empty when failed_count == 0.",
+    )
+
+
 class ResolveTaskRequest(BaseModel):
     """
     Request body for POST /api/v1/tasks/{id}/resolve.

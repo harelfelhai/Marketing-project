@@ -35,6 +35,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_pipeline_task_service
 from app.schemas.api_contracts import (
+    BulkResolveTaskRequest,
+    BulkResolveTaskResponse,
     OpenTaskRequest,
     PipelineTaskListResponse,
     PipelineTaskResponse,
@@ -127,6 +129,17 @@ def list_tasks(
         default=None,
         description="Filter to tasks attached to a single PhoneNumber.",
     ),
+    exclude_terminal: bool = Query(
+        default=False,
+        description=(
+            "When true, excludes terminal-status rows (resolved / "
+            "rejected) from the result set. Used by the Task Center "
+            "default view to surface only active work to managers. "
+            "Has no effect when `status` is set explicitly — explicit "
+            "filter intent wins (e.g., the closed-task audit view "
+            "passes `?status=resolved` and expects to see them)."
+        ),
+    ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     page_size: int = Query(
         default=20,
@@ -154,6 +167,7 @@ def list_tasks(
         status_filter=status_filter,
         task_type_filter=task_type,
         phone_id_filter=phone_id,
+        exclude_terminal=exclude_terminal,
         page=page,
         page_size=page_size,
     )
@@ -258,6 +272,60 @@ def open_task(
 
     # Re-fetch with the JOIN so the response carries the convenience fields.
     return _row_to_response(service.get_task_with_join(task_id=task.id))
+
+
+@router.post(
+    "/bulk-status",
+    response_model=BulkResolveTaskResponse,
+    summary="Bulk-settle many tasks to a terminal status in one request",
+    description=(
+        "Settles every task in `task_ids` to the requested `outcome` "
+        "('resolved' or 'rejected'). Per-task failures (task missing, "
+        "task already terminal) land in `failed_rows` alongside a 200 "
+        "response — the resilience contract mirrors Phase E1's bulk-"
+        "ingestion summary shape."
+        "\n\n"
+        "**Use case:** A manager who has executed operational decisions "
+        "on N tasks offline marks all of them resolved in one click "
+        "instead of N drawer-opens. The route is registered BEFORE "
+        "`/{task_id}/resolve` because FastAPI matches in declaration "
+        "order — listing it first prevents the dynamic `{task_id}` "
+        "param from capturing the literal `bulk-status` segment."
+        "\n\n"
+        "**Request-level errors → 422:** invalid `outcome` token "
+        "(not 'resolved' or 'rejected'), empty `task_ids` list, or "
+        "more than 200 ids per request."
+        "\n\n"
+        "**Per-task failures → 200 body:** each non-settling task "
+        "lands in `failed_rows` with a human-readable reason."
+    ),
+)
+def bulk_resolve_tasks(
+    body: BulkResolveTaskRequest,
+    service: PipelineTaskService = Depends(get_pipeline_task_service),
+) -> BulkResolveTaskResponse:
+    """
+    Delegate to `PipelineTaskService.bulk_resolve_tasks` and shape the
+    response. The service is the sole writer and owns per-task error
+    accounting.
+
+    Args:
+        body    (BulkResolveTaskRequest):   Validated request payload.
+        service (PipelineTaskService):      Injected via FastAPI Depends.
+
+    Returns:
+        BulkResolveTaskResponse: success_ids + failed_rows summary.
+    """
+    summary = service.bulk_resolve_tasks(
+        task_ids=body.task_ids,
+        # // HOOK FOR ENTERPRISE AUTH — same handoff as the singular
+        # // resolve endpoint. Phase G derives this from the
+        # // get_current_operator dependency.
+        operator_id=body.operator_id,
+        outcome=body.outcome,
+        resolution_note=body.resolution_note,
+    )
+    return BulkResolveTaskResponse.model_validate(summary)
 
 
 @router.post(

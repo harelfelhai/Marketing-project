@@ -199,3 +199,34 @@ describe('applyFilters — combinatorial (all filters together)', () => {
     expect(result).toEqual([]);
   });
 });
+
+
+describe('applyFilters — hideResolved (Task Center default-hide)', () => {
+  it('drops resolved and rejected rows when hideResolved=true', () => {
+    const result = applyFilters(fixtures(), {
+      ...ALL_DEFAULT,
+      hideResolved: true,
+    }).map((t) => t.id).sort();
+    // Tasks 4 (resolved) and 5 (rejected) are hidden; 1/2/3 remain.
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  it('explicit status filter overrides hideResolved (audit view)', () => {
+    // Operator explicitly asks for resolved — the toggle must not
+    // silently shadow the request even though hideResolved is on.
+    const result = applyFilters(fixtures(), {
+      ...ALL_DEFAULT,
+      status:       'resolved',
+      hideResolved: true,
+    });
+    expect(result.map((t) => t.id)).toEqual([4]);
+  });
+
+  it('hideResolved=false brings terminal rows back', () => {
+    const result = applyFilters(fixtures(), {
+      ...ALL_DEFAULT,
+      hideResolved: false,
+    });
+    expect(result.length).toBe(5);
+  });
+});
