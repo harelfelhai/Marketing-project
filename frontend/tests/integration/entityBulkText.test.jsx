@@ -29,16 +29,13 @@ async function openMultiTextTab(user) {
   await screen.findByTestId('entity-bulk-paste');
 }
 
-// Helper — Step 1 picks the default client + target so the operator
-// can advance to the EDIT step.
+// Helper — Step 1 picks the default target so the operator can
+// advance to the EDIT step. UAT round-3: single grouped picker;
+// client is implied by the chosen target.
 async function configureDefaults(user) {
-  await user.selectOptions(
-    screen.getByLabelText(/לקוח$/),
-    'alpha',
-  );
-  // After client selection, the target dropdown has real options.
   const targetSelect = screen.getByLabelText(/ישות ראשית/);
   const options = within(targetSelect).getAllByRole('option');
+  // First option is the placeholder ("בחר…"); pick the second.
   await user.selectOptions(targetSelect, options[1].value);
 }
 

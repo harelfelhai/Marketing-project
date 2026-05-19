@@ -34,7 +34,7 @@ async function createEntityToSuccessState(user) {
 
   await user.type(screen.getByLabelText(/שם פרטי/), 'Jane');
   await user.type(screen.getByLabelText(/שם משפחה/), 'Doe');
-  await user.selectOptions(screen.getByLabelText(/^לקוח/), 'alpha');
+  // UAT round-3: single grouped target picker; client is implied.
   const targetSelect = screen.getByLabelText(/ישות ראשית/);
   const options = within(targetSelect).getAllByRole('option');
   await user.selectOptions(targetSelect, options[1].value);

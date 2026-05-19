@@ -28,8 +28,8 @@ import { useUI }                from '../../contexts/UIContext';
 import NotificationOptInPanel   from '../notifications/NotificationOptInPanel';
 import {
   ENTITY_FIELD_FIRST_NAME, ENTITY_FIELD_LAST_NAME,
-  ENTITY_FIELD_RELATION, ENTITY_FIELD_CLIENT, ENTITY_FIELD_TARGET,
-  ENTITY_PLACEHOLDER_PICK, ENTITY_PLACEHOLDER_CLIENT_FIRST,
+  ENTITY_FIELD_RELATION, ENTITY_FIELD_TARGET, ENTITY_FIELD_STRONG_ID,
+  ENTITY_PLACEHOLDER_PICK,
   ENTITY_TARGET_LIST_EMPTY,
   ENTITY_OPTION_FAMILY, ENTITY_OPTION_FRIEND,
   ENTITY_OPTION_COLLEAGUE, ENTITY_OPTION_SPOUSE,
@@ -51,11 +51,11 @@ const RELATION_OPTIONS = [
 ];
 
 const EMPTY_FORM = {
-  firstName:  '',
-  lastName:   '',
-  relation:   'family',     // sensible default — most common pick
-  clientId:   '',
-  targetId:   '',
+  firstName:        '',
+  lastName:         '',
+  relation:         'family',     // sensible default — most common pick
+  targetId:         '',
+  strongIdentifier: '',
 };
 
 export default function SingleEntityPanel({ active }) {
@@ -82,8 +82,11 @@ export default function SingleEntityPanel({ active }) {
 
   // All root targets — the entities the operator can attach a new
   // person to. Defined as entity_type='target' AND target_entity_id is
-  // null. The pool drives both the client dropdown (built from the
-  // distinct client_ids in this pool) and the per-client target list.
+  // null. UAT round-3: the previous two-dropdown UX (client → target)
+  // was redundant because picking a target IMPLIES the client. We now
+  // render a single grouped picker (`<optgroup>` per client) — the
+  // operator sees every target with its owning client as the group
+  // header, and picks one in one click.
   const rootTargets = useMemo(
     () => mockDb.entities.filter(
       (e) => e.entity_type === 'target' && e.target_entity_id == null,
@@ -91,57 +94,37 @@ export default function SingleEntityPanel({ active }) {
     [mockDb.entities],
   );
 
-  // Distinct client_ids actually present in the root-target pool.
-  // We build the client dropdown from this — NOT from clientRegistry —
-  // so the displayed clients always match the seeded data, regardless
-  // of whether client_id is stored as a string ('alpha') or an
-  // integer (1). The two formats coexist in the codebase: backend
-  // emits integers; mock seed uses strings; we tolerate both here
-  // without choosing a side.
-  const clientOptions = useMemo(() => {
-    const ids = Array.from(new Set(rootTargets.map((t) => t.client_id)));
-    return ids
-      .filter((id) => id != null)
-      .map((id) => {
-        // Prefer the mock-DB clients list for display labels. Falls
-        // back to a generic "Client {id}" when no match is found.
-        const match = mockDb.clients.find(
-          (c) => String(c.id) === String(id),
-        );
+  // Group root targets by client for the <optgroup> structure.
+  const targetsByClient = useMemo(() => {
+    const groups = new Map();
+    for (const t of rootTargets) {
+      const cid = t.client_id;
+      if (cid == null) continue;
+      if (!groups.has(cid)) groups.set(cid, []);
+      groups.get(cid).push(t);
+    }
+    // Stable order: by client_id ascending so the dropdown is reproducible.
+    return Array.from(groups.entries())
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .map(([cid, targets]) => {
+        const match = mockDb.clients.find((c) => String(c.id) === String(cid));
         return {
-          value: String(id),
-          label: match?.name || `Client ${id}`,
+          clientId:    cid,
+          clientLabel: match?.name || `Client ${cid}`,
+          targets,
         };
       });
   }, [rootTargets, mockDb.clients]);
-
-  // Targets filtered to the selected client. Compare via String() so
-  // numeric '1' and string '1' both match (HTML <select> values are
-  // always strings on the wire).
-  const targetsForSelectedClient = useMemo(() => {
-    if (form.clientId === '') return [];
-    return rootTargets.filter(
-      (e) => String(e.client_id) === String(form.clientId),
-    );
-  }, [rootTargets, form.clientId]);
 
   const handleChange = useCallback((field, value) => {
     setForm((f) => ({ ...f, [field]: value }));
     setErrors((e) => ({ ...e, [field]: '' }));
   }, []);
 
-  // When client changes, drop any stale target selection so the second
-  // dropdown reflects the new client's targets, not a phantom carry-over.
-  const handleClientChange = useCallback((value) => {
-    setForm((f) => ({ ...f, clientId: value, targetId: '' }));
-    setErrors((e) => ({ ...e, clientId: '', targetId: '' }));
-  }, []);
-
   const validate = () => {
     const next = {};
     if (!form.firstName.trim()) next.firstName = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_FIRST_NAME);
     if (!form.relation)         next.relation  = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_RELATION);
-    if (form.clientId === '')   next.clientId  = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_CLIENT);
     if (form.targetId === '')   next.targetId  = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_TARGET);
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -150,11 +133,21 @@ export default function SingleEntityPanel({ active }) {
   const handleSubmit = async () => {
     if (!validate()) return;
 
+    // UAT round-3: optional "strong identifier" — a non-PK external id
+    // (national id, employee number, etc.). Carried in extra_data so the
+    // SQLModel schema doesn't have to know what it represents; production
+    // wiring can promote it to a real column later without changing the
+    // operator UX.
+    const extra = {};
+    const sid = form.strongIdentifier.trim();
+    if (sid) extra.strong_identifier = sid;
+
     const payload = {
       first_name:        form.firstName.trim(),
       last_name:         form.lastName.trim() || null,
       relation_type:     form.relation,
       target_entity_id:  Number(form.targetId),
+      ...(Object.keys(extra).length > 0 ? { extra_data: extra } : {}),
     };
 
     setSubmitting(true);
@@ -275,43 +268,38 @@ export default function SingleEntityPanel({ active }) {
         ))}
       </SelectField>
 
-      {/* Two-step target picker — client first, then target inside it */}
-      <div className="grid grid-cols-2 gap-3">
-        <SelectField
-          id="entity-client"
-          label={ENTITY_FIELD_CLIENT}
-          required
-          value={form.clientId}
-          onChange={handleClientChange}
-          error={errors.clientId}
-        >
-          <option value="">{ENTITY_PLACEHOLDER_PICK}</option>
-          {clientOptions.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </SelectField>
+      {/* Optional "strong identifier" — non-DB external id. Stored
+          inside extra_data on the backend; an empty value is dropped. */}
+      <Field
+        id="entity-strong-id"
+        label={ENTITY_FIELD_STRONG_ID}
+        value={form.strongIdentifier}
+        onChange={(v) => handleChange('strongIdentifier', v)}
+      />
 
-        <SelectField
-          id="entity-target"
-          label={ENTITY_FIELD_TARGET}
-          required
-          disabled={form.clientId === ''}
-          value={form.targetId}
-          onChange={(v) => handleChange('targetId', v)}
-          error={errors.targetId}
-        >
-          <option value="">
-            {form.clientId === '' ? ENTITY_PLACEHOLDER_CLIENT_FIRST : ENTITY_PLACEHOLDER_PICK}
-          </option>
-          {targetsForSelectedClient.map((t) => (
-            <option key={t.id} value={t.id}>
-              {`#${t.id}`}
-            </option>
-          ))}
-        </SelectField>
-      </div>
+      {/* Single grouped target picker — clients are <optgroup> labels.
+          UAT round-3: replaced the previous client→target two-step
+          which was redundant (picking a target already implies the
+          client). */}
+      <SelectField
+        id="entity-target"
+        label={ENTITY_FIELD_TARGET}
+        required
+        value={form.targetId}
+        onChange={(v) => handleChange('targetId', v)}
+        error={errors.targetId}
+      >
+        <option value="">{ENTITY_PLACEHOLDER_PICK}</option>
+        {targetsByClient.map((group) => (
+          <optgroup key={String(group.clientId)} label={group.clientLabel}>
+            {group.targets.map((t) => (
+              <option key={t.id} value={t.id}>{`#${t.id}`}</option>
+            ))}
+          </optgroup>
+        ))}
+      </SelectField>
 
-      {form.clientId !== '' && targetsForSelectedClient.length === 0 && (
+      {targetsByClient.length === 0 && (
         <p className="text-xs text-amber-600">{ENTITY_TARGET_LIST_EMPTY}</p>
       )}
 

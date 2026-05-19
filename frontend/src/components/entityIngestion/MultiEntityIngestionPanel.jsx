@@ -48,7 +48,7 @@ import {
   ENTITY_BULK_TEXT_INTRO,
   ENTITY_BULK_TEXT_PASTE_LABEL, ENTITY_BULK_TEXT_PASTE_PLACE, ENTITY_BULK_TEXT_PASTE_HELP,
   ENTITY_BULK_TEXT_TOKEN_COUNT, ENTITY_BULK_TEXT_CONTINUE,
-  ENTITY_BULK_DEFAULT_RELATION, ENTITY_BULK_DEFAULT_CLIENT, ENTITY_BULK_DEFAULT_TARGET,
+  ENTITY_BULK_DEFAULT_RELATION, ENTITY_BULK_DEFAULT_TARGET,
   ENTITY_BULK_DEFAULTS_HELP,
   ENTITY_BULK_ERR_EMPTY_TEXT, ENTITY_BULK_ERR_MISSING_TARGET,
   ENTITY_BULK_GRID_HEADER_TOKEN, ENTITY_BULK_GRID_HEADER_FIRST,
@@ -60,7 +60,7 @@ import {
   ENTITY_BULK_BTN_SUBMIT_ALL, ENTITY_BULK_BTN_SUBMITTING, ENTITY_BULK_BTN_NEW_BATCH,
   ENTITY_BULK_TOAST_PARTIAL, ENTITY_BULK_TOAST_ALL_OK, ENTITY_BULK_TOAST_NONE_OK,
   ENTITY_BULK_TOAST_ERROR,
-  ENTITY_BTN_CANCEL, ENTITY_PLACEHOLDER_PICK, ENTITY_PLACEHOLDER_CLIENT_FIRST,
+  ENTITY_BTN_CANCEL, ENTITY_PLACEHOLDER_PICK,
   ENTITY_OPTION_FAMILY, ENTITY_OPTION_FRIEND, ENTITY_OPTION_COLLEAGUE, ENTITY_OPTION_SPOUSE,
 } from '../../config/strings.he';
 
@@ -109,7 +109,6 @@ const EMPTY_STATE = {
   step:                  'paste',
   rawText:               '',
   defaultRelation:       'family',
-  defaultClientId:       '',
   defaultTargetId:       '',
   rows:                  [],
   pasteErr:              '',
@@ -124,6 +123,8 @@ export default function MultiEntityIngestionPanel() {
   const [state, setState] = useState(EMPTY_STATE);
 
   // ---------- Derived target lists (mirrors SingleEntityPanel logic) ----------
+  // UAT round-3: same client→target redundancy as the single panel.
+  // One grouped picker (clients as <optgroup>) replaces both fields.
   const rootTargets = useMemo(
     () => mockDb.entities.filter(
       (e) => e.entity_type === 'target' && e.target_entity_id == null,
@@ -131,25 +132,24 @@ export default function MultiEntityIngestionPanel() {
     [mockDb.entities],
   );
 
-  const clientOptions = useMemo(() => {
-    const ids = Array.from(new Set(rootTargets.map((t) => t.client_id)));
-    return ids
-      .filter((id) => id != null)
-      .map((id) => {
-        const match = mockDb.clients.find((c) => String(c.id) === String(id));
+  const targetsByClient = useMemo(() => {
+    const groups = new Map();
+    for (const t of rootTargets) {
+      if (t.client_id == null) continue;
+      if (!groups.has(t.client_id)) groups.set(t.client_id, []);
+      groups.get(t.client_id).push(t);
+    }
+    return Array.from(groups.entries())
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .map(([cid, targets]) => {
+        const match = mockDb.clients.find((c) => String(c.id) === String(cid));
         return {
-          value: String(id),
-          label: match?.name || `Client ${id}`,
+          clientId:    cid,
+          clientLabel: match?.name || `Client ${cid}`,
+          targets,
         };
       });
   }, [rootTargets, mockDb.clients]);
-
-  const targetsForSelectedClient = useMemo(() => {
-    if (state.defaultClientId === '') return [];
-    return rootTargets.filter(
-      (e) => String(e.client_id) === String(state.defaultClientId),
-    );
-  }, [rootTargets, state.defaultClientId]);
 
   // ---------- Live tokenizer count for the PASTE step ----------
   const liveTokenCount = useMemo(() => tokenize(state.rawText).length, [state.rawText]);
@@ -162,14 +162,11 @@ export default function MultiEntityIngestionPanel() {
     setState((s) => ({ ...s, rawText: value, pasteErr: '' }));
   };
 
-  const handleClientChange = (value) => {
+  const handleTargetChange = (value) => {
     setState((s) => ({
       ...s,
-      defaultClientId: value,
-      // Drop a stale target selection — second dropdown reflects the
-      // newly-selected client's targets only.
-      defaultTargetId: '',
-      defaultsErr:     { ...s.defaultsErr, defaultClientId: '', defaultTargetId: '' },
+      defaultTargetId: value,
+      defaultsErr:     { ...s.defaultsErr, defaultTargetId: '' },
     }));
   };
 
@@ -337,9 +334,9 @@ export default function MultiEntityIngestionPanel() {
       <div className="space-y-4" dir="rtl" data-testid="entity-bulk-paste">
         <p className="text-sm text-slate-500">{ENTITY_BULK_TEXT_INTRO}</p>
 
-        {/* Modal-level defaults — operator picks the client, target, and
-            default relation BEFORE pasting. These apply to every row
-            unless the operator overrides per-row in Step 2. */}
+        {/* Modal-level defaults — single grouped target picker + default
+            relation. UAT round-3: client field removed; picking a target
+            in the <optgroup> already implies its client. */}
         <fieldset className="rounded-md border border-slate-200 p-3 space-y-3">
           <legend className="text-xs font-semibold text-slate-700 px-1">
             {ENTITY_BULK_DEFAULTS_HELP}
@@ -357,33 +354,22 @@ export default function MultiEntityIngestionPanel() {
               ))}
             </LabelledSelect>
             <LabelledSelect
-              id="entity-bulk-default-client"
-              label={ENTITY_BULK_DEFAULT_CLIENT}
-              value={state.defaultClientId}
-              onChange={handleClientChange}
+              id="entity-bulk-default-target"
+              label={ENTITY_BULK_DEFAULT_TARGET}
+              value={state.defaultTargetId}
+              onChange={handleTargetChange}
+              error={state.defaultsErr.defaultTargetId}
             >
               <option value="">{ENTITY_PLACEHOLDER_PICK}</option>
-              {clientOptions.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
+              {targetsByClient.map((group) => (
+                <optgroup key={String(group.clientId)} label={group.clientLabel}>
+                  {group.targets.map((t) => (
+                    <option key={t.id} value={t.id}>{`#${t.id}`}</option>
+                  ))}
+                </optgroup>
               ))}
             </LabelledSelect>
           </div>
-
-          <LabelledSelect
-            id="entity-bulk-default-target"
-            label={ENTITY_BULK_DEFAULT_TARGET}
-            value={state.defaultTargetId}
-            onChange={(v) => setState((s) => ({ ...s, defaultTargetId: v, defaultsErr: { ...s.defaultsErr, defaultTargetId: '' } }))}
-            disabled={state.defaultClientId === ''}
-            error={state.defaultsErr.defaultTargetId}
-          >
-            <option value="">
-              {state.defaultClientId === '' ? ENTITY_PLACEHOLDER_CLIENT_FIRST : ENTITY_PLACEHOLDER_PICK}
-            </option>
-            {targetsForSelectedClient.map((t) => (
-              <option key={t.id} value={t.id}>{`#${t.id}`}</option>
-            ))}
-          </LabelledSelect>
         </fieldset>
 
         {/* Raw paste area + live token counter. */}
@@ -528,8 +514,12 @@ export default function MultiEntityIngestionPanel() {
                       className="block w-full h-8 px-1 rounded border border-slate-300 text-sm bg-white"
                     >
                       <option value="">{ENTITY_BULK_GRID_INHERIT}</option>
-                      {targetsForSelectedClient.map((t) => (
-                        <option key={t.id} value={t.id}>{`#${t.id}`}</option>
+                      {targetsByClient.map((group) => (
+                        <optgroup key={String(group.clientId)} label={group.clientLabel}>
+                          {group.targets.map((t) => (
+                            <option key={t.id} value={t.id}>{`#${t.id}`}</option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </td>

@@ -769,10 +769,11 @@ export const ENTITY_FIELD_FIRST_NAME    = 'שם פרטי';
 export const ENTITY_FIELD_LAST_NAME     = 'שם משפחה';
 export const ENTITY_FIELD_RELATION      = 'סוג קרבה';
 export const ENTITY_FIELD_CLIENT        = 'לקוח';
-export const ENTITY_FIELD_TARGET        = 'ישות ראשית';
+export const ENTITY_FIELD_TARGET        = 'ישות ראשית (לקוח)';
+export const ENTITY_FIELD_STRONG_ID     = 'מזהה חזק (אופציונלי)';
 export const ENTITY_PLACEHOLDER_PICK    = 'בחר…';
 export const ENTITY_PLACEHOLDER_CLIENT_FIRST = 'בחר לקוח תחילה';
-export const ENTITY_TARGET_LIST_EMPTY   = 'אין יעדים ראשיים ללקוח זה.';
+export const ENTITY_TARGET_LIST_EMPTY   = 'אין יעדים ראשיים זמינים.';
 export const ENTITY_FIELD_REQUIRED      = (label) => `${label} הוא שדה חובה.`;
 
 // Relation type options (operator-creatable subset).

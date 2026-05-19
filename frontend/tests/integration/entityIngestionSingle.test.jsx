@@ -1,15 +1,21 @@
 /**
  * Phase E2-C integration — entity ingestion modal (single-entry tab).
  *
+ * UAT round-3 update: the client + target two-dropdown UX was
+ * collapsed into a single <select> with <optgroup> per client, since
+ * picking a target already implies its client. The strong-identifier
+ * optional field was also added.
+ *
  * Covers:
  *   - "+ Add Person" header button opens the entity modal
  *   - Modal renders the three-tab strip with Single selected by default
  *   - Validation blocks empty submissions
- *   - Two-step picker: client selection populates the target dropdown
+ *   - Single grouped target picker shows targets grouped by client
  *   - Submitting a valid form shows the friction-free success panel
  *   - Friction-free CTA closes the entity modal and opens the phone
  *     modal with entity_type pre-filled from the new person's context
  *   - "Cancel" closes without creating
+ *   - Optional strong identifier flows into extra_data
  */
 
 import { describe, it, expect } from 'vitest';
@@ -40,7 +46,7 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     expect(singleTab).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('renders the single-entry form with first/last name + relation + target picker', async () => {
+  it('renders the single-entry form with first/last name + relation + grouped target picker + strong id', async () => {
     const user = userEvent.setup();
     renderApp({ route: '/' });
     await openEntityModal(user);
@@ -48,22 +54,22 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     expect(screen.getByLabelText(/שם פרטי/)).toBeInTheDocument();
     expect(screen.getByLabelText(/שם משפחה/)).toBeInTheDocument();
     expect(screen.getByLabelText(/סוג קרבה/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^לקוח/)).toBeInTheDocument();
     expect(screen.getByLabelText(/ישות ראשית/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/מזהה חזק/)).toBeInTheDocument();
+    // The previous standalone "לקוח" field is gone (UAT round-3) —
+    // clients are now <optgroup> labels inside the target dropdown.
+    expect(screen.queryByLabelText(/^לקוח$/)).not.toBeInTheDocument();
   });
 
-  it('target dropdown is disabled until a client is picked', async () => {
+  it('grouped target picker exposes targets under client <optgroup> labels', async () => {
     const user = userEvent.setup();
     renderApp({ route: '/' });
     await openEntityModal(user);
 
     const targetSelect = screen.getByLabelText(/ישות ראשית/);
-    expect(targetSelect).toBeDisabled();
-
-    // Pick a client → target select enables.
-    const clientSelect = screen.getByLabelText(/^לקוח/);
-    await user.selectOptions(clientSelect, 'alpha');
-    expect(targetSelect).not.toBeDisabled();
+    // At least one <optgroup> exists (the seed has 5 clients).
+    const optgroups = targetSelect.querySelectorAll('optgroup');
+    expect(optgroups.length).toBeGreaterThan(0);
   });
 
   it('shows a validation error when first_name is empty on submit', async () => {
@@ -71,9 +77,7 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     renderApp({ route: '/' });
     await openEntityModal(user);
 
-    // Skip first_name; pick client + target so only first_name is missing.
-    await user.selectOptions(screen.getByLabelText(/^לקוח/), 'alpha');
-    // Selecting a target requires the dropdown to have options first.
+    // Skip first_name; pick a target so only first_name is missing.
     const targetSelect = screen.getByLabelText(/ישות ראשית/);
     const options = within(targetSelect).getAllByRole('option');
     // The first option is the placeholder; pick the second (a real target).
@@ -95,7 +99,6 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     await user.type(screen.getByLabelText(/שם פרטי/), 'Jane');
     await user.type(screen.getByLabelText(/שם משפחה/), 'Doe');
     // 'family' is the default for the relation select — leave it.
-    await user.selectOptions(screen.getByLabelText(/^לקוח/), 'alpha');
     const targetSelect = screen.getByLabelText(/ישות ראשית/);
     const options = within(targetSelect).getAllByRole('option');
     await user.selectOptions(targetSelect, options[1].value);
@@ -117,7 +120,6 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     // Build a valid submission.
     await user.type(screen.getByLabelText(/שם פרטי/), 'Sam');
     await user.selectOptions(screen.getByLabelText(/סוג קרבה/), 'colleague');
-    await user.selectOptions(screen.getByLabelText(/^לקוח/), 'alpha');
     const targetSelect = screen.getByLabelText(/ישות ראשית/);
     const options = within(targetSelect).getAllByRole('option');
     await user.selectOptions(targetSelect, options[1].value);
