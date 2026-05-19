@@ -32,6 +32,7 @@ export const ENTITIES_COL_RELATION = 'סוג קרבה';
 export const ENTITIES_COL_CLIENT  = 'לקוח';
 export const ENTITIES_COL_PHONES  = 'מספרי טלפון';
 export const ENTITIES_COL_CREATED = 'נוצר';
+export const ENTITIES_COL_STRONG_ID = 'מזהה חזק';
 export const ENTITIES_EMPTY       = 'לא נמצאו ישויות.';
 export const ENTITIES_PHONES_POPOVER_TITLE = (name) => `מספרים של ${name}`;
 export const ENTITIES_PHONES_POPOVER_EMPTY = 'אין מספרים מקושרים לישות זו.';
@@ -64,6 +65,16 @@ export const ADMIN_FIELD_LAST_NAME     = 'שם משפחה';
 export const ADMIN_FIELD_RELATION      = 'סוג קרבה';
 export const ADMIN_FIELD_PHONE_NUMBER  = 'מספר טלפון';
 export const ADMIN_FIELD_VERIFICATION  = 'סטטוס אימות';
+export const ADMIN_FIELD_STRONG_ID     = 'מזהה חזק';
+export const ADMIN_FIELD_CLIENT_ID     = 'מזהה לקוח';
+export const ADMIN_FIELD_TARGET_ENTITY = 'ישות-אב (מזהה)';
+export const ADMIN_FIELD_PHONE_ENTITY  = 'ישות בעלים (מזהה)';
+export const ADMIN_FIELD_CLASSIFICATION = 'סיווג';
+export const ADMIN_FIELD_INGEST_SOURCE = 'מקור הקליטה';
+export const ADMIN_FIELD_INGEST_REASON = 'סיבת הקליטה';
+export const ADMIN_FIELD_VERIF_SOURCE  = 'מקור האימות';
+export const ADMIN_FIELD_VERIF_REASON  = 'הערת אימות';
+export const ADMIN_COL_STRONG_ID       = 'מזהה חזק';
 
 // ProfilePage — UAT round-3 user profile editor.
 export const PROFILE_TITLE                  = 'הפרופיל שלי';

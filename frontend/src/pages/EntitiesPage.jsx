@@ -28,6 +28,7 @@ import {
   PAGE_ENTITIES_TITLE, PAGE_ENTITIES_SUB,
   ENTITIES_COL_ID, ENTITIES_COL_NAME, ENTITIES_COL_RELATION,
   ENTITIES_COL_CLIENT, ENTITIES_COL_PHONES, ENTITIES_COL_CREATED,
+  ENTITIES_COL_STRONG_ID,
   ENTITIES_EMPTY,
   ENTITIES_PHONES_POPOVER_TITLE, ENTITIES_PHONES_POPOVER_EMPTY,
   ENTITIES_PHONES_POPOVER_CONFIDENCE,
@@ -107,6 +108,7 @@ export default function EntitiesPage() {
             <tr>
               <th className="text-start px-3 py-2 font-medium w-20">{ENTITIES_COL_ID}</th>
               <th className="text-start px-3 py-2 font-medium">{ENTITIES_COL_NAME}</th>
+              <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_STRONG_ID}</th>
               <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_RELATION}</th>
               <th className="text-start px-3 py-2 font-medium w-36">{ENTITIES_COL_CLIENT}</th>
               <th className="text-start px-3 py-2 font-medium w-28">{ENTITIES_COL_PHONES}</th>
@@ -115,9 +117,9 @@ export default function EntitiesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">…</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">…</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">{ENTITIES_EMPTY}</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">{ENTITIES_EMPTY}</td></tr>
             ) : (
               items.map((e) => {
                 // UAT round-3 fix: render an explicit "ללא שם" marker
@@ -137,6 +139,9 @@ export default function EntitiesPage() {
                     <td className="px-3 py-2 text-slate-500 font-mono text-xs">#{e.id}</td>
                     <td className="px-3 py-2 text-slate-900">
                       {fullName || <span className="text-slate-400 italic">ללא שם</span>}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700 font-mono text-xs">
+                      {e.strong_identifier || <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>

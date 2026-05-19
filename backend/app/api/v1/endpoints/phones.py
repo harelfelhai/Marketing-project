@@ -802,9 +802,15 @@ def _phone_to_dict(ph) -> dict:
 
 
 class _PhonePatchIn(_AdminBaseModel):
+    # UAT round-3 follow-up: expose every operator-editable phone field.
     phone_number:        Optional[str] = _AdminField(default=None, max_length=40)
+    entity_id:           Optional[int] = _AdminField(default=None)
     classification_type: Optional[str] = _AdminField(default=None, max_length=40)
+    ingestion_source:    Optional[str] = _AdminField(default=None, max_length=40)
+    ingestion_reason:    Optional[str] = _AdminField(default=None, max_length=400)
     verification_status: Optional[str] = _AdminField(default=None, max_length=40)
+    verification_source: Optional[str] = _AdminField(default=None, max_length=40)
+    verification_reason: Optional[str] = _AdminField(default=None, max_length=400)
 
 
 @router.patch(
@@ -814,8 +820,7 @@ class _PhonePatchIn(_AdminBaseModel):
         "Partial update for the data-admin tab. Distinct from the "
         "verification-flow PATCH `/phones/{id}` (which only flips the "
         "verification axis): this endpoint accepts arbitrary phone "
-        "edits and is role-gated to admins. Tombstones are NOT editable "
-        "— restore the row first."
+        "edits. Tombstones are NOT editable — restore the row first."
     ),
 )
 def admin_patch_phone(
@@ -827,8 +832,13 @@ def admin_patch_phone(
         ph = admin.patch_phone(
             phone_id,
             phone_number=body.phone_number,
+            entity_id=body.entity_id,
             classification_type=body.classification_type,
+            ingestion_source=body.ingestion_source,
+            ingestion_reason=body.ingestion_reason,
             verification_status=body.verification_status,
+            verification_source=body.verification_source,
+            verification_reason=body.verification_reason,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

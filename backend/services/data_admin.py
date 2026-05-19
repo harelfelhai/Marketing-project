@@ -234,21 +234,42 @@ class DataAdminService:
         phone_id: int,
         *,
         phone_number: Optional[str] = None,
+        entity_id: Optional[int] = None,
         classification_type: Optional[str] = None,
+        ingestion_source: Optional[str] = None,
+        ingestion_reason: Optional[str] = None,
         verification_status: Optional[str] = None,
+        verification_source: Optional[str] = None,
+        verification_reason: Optional[str] = None,
     ) -> PhoneNumber:
         """
         Edit an existing phone row. Like patch_entity, only non-None
-        args take effect. Raises ValueError on missing/deleted row.
+        args take effect. Raises ValueError on missing/deleted row,
+        or on a non-existent / soft-deleted entity_id when moving the
+        phone to a different owner.
         """
         ph = self.get_phone(phone_id, include_deleted=False)
 
         if phone_number is not None:
             ph.phone_number = phone_number.strip()
+        if entity_id is not None:
+            # Validate the new owner exists and is active.
+            owner = self.session.get(Entity, entity_id)
+            if owner is None or owner.deleted_at is not None:
+                raise ValueError(f"Entity {entity_id} not found")
+            ph.entity_id = entity_id
         if classification_type is not None:
             ph.classification_type = classification_type
+        if ingestion_source is not None:
+            ph.ingestion_source = ingestion_source
+        if ingestion_reason is not None:
+            ph.ingestion_reason = ingestion_reason.strip() or None
         if verification_status is not None:
             ph.verification_status = verification_status
+        if verification_source is not None:
+            ph.verification_source = verification_source
+        if verification_reason is not None:
+            ph.verification_reason = verification_reason.strip() or None
 
         self.session.add(ph)
         self.session.commit()

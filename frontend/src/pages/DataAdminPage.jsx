@@ -42,6 +42,11 @@ import {
   ADMIN_TOAST_ERROR,
   ADMIN_FIELD_FIRST_NAME, ADMIN_FIELD_LAST_NAME, ADMIN_FIELD_RELATION,
   ADMIN_FIELD_PHONE_NUMBER, ADMIN_FIELD_VERIFICATION,
+  ADMIN_FIELD_STRONG_ID, ADMIN_FIELD_CLIENT_ID, ADMIN_FIELD_TARGET_ENTITY,
+  ADMIN_FIELD_PHONE_ENTITY, ADMIN_FIELD_CLASSIFICATION,
+  ADMIN_FIELD_INGEST_SOURCE, ADMIN_FIELD_INGEST_REASON,
+  ADMIN_FIELD_VERIF_SOURCE, ADMIN_FIELD_VERIF_REASON,
+  ADMIN_COL_STRONG_ID,
 } from '../config/strings.he';
 
 
@@ -191,6 +196,7 @@ function PersonsAdmin({ includeDeleted }) {
             <tr>
               <th className="text-start px-3 py-2 w-20">מזהה</th>
               <th className="text-start px-3 py-2">שם</th>
+              <th className="text-start px-3 py-2 w-32">{ADMIN_COL_STRONG_ID}</th>
               <th className="text-start px-3 py-2 w-32">סוג קרבה</th>
               <th className="text-start px-3 py-2 w-36">לקוח</th>
               <th className="text-start px-3 py-2 w-24">סטטוס</th>
@@ -199,11 +205,11 @@ function PersonsAdmin({ includeDeleted }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">
                 <Loader2 className="w-4 h-4 animate-spin inline" />
               </td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">לא נמצאו ישויות.</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">לא נמצאו ישויות.</td></tr>
             ) : (
               rows.map((e) => {
                 // UAT round-3 fix: when both name parts are empty
@@ -222,6 +228,9 @@ function PersonsAdmin({ includeDeleted }) {
                     <td className="px-3 py-2 font-mono text-xs text-slate-500">#{e.id}</td>
                     <td className="px-3 py-2 text-slate-900">
                       {fullName || <span className="text-slate-400 italic">ללא שם</span>}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700 font-mono text-xs">
+                      {e.strong_identifier || <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>
@@ -473,22 +482,38 @@ function PhonesAdmin({ includeDeleted }) {
  * ========================================================================= */
 
 function EntityEditModal({ entity, onCancel, onSave }) {
-  const [firstName, setFirstName] = useState(entity.first_name || '');
-  const [lastName,  setLastName]  = useState(entity.last_name  || '');
-  const [relation,  setRelation]  = useState(entity.entity_type || 'family');
+  // UAT round-3: every operator-editable field is exposed here. The
+  // internal id, audit timestamps and tombstone are intentionally not
+  // surfaced — they're auto-managed.
+  const [firstName,        setFirstName]        = useState(entity.first_name || '');
+  const [lastName,         setLastName]         = useState(entity.last_name  || '');
+  const [relation,         setRelation]         = useState(entity.entity_type || 'family');
+  const [clientId,         setClientId]         = useState(
+    entity.client_id != null ? String(entity.client_id) : '',
+  );
+  const [targetEntityId,   setTargetEntityId]   = useState(
+    entity.target_entity_id != null ? String(entity.target_entity_id) : '',
+  );
+  const [strongIdentifier, setStrongIdentifier] = useState(entity.strong_identifier || '');
 
   const handleSave = () =>
     onSave({
-      first_name:    firstName,
-      last_name:     lastName,
-      relation_type: relation,
+      first_name:        firstName,
+      last_name:         lastName,
+      relation_type:     relation,
+      client_id:         clientId === '' ? null : Number(clientId),
+      target_entity_id:  targetEntityId === '' ? null : Number(targetEntityId),
+      strong_identifier: strongIdentifier,
     });
 
   return (
     <ModalScaffold onCancel={onCancel} testId="admin-entity-edit-modal" title="עריכת ישות">
-      <LabeledInput label={ADMIN_FIELD_FIRST_NAME} value={firstName} onChange={setFirstName} />
-      <LabeledInput label={ADMIN_FIELD_LAST_NAME}  value={lastName}  onChange={setLastName}  />
-      <LabeledInput label={ADMIN_FIELD_RELATION}   value={relation}  onChange={setRelation}  />
+      <LabeledInput label={ADMIN_FIELD_FIRST_NAME}      value={firstName}        onChange={setFirstName} />
+      <LabeledInput label={ADMIN_FIELD_LAST_NAME}       value={lastName}         onChange={setLastName}  />
+      <LabeledInput label={ADMIN_FIELD_STRONG_ID}       value={strongIdentifier} onChange={setStrongIdentifier} />
+      <LabeledInput label={ADMIN_FIELD_RELATION}        value={relation}         onChange={setRelation}  />
+      <LabeledInput label={ADMIN_FIELD_CLIENT_ID}       value={clientId}         onChange={setClientId} />
+      <LabeledInput label={ADMIN_FIELD_TARGET_ENTITY}   value={targetEntityId}   onChange={setTargetEntityId} />
       <ModalActions onCancel={onCancel} onSave={handleSave} />
     </ModalScaffold>
   );
@@ -496,19 +521,42 @@ function EntityEditModal({ entity, onCancel, onSave }) {
 
 
 function PhoneEditModal({ phone, onCancel, onSave }) {
-  const [number,   setNumber]   = useState(phone.phone_number || '');
-  const [verif,    setVerif]    = useState(phone.verification_status || 'pending');
+  // UAT round-3: full editable surface. id, ingested_at, created_at,
+  // updated_at, deleted_at, priority_score, confidence_score are all
+  // auto-managed and stay read-only.
+  const [number,             setNumber]             = useState(phone.phone_number || '');
+  const [entityId,           setEntityId]           = useState(
+    phone.entity_id != null ? String(phone.entity_id) : '',
+  );
+  const [classification,     setClassification]     = useState(phone.classification_type || '');
+  const [ingestionSource,    setIngestionSource]    = useState(phone.ingestion_source || '');
+  const [ingestionReason,    setIngestionReason]    = useState(phone.ingestion_reason || '');
+  const [verifStatus,        setVerifStatus]        = useState(phone.verification_status || 'pending');
+  const [verifSource,        setVerifSource]        = useState(phone.verification_source || '');
+  const [verifReason,        setVerifReason]        = useState(phone.verification_reason || '');
 
   const handleSave = () =>
     onSave({
-      phone_number:        number,
-      verification_status: verif,
+      phone_number:         number,
+      entity_id:            entityId === '' ? null : Number(entityId),
+      classification_type:  classification,
+      ingestion_source:     ingestionSource,
+      ingestion_reason:     ingestionReason,
+      verification_status:  verifStatus,
+      verification_source:  verifSource,
+      verification_reason:  verifReason,
     });
 
   return (
     <ModalScaffold onCancel={onCancel} testId="admin-phone-edit-modal" title="עריכת טלפון">
-      <LabeledInput label={ADMIN_FIELD_PHONE_NUMBER} value={number} onChange={setNumber} dir="ltr" />
-      <LabeledInput label={ADMIN_FIELD_VERIFICATION} value={verif}  onChange={setVerif}  />
+      <LabeledInput label={ADMIN_FIELD_PHONE_NUMBER}     value={number}          onChange={setNumber} dir="ltr" />
+      <LabeledInput label={ADMIN_FIELD_PHONE_ENTITY}     value={entityId}        onChange={setEntityId} />
+      <LabeledInput label={ADMIN_FIELD_CLASSIFICATION}   value={classification}  onChange={setClassification} />
+      <LabeledInput label={ADMIN_FIELD_INGEST_SOURCE}    value={ingestionSource} onChange={setIngestionSource} />
+      <LabeledInput label={ADMIN_FIELD_INGEST_REASON}    value={ingestionReason} onChange={setIngestionReason} />
+      <LabeledInput label={ADMIN_FIELD_VERIFICATION}     value={verifStatus}     onChange={setVerifStatus} />
+      <LabeledInput label={ADMIN_FIELD_VERIF_SOURCE}     value={verifSource}     onChange={setVerifSource} />
+      <LabeledInput label={ADMIN_FIELD_VERIF_REASON}     value={verifReason}     onChange={setVerifReason} />
       <ModalActions onCancel={onCancel} onSave={handleSave} />
     </ModalScaffold>
   );
