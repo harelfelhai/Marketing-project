@@ -1338,6 +1338,50 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyTableExport — mock-mode parity for POST /api/v1/{table}/export.
+  //
+  // Mirrors ExportService on the backend at the contract level (same
+  // filter recognition, same column projection, same dotted-key
+  // resolution into extra_data). Returns a CSV blob (Excel opens it
+  // natively) rather than xlsx because the mock doesn't bundle a JS
+  // xlsx writer — same trade-off as bulkIngestUpload in mock mode.
+  // -------------------------------------------------------------------------
+  const applyTableExport = useCallback((tableId, body) => {
+    const { filters = {}, columns = [], filename_hint } = body;
+
+    // Per-table row source + filter application.
+    let rows;
+    if (tableId === 'phones') {
+      rows = _mockFilterPhones(db, filters);
+    } else if (tableId === 'tasks') {
+      rows = _mockFilterTasks(db, filters);
+    } else {
+      throw new Error(`Unsupported export table: ${tableId}`);
+    }
+
+    // Build CSV in memory.
+    const lines = [];
+    lines.push(columns.map((c) => _csvEscape(c.label)).join(','));
+    for (const row of rows) {
+      lines.push(
+        columns
+          .map((c) => _csvEscape(_formatCell(_resolveDotted(row, c.key), c.format)))
+          .join(','),
+      );
+    }
+    const csv = lines.join('\n') + '\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+
+    // Filename mirrors the backend: {table}_{hint?}_{YYYY-MM-DD}_{HHMM}.csv
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const safeHint = (filename_hint || '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+    const filename = [tableId, safeHint, stamp].filter(Boolean).join('_') + '.csv';
+
+    return { blob, filename };
+  }, [db]);
+
+  // -------------------------------------------------------------------------
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
@@ -1407,6 +1451,7 @@ export function MockDataProvider({ children }) {
     applyOpenTask,
     applyResolveTask,
     applyBulkResolveTasks,
+    applyTableExport,
     setEngineExecuting,
     // Derived helpers
     getClientMetrics,
@@ -1427,4 +1472,150 @@ export function useMockData() {
   const ctx = useContext(MockDataContext);
   if (!ctx) throw new Error('useMockData must be used within MockDataProvider');
   return ctx;
+}
+
+
+// ===========================================================================
+// Module-level helpers for applyTableExport (Phase EXP mock-parity layer)
+//
+// Kept private to this file — they mirror the backend's filter and
+// projection semantics so mock-mode operators see the same export
+// shape the real backend would emit.
+// ===========================================================================
+
+
+function _mockFilterPhones(db, f) {
+  let rows = (db.phones || []).slice();
+  // Materialize each row with the JOIN fields the backend includes —
+  // entity_type, client_id, customer_tier (pulled from the root
+  // target's extra_data when this row is associated, else from its
+  // own extra_data).
+  rows = rows.map((p) => {
+    const ent = db.entities.find((e) => e.id === p.entity_id);
+    const root = ent && ent.target_entity_id != null
+      ? db.entities.find((e) => e.id === ent.target_entity_id)
+      : ent;
+    let customerTier = null;
+    const tierSrc = (root && root.extra_data) || (ent && ent.extra_data);
+    if (tierSrc && tierSrc.customer_tier != null) {
+      const parsed = Number(tierSrc.customer_tier);
+      customerTier = Number.isFinite(parsed) ? parsed : null;
+    }
+    return {
+      ...p,
+      entity_type:   ent?.entity_type ?? null,
+      client_id:     ent?.client_id   ?? null,
+      customer_tier: customerTier,
+    };
+  });
+
+  if (f.verification_status) {
+    rows = rows.filter((r) => r.verification_status === f.verification_status);
+  }
+  if (f.ingestion_source) {
+    rows = rows.filter((r) => r.ingestion_source === f.ingestion_source);
+  }
+  if (f.entity_type) {
+    rows = rows.filter((r) => r.entity_type === f.entity_type);
+  }
+  if (f.classification_type) {
+    rows = rows.filter((r) => r.classification_type === f.classification_type);
+  }
+  if (f.client_id != null && f.client_id !== '') {
+    rows = rows.filter((r) => String(r.client_id) === String(f.client_id));
+  }
+  if (f.q) {
+    const needle = String(f.q).toLowerCase();
+    rows = rows.filter((r) => {
+      const hay = [
+        r.phone_number || '',
+        String(r.entity_id ?? ''),
+        String(r.client_id ?? ''),
+      ].join(' ').toLowerCase();
+      return hay.includes(needle);
+    });
+  }
+  // Newest-first to match the backend's ORDER BY ingested_at DESC.
+  rows.sort((a, b) => new Date(b.ingested_at) - new Date(a.ingested_at));
+  return rows;
+}
+
+
+function _mockFilterTasks(db, f) {
+  let rows = (db.tasks || []).slice();
+
+  if (f.status) {
+    rows = rows.filter((r) => r.status === f.status);
+  }
+  if (f.task_type) {
+    rows = rows.filter((r) => r.task_type === f.task_type);
+  }
+  if (f.phone_id != null && f.phone_id !== '') {
+    rows = rows.filter((r) => String(r.phone_id) === String(f.phone_id));
+  }
+  if (f.exclude_terminal && !f.status) {
+    // Mirrors the backend: explicit status filter wins.
+    rows = rows.filter((r) => r.status !== 'resolved' && r.status !== 'rejected');
+  }
+  if (f.q) {
+    const needle = String(f.q).toLowerCase();
+    rows = rows.filter((r) => {
+      const hay = [
+        r.phone_number || '',
+        r.requested_by || '',
+        r.resolved_by  || '',
+        String(r.client_id ?? ''),
+      ].join(' ').toLowerCase();
+      return hay.includes(needle);
+    });
+  }
+  rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return rows;
+}
+
+
+function _resolveDotted(row, key) {
+  if (!key.includes('.')) return row[key];
+  let cursor = row;
+  for (const seg of key.split('.')) {
+    if (cursor == null || typeof cursor !== 'object') return null;
+    cursor = cursor[seg];
+    if (cursor == null) return null;
+  }
+  return cursor;
+}
+
+
+function _formatCell(value, fmt) {
+  if (value == null) return '';
+  if (fmt === 'datetime') {
+    try {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? String(value) : d.toISOString();
+    } catch {
+      return String(value);
+    }
+  }
+  if (fmt === 'number2') {
+    const f = Number(value);
+    return Number.isFinite(f) ? String(Math.round(f * 100) / 100) : String(value);
+  }
+  if (fmt === 'number') {
+    const f = Number(value);
+    return Number.isFinite(f) ? String(f) : String(value);
+  }
+  return String(value);
+}
+
+
+/**
+ * CSV-escape a single cell: wrap in double-quotes if it contains
+ * comma / newline / quote, and double any inner quotes per RFC 4180.
+ */
+function _csvEscape(v) {
+  const s = v == null ? '' : String(v);
+  if (/[",\n\r]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
 }

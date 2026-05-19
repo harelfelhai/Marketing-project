@@ -431,6 +431,35 @@ export const TASK_FILTER_PHONE_CHIP         = (id) => `מסונן לטלפון #
 export const TASK_FILTER_CLIENT_CHIP        = (id) => `מסונן ללקוח #${id}`;
 export const TASK_FILTER_OPEN_ONLY_CHIP     = 'משימות פתוחות בלבד';
 
+// ---------------------------------------------------------------------------
+// Phase EXP — Table export to Excel
+// ---------------------------------------------------------------------------
+
+// Split button on every exportable table.
+export const EXPORT_BTN_LABEL            = 'ייצא לאקסל';
+export const EXPORT_BTN_MENU_CURRENT     = 'ייצא עם הגדרות נוכחיות';
+export const EXPORT_BTN_MENU_CUSTOMIZE   = 'התאם שדות…';
+export const EXPORT_BTN_PROCESSING       = 'מייצא…';
+
+// Configurator modal.
+export const EXPORT_MODAL_TITLE          = 'התאם שדות לייצוא';
+export const EXPORT_MODAL_VISIBLE_HEADER = (n) => `שדות בייצוא (${n})`;
+export const EXPORT_MODAL_AVAILABLE_HEADER = (n) => `שדות זמינים (${n})`;
+export const EXPORT_MODAL_RESET          = 'אפס לברירת מחדל';
+export const EXPORT_MODAL_CANCEL         = 'ביטול';
+export const EXPORT_MODAL_SAVE_AND_GO    = 'שמור והורד';
+export const EXPORT_MODAL_REMOVE_ARIA    = (label) => `הסר את ${label} מהייצוא`;
+export const EXPORT_MODAL_ADD_ARIA       = (label) => `הוסף את ${label} לייצוא`;
+export const EXPORT_MODAL_MOVE_UP_ARIA   = (label) => `הזז את ${label} למעלה`;
+export const EXPORT_MODAL_MOVE_DOWN_ARIA = (label) => `הזז את ${label} למטה`;
+export const EXPORT_MODAL_EMPTY_NOTE     = 'בחר לפחות שדה אחד לייצוא.';
+
+// Toasts.
+export const EXPORT_TOAST_SUCCESS        = 'הקובץ הורד.';
+export const EXPORT_TOAST_TOO_MANY       = (n) =>
+  `יותר מדי שורות (${n}). צמצם את הסינון ונסה שוב.`;
+export const EXPORT_TOAST_ERROR          = (msg) => `ייצוא נכשל: ${msg}`;
+
 // Default-hide toggle for resolved/rejected tasks. Off (= hide) by
 // default so managers land on a clean "action required now" queue;
 // when the operator wants the historical audit view, flipping this

@@ -25,6 +25,7 @@ import TaskFilterBar    from '../components/ops/TaskFilterBar';
 import TaskTable        from '../components/ops/TaskTable';
 import TaskDetailDrawer from '../components/ops/TaskDetailDrawer';
 import BulkActionBar    from '../components/ops/BulkActionBar';
+import TableExportButton from '../components/exports/TableExportButton';
 import RequireRole      from '../components/primitives/RequireRole';
 import { useUI }        from '../contexts/UIContext';
 import {
@@ -45,7 +46,27 @@ export default function OperationsQueuePage() {
     seedTaskPhoneFilter,
     seedTaskClientFilter,
     updateTaskFilters,
+    taskFilters,
   } = useUI();
+
+  // Translate UIContext.taskFilters into the GET /tasks query shape
+  // ExportService expects. Lazy callback so the live filter state is
+  // captured at click time, not at render time.
+  const getCurrentFilters = useCallback(() => {
+    const f = {};
+    if (taskFilters.status)                       f.status     = taskFilters.status;
+    if (taskFilters.taskType)                     f.task_type  = taskFilters.taskType;
+    if (taskFilters.phoneId != null)              f.phone_id   = taskFilters.phoneId;
+    if (taskFilters.search)                       f.q          = taskFilters.search.trim();
+    // Both `hideResolved` (default-hide toggle) and `openOnly` (cross-
+    // link from ClientCard) collapse onto the same `exclude_terminal`
+    // backend flag. The backend already implements "explicit status
+    // wins" so this is safe even when status is set explicitly.
+    if (taskFilters.hideResolved || taskFilters.openOnly) {
+      f.exclude_terminal = true;
+    }
+    return f;
+  }, [taskFilters]);
 
   // Row toggle — adds or removes one id without mutating the existing
   // Set (React only re-renders when the reference changes, so we build
@@ -106,9 +127,16 @@ export default function OperationsQueuePage() {
       }
     >
       <section className="space-y-4">
-        <header>
-          <h1 className="text-2xl font-semibold text-slate-900">{PAGE_OPERATIONS_TITLE}</h1>
-          <p className="text-sm text-slate-500 mt-1">{PAGE_OPERATIONS_SUB}</p>
+        <header className="flex items-baseline justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">{PAGE_OPERATIONS_TITLE}</h1>
+            <p className="text-sm text-slate-500 mt-1">{PAGE_OPERATIONS_SUB}</p>
+          </div>
+          <TableExportButton
+            tableId="tasks"
+            getCurrentFilters={getCurrentFilters}
+            filenameHint={taskFilters.status || (taskFilters.hideResolved ? 'active' : undefined)}
+          />
         </header>
 
         <TaskFilterBar />
