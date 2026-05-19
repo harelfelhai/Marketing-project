@@ -9,6 +9,9 @@ sqlmodel==0.0.22
 sqlalchemy==2.0.36
 apscheduler==3.10.4
 pydantic-settings==2.2.1
+# Phase E1-B — Excel parsing + template generation. Standalone, pure-Python,
+# ~3MB on disk; no numpy/pandas transitive deps.
+openpyxl==3.1.5
 python-multipart==0.0.9
 httpx==0.27.0
 pytest==8.2.0

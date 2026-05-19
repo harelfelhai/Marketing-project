@@ -41,10 +41,14 @@ client_id, entity_type, target_entity_id remain opaque structural data.
 The audit-trail bulk_submission_id is a uuid4 — opaque, non-correlating.
 """
 
+import csv
+import io
 import re
 import uuid
 from typing import Optional, TYPE_CHECKING
 
+import openpyxl
+from openpyxl import Workbook
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
@@ -54,6 +58,33 @@ from models.phone_number import PhoneNumber
 
 if TYPE_CHECKING:
     from services.scoring import ScoringService
+
+
+# ---------------------------------------------------------------------------
+# Bulk-upload constants (Phase E1-B)
+# ---------------------------------------------------------------------------
+
+# The Excel/CSV template + uploaded sheet use these column names verbatim.
+# Required columns must be present in the header row; optional columns
+# may be omitted entirely. Names are English by design (they're the API
+# contract — Hebrew translation lives only in the operator-facing
+# template "instructions" sheet).
+BULK_UPLOAD_REQUIRED_COLUMNS = (
+    "phone_number",
+    "client_id",
+    "entity_type",
+    "ingestion_source",
+)
+BULK_UPLOAD_OPTIONAL_COLUMNS = (
+    "target_entity_id",
+    "ingestion_reason",
+)
+BULK_UPLOAD_ALL_COLUMNS = BULK_UPLOAD_REQUIRED_COLUMNS + BULK_UPLOAD_OPTIONAL_COLUMNS
+
+# Cap on uploaded row count — protects the service from a 50k-row sheet
+# blocking the request loop in pure-Python openpyxl. Configurable via
+# the Settings if a deployment legitimately needs higher.
+BULK_UPLOAD_MAX_ROWS = 5_000
 
 
 # ---------------------------------------------------------------------------
@@ -301,3 +332,372 @@ class BulkIngestionService:
             "failed_rows":        failed_rows,
             "bulk_submission_id": submission_id,
         }
+
+    # ----------------------------------------------------------------
+    # Public — bulk-upload entry point (Phase E1-B)
+    # ----------------------------------------------------------------
+
+    def ingest_bulk_upload(
+        self,
+        file_bytes: bytes,
+        filename: str,
+    ) -> dict:
+        """
+        Parse an Excel (.xlsx) or CSV file and insert one PhoneNumber
+        per row. Unlike bulk-text, each row may target a different
+        Entity — rows are NOT collapsed under a single shared envelope.
+        For each row, the service either reuses an existing Entity
+        (when target_entity_id is supplied AND the row's other context
+        fields match the target's owning row) or creates a NEW Entity
+        from the row's context.
+
+        For simplicity in this slice: every row → new Entity. Operator
+        ergonomics suggest a "reuse existing entity when target_entity_id
+        provided AND entity_type/client_id match" future enhancement;
+        deferred until a real workflow demands it.
+
+        Args:
+            file_bytes (bytes):   Raw file contents from the upload.
+            filename   (str):     Original filename — used only to pick
+                                  the parser (.xlsx vs .csv) and to echo
+                                  back in error messages.
+
+        Returns:
+            dict: BulkIngestSummary-shaped dict (same shape as bulk-text).
+
+        Raises:
+            ValueError: malformed file, missing required columns, too
+                        many rows, unparseable header. The endpoint
+                        maps this to 422.
+        """
+        submission_id = str(uuid.uuid4())
+
+        # Pick the parser by filename extension. We don't sniff the
+        # bytes here — the endpoint is responsible for the security
+        # check (size cap + extension whitelist). Filenames without an
+        # extension hit the default (.xlsx); CSV must be explicit.
+        lower = filename.lower()
+        if lower.endswith(".csv"):
+            rows = self._parse_csv(file_bytes)
+        elif lower.endswith(".xlsx"):
+            rows = self._parse_xlsx(file_bytes)
+        else:
+            raise ValueError(
+                f"Unsupported file extension: '{filename}'. Allowed: .xlsx, .csv"
+            )
+
+        if len(rows) > BULK_UPLOAD_MAX_ROWS:
+            raise ValueError(
+                f"Too many rows: {len(rows)} (max {BULK_UPLOAD_MAX_ROWS})"
+            )
+
+        # ----------------------------------------------------------------
+        # Pass 1 — validate per-row shape, build candidates list.
+        # ----------------------------------------------------------------
+        failed_rows: list[dict] = []
+        # candidates: list of (row_idx, row_dict_with_normalized_phone)
+        candidates: list[tuple[int, dict]] = []
+        seen_phones: dict[str, int] = {}
+
+        for row_idx, row in enumerate(rows, start=1):
+            # Strip whitespace from all string values for cleanliness.
+            raw_phone = str(row.get("phone_number") or "").strip()
+            if not raw_phone:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": "Missing phone_number",
+                })
+                continue
+            normalized = _normalize(raw_phone)
+            if not normalized or not _PHONE_REGEX.match(normalized):
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": raw_phone[:_FAILURE_INPUT_CAP],
+                    "error": "Invalid phone format",
+                })
+                continue
+            # Required-field check (excluding phone_number, already done).
+            missing = [
+                col for col in BULK_UPLOAD_REQUIRED_COLUMNS[1:]
+                if not row.get(col) and row.get(col) != 0
+            ]
+            if missing:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": raw_phone[:_FAILURE_INPUT_CAP],
+                    "error": f"Missing required field(s): {', '.join(missing)}",
+                })
+                continue
+            # client_id coercion to int.
+            try:
+                row["client_id"] = int(row["client_id"])
+            except (TypeError, ValueError):
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": raw_phone[:_FAILURE_INPUT_CAP],
+                    "error": "client_id must be an integer",
+                })
+                continue
+            # Optional target_entity_id coercion.
+            tgt = row.get("target_entity_id")
+            if tgt not in (None, ""):
+                try:
+                    row["target_entity_id"] = int(tgt)
+                except (TypeError, ValueError):
+                    failed_rows.append({
+                        "row": row_idx,
+                        "input": raw_phone[:_FAILURE_INPUT_CAP],
+                        "error": "target_entity_id must be an integer",
+                    })
+                    continue
+            else:
+                row["target_entity_id"] = None
+            # Within-batch dedup.
+            if normalized in seen_phones:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": raw_phone[:_FAILURE_INPUT_CAP],
+                    "error": f"Duplicate of row {seen_phones[normalized]} in this batch",
+                })
+                continue
+            seen_phones[normalized] = row_idx
+            row["_normalized_phone"] = normalized
+            candidates.append((row_idx, row))
+
+        # ----------------------------------------------------------------
+        # Pass 2 — per-row insert with savepoints. Each row gets its
+        # own Entity (the bulk-upload mental model is "every row is its
+        # own ingestion context").
+        # ----------------------------------------------------------------
+        phone_ids: list[int] = []
+        entity_ids: list[int] = []
+
+        for row_idx, row in candidates:
+            try:
+                with self.session.begin_nested():
+                    # Validate target_entity_id existence per-row. A bad
+                    # FK here lands as a per-row failure, NOT a
+                    # request-level abort (different from bulk-text).
+                    target_id = row.get("target_entity_id")
+                    if target_id is not None:
+                        if self.session.get(Entity, target_id) is None:
+                            raise ValueError(
+                                f"target_entity_id={target_id} not found"
+                            )
+
+                    entity_extra = {"bulk_submission_id": submission_id}
+                    new_entity = Entity(
+                        client_id=row["client_id"],
+                        relation_type=(
+                            "associated" if row["entity_type"] != "target"
+                            else "primary"
+                        ),
+                        entity_type=row["entity_type"],
+                        target_entity_id=target_id,
+                        extra_data=entity_extra,
+                    )
+                    self.session.add(new_entity)
+                    self.session.flush()
+
+                    phone = PhoneNumber(
+                        entity_id=new_entity.id,
+                        phone_number=row["_normalized_phone"],
+                        ingestion_source=row["ingestion_source"],
+                        ingestion_reason=row.get("ingestion_reason"),
+                        extra_data={"bulk_submission_id": submission_id},
+                    )
+                    self.session.add(phone)
+                    self.session.flush()
+                    if self.scoring_service is not None:
+                        self.scoring_service.recalculate_for_phone(
+                            phone.id, commit=False
+                        )
+                phone_ids.append(phone.id)
+                entity_ids.append(new_entity.id)
+            except (IntegrityError, ValueError) as exc:
+                # Both kinds of error land here — IntegrityError from
+                # SQLAlchemy (UNIQUE violation, FK violation) and ValueError
+                # from our own checks inside the savepoint.
+                if isinstance(exc, IntegrityError):
+                    detail = str(exc.orig) if exc.orig else "Database constraint violation"
+                    msg = (
+                        "Already exists in the system"
+                        if "UNIQUE" in detail.upper() or "unique" in detail.lower()
+                        else f"DB error: {detail[:120]}"
+                    )
+                else:
+                    msg = str(exc)
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": row.get("_normalized_phone", "")[:_FAILURE_INPUT_CAP],
+                    "error": msg,
+                })
+
+        failed_rows.sort(key=lambda r: r["row"])
+        self.session.commit()
+        return {
+            "success_count":      len(phone_ids),
+            "failed_count":       len(failed_rows),
+            "phone_ids":          phone_ids,
+            "entity_ids":         entity_ids,
+            "failed_rows":        failed_rows,
+            "bulk_submission_id": submission_id,
+        }
+
+    # ----------------------------------------------------------------
+    # File parsers — kept as private static methods so they're trivial
+    # to test without instantiating the service.
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def _parse_csv(file_bytes: bytes) -> list[dict]:
+        """
+        Parse a CSV upload into a list of dict rows (column → cell value).
+
+        UTF-8-SIG is the default decoding — Excel exports often include
+        a BOM. Other encodings would need an explicit charset header on
+        the upload; for MVP we don't support them.
+
+        Raises ValueError if the header is missing required columns.
+        """
+        try:
+            text = file_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"CSV not UTF-8 decodable: {exc}") from exc
+
+        reader = csv.DictReader(io.StringIO(text))
+        if reader.fieldnames is None:
+            raise ValueError("CSV is empty or has no header row")
+        missing = [
+            c for c in BULK_UPLOAD_REQUIRED_COLUMNS if c not in reader.fieldnames
+        ]
+        if missing:
+            raise ValueError(
+                f"CSV header missing required columns: {', '.join(missing)}"
+            )
+        return list(reader)
+
+    @staticmethod
+    def _parse_xlsx(file_bytes: bytes) -> list[dict]:
+        """
+        Parse an .xlsx upload into a list of dict rows.
+
+        Uses openpyxl's read_only + data_only modes for streaming-style
+        access and to read formula RESULTS (not the formula text itself
+        — paranoid against operators uploading sheets with `=A1+B1`).
+
+        The header row is the FIRST row of the FIRST visible worksheet.
+        Required-column presence is validated here; per-row content
+        validation runs in the caller.
+        """
+        try:
+            wb = openpyxl.load_workbook(
+                io.BytesIO(file_bytes),
+                read_only=True,
+                data_only=True,
+            )
+        except Exception as exc:
+            raise ValueError(f"Not a valid .xlsx workbook: {exc}") from exc
+
+        ws = wb.active
+        if ws is None:
+            raise ValueError("Workbook has no active sheet")
+
+        # First non-empty row is the header. Empty leading rows are
+        # tolerated (some operators paste a blank "header" row by accident).
+        rows_iter = ws.iter_rows(values_only=True)
+        header_row = None
+        for row in rows_iter:
+            if any(cell is not None and str(cell).strip() for cell in row):
+                header_row = row
+                break
+        if header_row is None:
+            raise ValueError("Workbook is empty")
+
+        header = [str(c).strip() if c is not None else "" for c in header_row]
+        missing = [c for c in BULK_UPLOAD_REQUIRED_COLUMNS if c not in header]
+        if missing:
+            raise ValueError(
+                f"Workbook header missing required columns: {', '.join(missing)}"
+            )
+
+        # Build dicts from the remaining rows. Empty rows skipped.
+        result = []
+        for row in rows_iter:
+            if not any(cell is not None and str(cell).strip() for cell in row):
+                continue
+            row_dict = {}
+            for col_name, cell in zip(header, row):
+                if not col_name:
+                    continue
+                # Treat empty string as None for consistency with CSV.
+                if isinstance(cell, str):
+                    cell = cell.strip() or None
+                row_dict[col_name] = cell
+            result.append(row_dict)
+        return result
+
+    # ----------------------------------------------------------------
+    # Template generation (Phase E1-B)
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def generate_template_xlsx() -> bytes:
+        """
+        Generate the Excel upload template in memory and return the bytes.
+
+        Two sheets:
+            1. "data" — the header row + 3 example rows operators can
+               replace with their own data.
+            2. "instructions" — Hebrew operator notes explaining each
+               column. The column names themselves stay English (they
+               are the API contract; renaming them breaks parsing).
+
+        The bytes are suitable for direct return as a FastAPI
+        Response(media_type="application/vnd.openxmlformats-...").
+        """
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "data"
+        # Header
+        ws.append(list(BULK_UPLOAD_ALL_COLUMNS))
+        # Three example rows demonstrating the expected shape.
+        ws.append(["+14155551111", 1, "family",          "manual",    None, "Spouse — found via referral"])
+        ws.append(["+14155551112", 1, "friend",          "manual",    None, "Close friend"])
+        ws.append(["+14155551113", 2, "social_envelope", "automated", None, "Cluster scrape, unknown owner"])
+
+        # Instructions sheet — Hebrew notes for operators.
+        ins = wb.create_sheet(title="instructions")
+        ins.append(["שדה", "תיאור", "חובה"])
+        ins.append(["phone_number",     "מספר הטלפון בפורמט בינלאומי (+E.164 מומלץ)",                     "כן"])
+        ins.append(["client_id",        "מזהה מספרי של הלקוח (לפי clientRegistry בצד הלקוח)",            "כן"])
+        ins.append(["entity_type",      "סוג הישות: target / family / friend / colleague / social_envelope", "כן"])
+        ins.append(["ingestion_source", "מקור הקליטה: manual / automated / import / partner_feed",       "כן"])
+        ins.append(["target_entity_id", "מזהה הישות הראשית שאליה הקבוצה משויכת. ריק עבור יעד ראשי חדש.", "לא"])
+        ins.append(["ingestion_reason", "טקסט חופשי — סיבת/הסבר הקליטה",                                  "לא"])
+
+        # Serialize to bytes via an in-memory stream.
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers (private to the bulk-upload path)
+# ---------------------------------------------------------------------------
+
+
+def _safe_input_str(row: dict) -> str:
+    """
+    Build a short, operator-readable echo of a failing row dict for the
+    `input` field of BulkIngestFailedRow. Caps total length at
+    _FAILURE_INPUT_CAP characters.
+    """
+    parts = []
+    for col in BULK_UPLOAD_ALL_COLUMNS:
+        val = row.get(col)
+        if val is not None and val != "":
+            parts.append(f"{col}={val}")
+    rendered = " | ".join(parts)
+    return rendered[:_FAILURE_INPUT_CAP] if rendered else "(empty row)"

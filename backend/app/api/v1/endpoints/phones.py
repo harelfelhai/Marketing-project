@@ -19,7 +19,7 @@ status value in the DB, not a new API endpoint — the contract stays stable.
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, nullslast, select as sa_select
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
@@ -242,6 +242,57 @@ def list_phones(
         )
 
     return PhoneListResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+# ===========================================================================
+# Phase E1-B — Excel template download
+# ===========================================================================
+#
+# Registered BEFORE GET /{phone_id} on purpose: FastAPI matches routes in
+# declaration order, and "bulk-template" would otherwise be captured by
+# the {phone_id} path param and fail int conversion (→ 422).
+
+_TEMPLATE_FILENAME = "bulk_phones_template.xlsx"
+_XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+
+@router.get(
+    "/bulk-template",
+    summary="Download the Excel upload template",
+    description=(
+        "Returns a freshly-generated `.xlsx` workbook containing two "
+        "sheets: `data` (header row + 3 example rows) and `instructions` "
+        "(Hebrew operator notes describing each column). The column names "
+        "in the `data` sheet are the API contract — renaming them breaks "
+        "the `/bulk-upload` endpoint."
+    ),
+    responses={
+        200: {
+            "content": {_XLSX_MEDIA_TYPE: {}},
+            "description": "The generated .xlsx workbook bytes.",
+        }
+    },
+)
+def bulk_upload_template() -> Response:
+    """
+    Generate the template fresh on every request — the file is small
+    (~6 KB) and this keeps the template definition in one place
+    (`BulkIngestionService.generate_template_xlsx`) instead of also
+    shipping a checked-in binary asset.
+
+    Returns:
+        Response: The .xlsx workbook bytes with appropriate headers.
+    """
+    payload = BulkIngestionService.generate_template_xlsx()
+    return Response(
+        content=payload,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{_TEMPLATE_FILENAME}"',
+        },
+    )
 
 
 @router.get(
@@ -506,4 +557,78 @@ def bulk_text_ingest(
             detail=str(exc),
         ) from exc
 
+    return BulkIngestSummary.model_validate(summary)
+
+
+# ===========================================================================
+# Phase E1-B — Excel / CSV bulk upload
+# ===========================================================================
+
+# 5 MB hard cap on uploaded files. Operators uploading >5MB of phone-number
+# rows are almost always doing something wrong (re-uploading their whole
+# CRM export by mistake); the service-layer row cap of 5,000 is a much
+# tighter bound for normal use. Keeping the byte cap loose enough that a
+# legitimate 5,000-row sheet always fits.
+_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
+
+
+@router.post(
+    "/bulk-upload",
+    response_model=BulkIngestSummary,
+    summary="Bulk-ingest phone numbers from an Excel (.xlsx) or CSV file",
+    description=(
+        "Accepts a multipart/form-data upload containing one row per "
+        "phone number. The required columns are: `phone_number`, "
+        "`client_id`, `entity_type`, `ingestion_source`. Optional: "
+        "`target_entity_id`, `ingestion_reason`."
+        "\n\n"
+        "Unlike `/bulk-text` (which collapses all rows under a single "
+        "shared envelope), `/bulk-upload` creates one Entity per row — "
+        "each row is its own ingestion context."
+        "\n\n"
+        "**Resilience contract:** per-row failures land in `failed_rows` "
+        "alongside a 200 response. File-shape errors (wrong extension, "
+        "malformed workbook, missing required columns, >5,000 rows) "
+        "raise 422."
+    ),
+)
+async def bulk_upload_ingest(
+    file: UploadFile = File(..., description="The .xlsx or .csv file to ingest."),
+    service: BulkIngestionService = Depends(get_bulk_ingestion_service),
+) -> BulkIngestSummary:
+    """
+    Read the upload into memory, hand it to the service, and translate
+    file-shape errors (ValueError) to 422.
+
+    Args:
+        file    (UploadFile):           Uploaded file from multipart/form-data.
+        service (BulkIngestionService): Injected via FastAPI Depends.
+
+    Returns:
+        BulkIngestSummary: Counts + per-row failures + new IDs.
+
+    Raises:
+        HTTPException 413: Uploaded file exceeds the 5 MB cap.
+        HTTPException 422: File is malformed, has the wrong extension,
+            is missing required columns, or exceeds the row cap.
+    """
+    file_bytes = await file.read()
+    if len(file_bytes) > _UPLOAD_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"Uploaded file is {len(file_bytes)} bytes; max allowed is "
+                f"{_UPLOAD_MAX_BYTES}."
+            ),
+        )
+    try:
+        summary = service.ingest_bulk_upload(
+            file_bytes=file_bytes,
+            filename=file.filename or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     return BulkIngestSummary.model_validate(summary)

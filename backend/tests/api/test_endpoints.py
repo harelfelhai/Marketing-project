@@ -1219,3 +1219,147 @@ class TestBulkTextEndpoint:
         session.expire_all()
         phone = session.get(PhoneNumber, phone_id)
         assert phone.extra_data["bulk_submission_id"] == sid
+
+
+# ===========================================================================
+# Phase E1-B — POST /api/v1/phones/bulk-upload, GET /api/v1/phones/bulk-template
+# ===========================================================================
+
+
+def _build_csv_upload(rows: list[list]) -> bytes:
+    """Render `rows` (header first) as UTF-8 CSV bytes for an upload."""
+    import csv
+    import io as _io
+    buf = _io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerows(rows)
+    return buf.getvalue().encode("utf-8")
+
+
+def _build_xlsx_upload(rows: list[list]) -> bytes:
+    """Render `rows` as in-memory .xlsx bytes for an upload."""
+    import io as _io
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    for r in rows:
+        ws.append(r)
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+_CSV_MIME = "text/csv"
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_HEADERS = ["phone_number", "client_id", "entity_type", "ingestion_source"]
+
+
+class TestBulkUploadEndpoint:
+    def test_csv_happy_path_returns_200(self, client):
+        tc, _ = client
+        payload = _build_csv_upload([
+            _HEADERS,
+            ["+14155551801", "1", "family", "manual"],
+            ["+14155551802", "1", "friend", "manual"],
+        ])
+        r = tc.post(
+            "/api/v1/phones/bulk-upload",
+            files={"file": ("upload.csv", payload, _CSV_MIME)},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 0
+        # E1-B: one Entity per row.
+        assert len(body["entity_ids"]) == 2
+        assert body["bulk_submission_id"]
+
+    def test_xlsx_happy_path_returns_200(self, client):
+        tc, _ = client
+        payload = _build_xlsx_upload([
+            _HEADERS,
+            ["+14155551811", 1, "family", "manual"],
+        ])
+        r = tc.post(
+            "/api/v1/phones/bulk-upload",
+            files={"file": ("upload.xlsx", payload, _XLSX_MIME)},
+        )
+        assert r.status_code == 200
+        assert r.json()["success_count"] == 1
+
+    def test_partial_failure_returns_200_with_failed_rows(self, client):
+        tc, _ = client
+        payload = _build_csv_upload([
+            _HEADERS,
+            ["+14155551821", "1", "family", "manual"],
+            ["NOTAPHONE",   "1", "family", "manual"],
+            ["+14155551822", "1", "family", "manual"],
+        ])
+        r = tc.post(
+            "/api/v1/phones/bulk-upload",
+            files={"file": ("upload.csv", payload, _CSV_MIME)},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 1
+        assert body["failed_rows"][0]["row"] == 2
+
+    def test_missing_required_column_returns_422(self, client):
+        tc, _ = client
+        payload = _build_csv_upload([
+            ["phone_number", "client_id", "entity_type"],   # ingestion_source missing
+            ["+14155551831", "1", "family"],
+        ])
+        r = tc.post(
+            "/api/v1/phones/bulk-upload",
+            files={"file": ("upload.csv", payload, _CSV_MIME)},
+        )
+        assert r.status_code == 422
+        assert "ingestion_source" in r.json()["detail"]
+
+    def test_unsupported_extension_returns_422(self, client):
+        tc, _ = client
+        r = tc.post(
+            "/api/v1/phones/bulk-upload",
+            files={"file": ("upload.txt", b"hello", "text/plain")},
+        )
+        assert r.status_code == 422
+        assert "extension" in r.json()["detail"].lower()
+
+    def test_no_file_returns_422(self, client):
+        tc, _ = client
+        # FastAPI's File(...) marks the form field as required → 422.
+        r = tc.post("/api/v1/phones/bulk-upload")
+        assert r.status_code == 422
+
+
+class TestBulkTemplateEndpoint:
+    def test_returns_xlsx_with_expected_headers(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/phones/bulk-template")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        assert "bulk_phones_template.xlsx" in r.headers.get("content-disposition", "")
+        # The body is a real .xlsx (zip) — sanity check the PK header bytes.
+        assert r.content[:2] == b"PK"
+
+    def test_template_round_trip_through_bulk_upload(self, client):
+        """The template the endpoint serves should be a valid input for
+        the upload endpoint after a trivial header-preserving copy. We
+        verify the example rows it ships parse cleanly and ingest."""
+        tc, _ = client
+        r = tc.get("/api/v1/phones/bulk-template")
+        assert r.status_code == 200
+        payload = r.content
+        r2 = tc.post(
+            "/api/v1/phones/bulk-upload",
+            files={"file": ("upload.xlsx", payload, _XLSX_MIME)},
+        )
+        assert r2.status_code == 200
+        body = r2.json()
+        # The template ships 3 example rows; all should ingest cleanly.
+        assert body["success_count"] == 3
+        assert body["failed_count"] == 0
