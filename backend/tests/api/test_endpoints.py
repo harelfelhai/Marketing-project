@@ -22,6 +22,7 @@ from app.api.deps import (
     get_action_data_trigger_service,
     get_action_dispatcher,
     get_bulk_ingestion_service,
+    get_entity_ingestion_service,
     get_pipeline_task_service,
     get_retry_engine,
     get_scoring_service,
@@ -47,6 +48,7 @@ from services.dispatcher import (
     UserActionService,
 )
 from services.bulk_ingestion import BulkIngestionService
+from services.entity_ingestion import EntityIngestionService
 from services.ingestion import IngestionService
 from services.scoring import ScoringService
 from services.tasks import PipelineTaskService
@@ -155,6 +157,11 @@ def client():
     # so the Phase DY hook works inside the test transaction too).
     bulk_svc = BulkIngestionService(session=test_session, scoring_service=scoring_svc)
     app.dependency_overrides[get_bulk_ingestion_service] = lambda: bulk_svc
+
+    # Phase E2 — entity-centric ingestion service. No scoring hook
+    # because the path creates no phones; just a session-bound writer.
+    entity_svc = EntityIngestionService(session=test_session)
+    app.dependency_overrides[get_entity_ingestion_service] = lambda: entity_svc
 
     with TestClient(app) as tc:
         yield tc, test_session
@@ -1363,3 +1370,161 @@ class TestBulkTemplateEndpoint:
         # The template ships 3 example rows; all should ingest cleanly.
         assert body["success_count"] == 3
         assert body["failed_count"] == 0
+
+
+# ===========================================================================
+# Domain G — Entity Ingestion (Phase E2-A)
+# ===========================================================================
+
+
+def _seed_root_target_entity(session: Session, client_id: int = 1) -> Entity:
+    """
+    Seed a root target Entity (no phone needed for entity-centric tests).
+    Returns the Entity row so tests can read its id and client_id.
+    """
+    e = Entity(
+        entity_type="target",
+        relation_type="primary",
+        client_id=client_id,
+        extra_data={"customer_tier": 1},
+    )
+    session.add(e)
+    session.commit()
+    session.refresh(e)
+    return e
+
+
+class TestCreateSingleEntity:
+    def test_happy_path_returns_201(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "last_name": "Doe",
+            "relation_type": "family",
+            "target_entity_id": target.id,
+        })
+        assert r.status_code == 201
+        body = r.json()
+        assert body["id"] is not None
+        assert body["client_id"] == 1                # inherited from target
+        assert body["target_entity_id"] == target.id
+        assert body["relation_type"] == "family"
+        assert body["first_name"] == "Jane"
+        assert body["last_name"] == "Doe"
+        # Friction-free UX chain — the response carries everything the
+        # phone-ingestion modal needs to pre-fill on the next step.
+        assert "created_at" in body
+
+    def test_last_name_optional(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Cher",
+            "relation_type": "spouse",
+            "target_entity_id": target.id,
+        })
+        assert r.status_code == 201
+        body = r.json()
+        assert body["last_name"] is None
+
+    def test_names_persist_inside_extra_data(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "last_name": "Doe",
+            "relation_type": "family",
+            "target_entity_id": target.id,
+        })
+        new_id = r.json()["id"]
+        # Round-trip into the DB to confirm the names are inside the
+        # opaque blob rather than on schema-level columns.
+        session.expire_all()
+        ent = session.get(Entity, new_id)
+        assert ent.extra_data["first_name"] == "Jane"
+        assert ent.extra_data["last_name"] == "Doe"
+
+    def test_missing_target_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "relation_type": "family",
+            "target_entity_id": 99_999,   # not seeded
+        })
+        assert r.status_code == 422
+        assert "99999" in r.json()["detail"]
+
+    def test_non_root_target_returns_422(self, client):
+        tc, session = client
+        root = _seed_root_target_entity(session)
+        # An associated entity off the root — not itself a root target.
+        associated = Entity(
+            entity_type="family",
+            relation_type="associated",
+            client_id=root.client_id,
+            target_entity_id=root.id,
+        )
+        session.add(associated)
+        session.commit()
+        session.refresh(associated)
+
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "relation_type": "family",
+            "target_entity_id": associated.id,
+        })
+        assert r.status_code == 422
+        assert "not a root target" in r.json()["detail"]
+
+    def test_disallowed_relation_type_target_returns_422(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        # 'target' is in the full vocabulary but NOT in the operator-
+        # creatable subset — Pydantic enum rejects it at parse time.
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "relation_type": "target",
+            "target_entity_id": target.id,
+        })
+        assert r.status_code == 422
+
+    def test_disallowed_relation_type_envelope_returns_422(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "relation_type": "social_envelope",
+            "target_entity_id": target.id,
+        })
+        assert r.status_code == 422
+
+    def test_empty_first_name_returns_422(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "",
+            "relation_type": "family",
+            "target_entity_id": target.id,
+        })
+        assert r.status_code == 422
+
+    def test_client_id_not_accepted_on_request_inherited_from_target(self, client):
+        """
+        The wire contract does NOT expose client_id as a writable field.
+        Even if a caller submits one, it is ignored — the response shows
+        the inherited value, not the submitted one. This guards against
+        partition-drift bugs.
+        """
+        tc, session = client
+        target = _seed_root_target_entity(session, client_id=3)
+        r = tc.post("/api/v1/entities", json={
+            "first_name": "Jane",
+            "relation_type": "family",
+            "target_entity_id": target.id,
+            "client_id": 999,    # bogus — Pydantic silently ignores
+        })
+        assert r.status_code == 201
+        body = r.json()
+        # The response reflects the inherited value, NOT the submitted 999.
+        assert body["client_id"] == 3

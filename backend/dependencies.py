@@ -43,6 +43,7 @@ from interfaces.scoring import BaseScoringStrategy
 from interfaces.verification import BaseVerificationStrategy
 from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDispatcher
+from services.entity_ingestion import EntityIngestionService
 from services.ingestion import IngestionService
 from services.scoring import ScoringService
 from services.verification import VerificationEngine, VerificationService
@@ -291,6 +292,30 @@ def get_scoring_service(
         ScoringService: Ready to recalculate any phone's priority score.
     """
     return ScoringService(session=session, strategy=strategy)
+
+
+# ===========================================================================
+# PHASE E2 — ENTITY INGESTION
+# ===========================================================================
+
+
+def get_entity_ingestion_service(
+    session: Session = Depends(get_session),
+) -> EntityIngestionService:
+    """
+    Compose and return a fully wired `EntityIngestionService`.
+
+    The entity-centric ingestion path creates Entity rows standalone
+    (no phone, no scoring hook, no routing engine). The service therefore
+    needs only the per-request session — no other sub-dependencies.
+
+    Args:
+        session (Session): Per-request DB session.
+
+    Returns:
+        EntityIngestionService: Ready to mint one Entity row.
+    """
+    return EntityIngestionService(session=session)
 
 
 # ===========================================================================
