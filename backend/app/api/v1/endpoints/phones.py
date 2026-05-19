@@ -28,9 +28,12 @@ from app.api.deps import (
     get_action_data_trigger_service,
     get_bulk_ingestion_service,
     get_current_user,
+    get_data_admin_service,
     get_export_service,
     get_scoring_service,
+    require_admin,
 )
+from services.data_admin import DataAdminService
 from models.user import User
 from app.schemas.api_contracts import (
     ActionLogResponse,
@@ -210,7 +213,13 @@ def list_phones(
     )
 
     # Apply filters symmetrically to both queries.
-    filters = []
+    # UAT round-3: hide soft-deleted rows. List endpoints never surface
+    # tombstones; the admin tab queries via DataAdminService with
+    # include_deleted=True explicitly.
+    filters = [
+        PhoneNumber.deleted_at.is_(None),
+        Entity.deleted_at.is_(None),
+    ]
     if verification_status is not None:
         filters.append(PhoneNumber.verification_status == verification_status)
     if ingestion_source is not None:
@@ -749,3 +758,96 @@ async def bulk_upload_ingest(
             detail=str(exc),
         ) from exc
     return BulkIngestSummary.model_validate(summary)
+
+
+# ===========================================================================
+# UAT round-3 — Admin patch / soft-delete / restore for phones
+# ===========================================================================
+
+
+from pydantic import BaseModel as _AdminBaseModel, Field as _AdminField  # noqa: E402
+
+
+def _phone_to_dict(ph) -> dict:
+    return {
+        "id":                  ph.id,
+        "entity_id":           ph.entity_id,
+        "phone_number":        ph.phone_number,
+        "classification_type": ph.classification_type,
+        "ingestion_source":    ph.ingestion_source,
+        "verification_status": ph.verification_status,
+        "priority_score":      ph.priority_score,
+        "customer_tier":       ph.customer_tier,
+        "ingested_at":         ph.ingested_at,
+        "created_at":          ph.created_at,
+        "updated_at":          ph.updated_at,
+        "deleted_at":          ph.deleted_at,
+        "extra_data":          ph.extra_data,
+    }
+
+
+class _PhonePatchIn(_AdminBaseModel):
+    phone_number:        Optional[str] = _AdminField(default=None, max_length=40)
+    classification_type: Optional[str] = _AdminField(default=None, max_length=40)
+    verification_status: Optional[str] = _AdminField(default=None, max_length=40)
+
+
+@router.patch(
+    "/{phone_id}/admin",
+    summary="Admin edit a phone row (UAT round-3)",
+    description=(
+        "Partial update for the data-admin tab. Distinct from the "
+        "verification-flow PATCH `/phones/{id}` (which only flips the "
+        "verification axis): this endpoint accepts arbitrary phone "
+        "edits and is role-gated to admins. Tombstones are NOT editable "
+        "— restore the row first."
+    ),
+)
+def admin_patch_phone(
+    phone_id: int,
+    body: _PhonePatchIn,
+    _admin_user: User = Depends(require_admin),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ph = admin.patch_phone(
+            phone_id,
+            phone_number=body.phone_number,
+            classification_type=body.classification_type,
+            verification_status=body.verification_status,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _phone_to_dict(ph)
+
+
+@router.delete(
+    "/{phone_id}",
+    summary="Soft-delete a phone (admin, UAT round-3)",
+)
+def soft_delete_phone(
+    phone_id: int,
+    _admin_user: User = Depends(require_admin),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ph = admin.soft_delete_phone(phone_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _phone_to_dict(ph)
+
+
+@router.post(
+    "/{phone_id}/restore",
+    summary="Restore a soft-deleted phone (admin, UAT round-3)",
+)
+def restore_phone(
+    phone_id: int,
+    _admin_user: User = Depends(require_admin),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ph = admin.restore_phone(phone_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _phone_to_dict(ph)

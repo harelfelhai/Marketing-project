@@ -29,6 +29,7 @@ from dependencies import (  # noqa: F401  (re-exported for router convenience)
     get_auth_service,
     get_bulk_ingestion_service,
     get_current_user,
+    get_data_admin_service,
     get_entity_ingestion_service,
     get_event_dispatcher,
     get_export_service,

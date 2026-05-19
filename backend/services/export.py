@@ -283,7 +283,11 @@ class ExportService:
         keys are silently ignored so future filter additions are
         forward-compatible without breaking older clients.
         """
-        out = []
+        # UAT round-3: exports never include soft-deleted rows.
+        out = [
+            PhoneNumber.deleted_at.is_(None),
+            Entity.deleted_at.is_(None),
+        ]
         if f.get("verification_status"):
             out.append(PhoneNumber.verification_status == f["verification_status"])
         if f.get("ingestion_source"):
@@ -314,7 +318,11 @@ class ExportService:
 
     @staticmethod
     def _task_filter_clauses(f: dict) -> list:
-        out = []
+        # UAT round-3: exports skip rows whose phone or entity is gone.
+        out = [
+            PhoneNumber.deleted_at.is_(None),
+            Entity.deleted_at.is_(None),
+        ]
         if f.get("status"):
             out.append(PipelineTask.status == f["status"])
         if f.get("task_type"):

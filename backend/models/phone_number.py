@@ -308,6 +308,15 @@ class PhoneNumber(SQLModel, table=True):
     Read-only at the application layer.
     """
 
+    deleted_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(UTCDateTime(), nullable=True, index=True),
+        description=(
+            "Soft-delete tombstone (UAT round-3). NULL = active; non-NULL = "
+            "soft-deleted. Cascade target when its owning Entity is soft-deleted."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Audit attribution (Phase AUTH)
     # ------------------------------------------------------------------

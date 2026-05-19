@@ -22,9 +22,15 @@ business logic lives in `EntityIngestionService`.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Response, UploadFile, status
+from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user, get_entity_ingestion_service
+from app.api.deps import (
+    get_current_user,
+    get_data_admin_service,
+    get_entity_ingestion_service,
+    require_admin,
+)
 from app.schemas.api_contracts import BulkIngestSummary
 from exceptions import TargetNotFoundError
 from models.user import User
@@ -33,6 +39,7 @@ from schemas.entity_ingestion import (
     EntitySingleCreateIn,
     EntitySingleCreateOut,
 )
+from services.data_admin import DataAdminService
 from services.entity_ingestion import EntityIngestionService
 
 router = APIRouter()
@@ -342,3 +349,136 @@ async def bulk_upload_ingest(
             detail=str(exc),
         ) from exc
     return BulkIngestSummary.model_validate(summary)
+
+
+# ===========================================================================
+# UAT round-3 — Admin CRUD (view list / patch / soft-delete / restore)
+# ===========================================================================
+
+
+def _entity_to_dict(ent) -> dict:
+    """Stable read-shape used by the view tab + admin tab."""
+    extra = ent.extra_data or {}
+    return {
+        "id":               ent.id,
+        "client_id":        ent.client_id,
+        "entity_type":      ent.entity_type,
+        "target_entity_id": ent.target_entity_id,
+        "first_name":       extra.get("first_name"),
+        "last_name":        extra.get("last_name"),
+        "strong_identifier": extra.get("strong_identifier"),
+        "extra_data":       extra,
+        "created_at":       ent.created_at,
+        "updated_at":       ent.updated_at,
+        "deleted_at":       ent.deleted_at,
+    }
+
+
+class EntityPatchIn(BaseModel):
+    """Partial update body. Only non-None fields are applied."""
+    first_name:        Optional[str] = Field(default=None, max_length=80)
+    last_name:         Optional[str] = Field(default=None, max_length=80)
+    relation_type:     Optional[str] = Field(default=None, max_length=40)
+    target_entity_id:  Optional[int] = None
+    client_id:         Optional[int] = None
+    strong_identifier: Optional[str] = Field(default=None, max_length=80)
+
+
+@router.get(
+    "",
+    summary="List entities for the View tab and admin tools",
+    description=(
+        "Read-side query for the new entities-view + data-admin tabs. "
+        "Defaults to active rows only; pass `include_deleted=true` to "
+        "also surface tombstones for the restore workflow."
+    ),
+)
+def list_entities(
+    client_id: Optional[int] = Query(default=None),
+    client_ids: Optional[list[int]] = Query(default=None),
+    entity_type: Optional[str] = Query(default=None),
+    include_deleted: bool = Query(default=False),
+    q: Optional[str] = Query(default=None),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    rows = admin.list_entities(
+        client_id=client_id,
+        client_ids=client_ids,
+        entity_type=entity_type,
+        include_deleted=include_deleted,
+        q=q,
+    )
+    return {"items": [_entity_to_dict(r) for r in rows], "total": len(rows)}
+
+
+@router.get(
+    "/{entity_id}",
+    summary="Fetch a single entity by id",
+)
+def get_entity(
+    entity_id: int,
+    include_deleted: bool = Query(default=False),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ent = admin.get_entity(entity_id, include_deleted=include_deleted)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _entity_to_dict(ent)
+
+
+@router.patch(
+    "/{entity_id}",
+    summary="Edit an entity (admin)",
+    description="Partial update. Only non-null body fields are applied.",
+)
+def patch_entity(
+    entity_id: int,
+    body: EntityPatchIn,
+    _admin_user: User = Depends(require_admin),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ent = admin.patch_entity(
+            entity_id,
+            first_name=body.first_name,
+            last_name=body.last_name,
+            relation_type=body.relation_type,
+            target_entity_id=body.target_entity_id,
+            client_id=body.client_id,
+            strong_identifier=body.strong_identifier,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _entity_to_dict(ent)
+
+
+@router.delete(
+    "/{entity_id}",
+    summary="Soft-delete an entity (admin) — cascades to its phones",
+)
+def soft_delete_entity(
+    entity_id: int,
+    _admin_user: User = Depends(require_admin),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        return admin.soft_delete_entity(entity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{entity_id}/restore",
+    summary="Restore a soft-deleted entity (admin) — phones not auto-restored",
+)
+def restore_entity(
+    entity_id: int,
+    _admin_user: User = Depends(require_admin),
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ent = admin.restore_entity(entity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _entity_to_dict(ent)

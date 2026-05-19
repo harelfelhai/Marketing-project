@@ -343,7 +343,16 @@ class PipelineTaskService:
             .join(Entity, PhoneNumber.entity_id == Entity.id)
         )
 
-        filters = []
+        # UAT round-3: hide tasks whose phone OR owning entity has
+        # been soft-deleted. The task row itself doesn't carry a
+        # `deleted_at` — operational queue lifecycle is the existing
+        # status field (resolved/rejected). A deleted phone/entity
+        # means the workflow target is gone, so the task should
+        # disappear from the queue.
+        filters = [
+            PhoneNumber.deleted_at.is_(None),
+            Entity.deleted_at.is_(None),
+        ]
         if status_filter is not None:
             filters.append(PipelineTask.status == status_filter)
         if task_type_filter is not None:

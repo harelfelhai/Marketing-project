@@ -416,6 +416,19 @@ def get_entity_ingestion_service(
     return EntityIngestionService(session=session)
 
 
+def get_data_admin_service(
+    session: Session = Depends(get_session),
+):
+    """
+    UAT round-3: per-request DataAdminService for edit + soft-delete
+    of Entity and PhoneNumber rows. Same minimal wiring as the
+    ingestion service — session only.
+    """
+    # Local import to avoid an import-time cycle with services/__init__.
+    from services.data_admin import DataAdminService
+    return DataAdminService(session=session)
+
+
 # ===========================================================================
 # PHASE E1 — BULK INGESTION
 # ===========================================================================

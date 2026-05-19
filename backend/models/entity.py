@@ -183,6 +183,18 @@ class Entity(SQLModel, table=True):
     manually.
     """
 
+    deleted_at: Optional[datetime] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description=(
+            "Soft-delete tombstone (UAT round-3). NULL = active row; "
+            "non-NULL = soft-deleted at the recorded UTC instant. "
+            "Every list endpoint defaults to WHERE deleted_at IS NULL; "
+            "admin tools surface deleted rows via include_deleted=true."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Audit attribution (Phase AUTH)
     # ------------------------------------------------------------------
