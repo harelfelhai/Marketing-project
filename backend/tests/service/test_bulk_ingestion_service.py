@@ -161,12 +161,14 @@ class TestFormatFailures:
         assert summary["failed_rows"][0]["row"] == 2
         assert "NOTAPHONE" in summary["failed_rows"][0]["input"]
 
-    def test_partial_digits_below_minimum_is_invalid_format(
+    def test_short_digit_strings_accepted_under_digits_only_policy(
         self, bulk, primary_target
     ):
-        # A row that survives normalization but fails the regex (too
-        # short) lands in the "Invalid phone format" bucket — distinct
-        # from "Empty after normalization".
+        # Product decision (UAT freeze): the only requirement is "digits
+        # only". The previous 7..15 length window was removed because
+        # operators ingest mixed formats (national short codes, E.164
+        # long form). All three rows below survive — even the 5-digit
+        # "12345" — because they normalize to pure digits.
         summary = bulk.ingest_bulk_text(
             phone_numbers_raw="+14155550042, 12345, +14155550043",
             client_id=1,
@@ -174,12 +176,13 @@ class TestFormatFailures:
             target_entity_id=primary_target.id,
             ingestion_source="manual",
         )
-        assert summary["success_count"] == 2
-        assert summary["failed_count"] == 1
-        assert "format" in summary["failed_rows"][0]["error"].lower()
+        assert summary["success_count"] == 3
+        assert summary["failed_count"] == 0
 
-    def test_too_short_after_normalization(self, bulk, primary_target):
-        # "+1" normalizes to "+1" which is 1 digit — below the 7 minimum.
+    def test_single_digit_after_plus_is_still_valid(self, bulk, primary_target):
+        # "+1" normalizes to "+1" — under the digits-only policy this
+        # passes (one digit is "digits only"). Pre-UAT this would have
+        # failed the 7-digit minimum.
         summary = bulk.ingest_bulk_text(
             phone_numbers_raw="+1, +14155550050",
             client_id=1,
@@ -187,9 +190,8 @@ class TestFormatFailures:
             target_entity_id=primary_target.id,
             ingestion_source="manual",
         )
-        assert summary["success_count"] == 1
-        assert summary["failed_count"] == 1
-        assert summary["failed_rows"][0]["row"] == 1
+        assert summary["success_count"] == 2
+        assert summary["failed_count"] == 0
 
     def test_empty_after_normalization(self, bulk, primary_target):
         # Pure punctuation that normalizes to empty string.

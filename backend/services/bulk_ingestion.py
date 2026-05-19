@@ -101,10 +101,14 @@ _TOKEN_SPLIT_RE = re.compile(r"[,\s;]+")
 # bidi marks, NBSP, etc.) is dropped before the format check.
 _PHONE_CLEAN_RE = re.compile(r"[^\d+]")
 
-# Loose phone-format regex: optional '+' followed by 7..15 digits. We do
-# not enforce strict E.164 because scrape sources surface non-standard
-# formats and the existing /ingest endpoint accepts them.
-_PHONE_REGEX = re.compile(r"^\+?\d{7,15}$")
+# Permissive phone format: optional leading '+' followed by ANY number
+# of digits. The `_normalize` pass above strips dashes, parens, spaces,
+# bidi marks, etc., so by the time we reach the regex check the value
+# is already pure-digit (plus an optional E.164 plus). We do not enforce
+# a length window because real-world inputs span national-format short
+# codes through E.164 long-form, and operators upload mixed batches.
+# The single requirement, per product decision, is "digits only".
+_PHONE_REGEX = re.compile(r"^\+?\d+$")
 
 # Cap on `input` echoing in failure rows — protects the response payload
 # from operators pasting megabytes of garbage.

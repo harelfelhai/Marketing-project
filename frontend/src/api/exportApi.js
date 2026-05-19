@@ -27,6 +27,10 @@ import { mockDelay, MOCK_MODE, apiClient } from './client';
  */
 export async function exportTable(tableId, body, mockDb) {
   if (!MOCK_MODE) {
+    // responseType:'blob' so a 200 response is binary xlsx bytes. The
+    // response interceptor in `client.js` is blob-aware and reads the
+    // JSON `detail` out of an error blob, so toast messages remain
+    // informative on 4xx (e.g. "Too many rows: 12345 (max 10000)").
     const res = await apiClient.post(`/${tableId}/export`, body, {
       responseType: 'blob',
     });
