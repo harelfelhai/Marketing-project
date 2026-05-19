@@ -733,7 +733,12 @@ export const SEED_FORM_SCHEMA = {
       label: 'Entity Type',
       type: 'select',
       required: true,
-      options: ['target'],
+      // Full controlled vocabulary — matches the backend's
+      // interfaces/relation_types.py::RelationType enum. Phase E2-C
+      // relies on the operator-creatable subset (family / friend /
+      // colleague / spouse) being valid here so the friction-free
+      // handoff from the entity modal can pre-fill this field.
+      options: ['target', 'family', 'friend', 'colleague', 'spouse', 'social_envelope'],
       help_text: 'Classification of the entity being registered.',
     },
     {

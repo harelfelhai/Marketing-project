@@ -32,7 +32,7 @@ import {
 
 export default function SingleIngestionPanel({ active }) {
   const mockDb = useMockData();
-  const { closeIngestionModal, pushToast } = useUI();
+  const { closeIngestionModal, pushToast, phoneIngestionPreset } = useUI();
 
   const [schema,        setSchema]        = useState(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
@@ -42,6 +42,12 @@ export default function SingleIngestionPanel({ active }) {
 
   // Fetch the schema once per activation of this tab. Re-fetches if the
   // operator switches away and back (cheap; mock-mode has a 200ms delay).
+  //
+  // Phase E2-C — when the modal opens via the friction-free handoff from
+  // the entity-success panel, `phoneIngestionPreset` carries the new
+  // person's context. We pre-fill any schema field whose name matches
+  // a preset key (entity_type currently; future-proof for client_id /
+  // target_entity_id when the backend supports them on the schema).
   useEffect(() => {
     if (!active) return;
     setLoadingSchema(true);
@@ -52,11 +58,18 @@ export default function SingleIngestionPanel({ active }) {
         setSchema(s);
         const defaults = {};
         s.fields.forEach((f) => { defaults[f.name] = ''; });
+        // Apply preset overrides. Only fields the schema actually
+        // declares get a preset value — the rest stay empty.
+        if (phoneIngestionPreset) {
+          if ('entity_type' in defaults && phoneIngestionPreset.entityType) {
+            defaults.entity_type = phoneIngestionPreset.entityType;
+          }
+        }
         setValues(defaults);
       })
       .catch(() => pushToast({ variant: 'error', message: INGEST_TOAST_SCHEMA_ERROR }))
       .finally(() => setLoadingSchema(false));
-  }, [active, pushToast]);
+  }, [active, pushToast, phoneIngestionPreset]);
 
   const handleChange = useCallback((name, value) => {
     setValues((v) => ({ ...v, [name]: value }));

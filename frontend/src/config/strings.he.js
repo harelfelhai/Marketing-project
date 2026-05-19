@@ -609,3 +609,53 @@ export const RESOLVE_TOAST_ERROR   = (msg) => `שגיאה בטיפול במשי�
 
 export const PHONE_DRAWER_TASK_PILL = (n) => `${n} משימות`;
 export const PHONE_DRAWER_TASK_PILL_ZERO = 'אין משימות';
+
+// ---------------------------------------------------------------------------
+// Phase E2 — Entity Ingestion modal ("+ Add Person")
+// ---------------------------------------------------------------------------
+
+// Header button that opens the entity-ingestion modal.
+export const BTN_ADD_PERSON          = 'הוסף אדם';
+
+// Modal shell.
+export const ENTITY_MODAL_TITLE      = 'הוספת אדם חדש';
+export const ENTITY_TAB_SINGLE       = 'אדם בודד';
+export const ENTITY_TAB_MULTI_TEXT   = 'הדבקת רשימה';
+export const ENTITY_TAB_FILE         = 'העלאת קובץ';
+export const ENTITY_TAB_COMING_SOON  = 'תכונה זו תהיה זמינה בקרוב.';
+
+// Single-entry panel form labels.
+export const ENTITY_FIELD_FIRST_NAME    = 'שם פרטי';
+export const ENTITY_FIELD_LAST_NAME     = 'שם משפחה';
+export const ENTITY_FIELD_RELATION      = 'סוג קרבה';
+export const ENTITY_FIELD_CLIENT        = 'לקוח';
+export const ENTITY_FIELD_TARGET        = 'ישות ראשית';
+export const ENTITY_PLACEHOLDER_PICK    = 'בחר…';
+export const ENTITY_PLACEHOLDER_CLIENT_FIRST = 'בחר לקוח תחילה';
+export const ENTITY_TARGET_LIST_EMPTY   = 'אין יעדים ראשיים ללקוח זה.';
+export const ENTITY_FIELD_REQUIRED      = (label) => `${label} הוא שדה חובה.`;
+
+// Relation type options (operator-creatable subset).
+export const ENTITY_OPTION_FAMILY     = 'משפחה';
+export const ENTITY_OPTION_FRIEND     = 'חבר';
+export const ENTITY_OPTION_COLLEAGUE  = 'עמית לעבודה';
+export const ENTITY_OPTION_SPOUSE     = 'בן/בת זוג';
+
+// Submit + cancel buttons.
+// NOTE: the in-form submit verb is intentionally different from the
+// header button ("הוסף אדם") so test selectors and screen readers can
+// disambiguate the two buttons even though they share a domain concept.
+export const ENTITY_BTN_SUBMIT        = 'שמור אדם';
+export const ENTITY_BTN_SUBMITTING    = 'שומר…';
+export const ENTITY_BTN_CANCEL        = 'ביטול';
+
+// Friction-free success state.
+export const ENTITY_SUCCESS_TITLE     = 'האדם נוסף בהצלחה';
+export const ENTITY_SUCCESS_SUBLINE   = (fullName) =>
+  `${fullName} נשמר במערכת. ניתן עכשיו להוסיף לו מספר טלפון.`;
+export const ENTITY_SUCCESS_CTA       = 'הוסף מספר טלפון עבור אדם זה';
+export const ENTITY_SUCCESS_DISMISS   = 'סיום';
+
+// Toasts.
+export const ENTITY_TOAST_SUCCESS     = 'האדם נוצר בהצלחה.';
+export const ENTITY_TOAST_ERROR       = (msg) => `יצירת אדם נכשלה: ${msg}`;

@@ -290,6 +290,73 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyCreateEntity — mock-mode parity for POST /api/v1/entities (Phase E2-A).
+  //
+  // Mirrors EntityIngestionService.create_single on the backend:
+  //   - validate target exists AND is a root (target_entity_id IS NULL)
+  //   - inherit client_id from the target
+  //   - merge first_name / last_name into extra_data (Secrets-Free Mandate)
+  //   - create exactly one new Entity row
+  //
+  // Returns the EntitySingleCreateOut-shaped object the frontend uses for
+  // the friction-free success panel + handoff to the phone modal.
+  // Throws an Error on missing / non-root target so the API client can
+  // surface it like a 422.
+  // -------------------------------------------------------------------------
+  const applyCreateEntity = useCallback((payload) => {
+    let result;
+    setDb((prev) => {
+      const target = prev.entities.find((e) => e.id === payload.target_entity_id);
+      if (!target) {
+        throw new Error(`entity_id=${payload.target_entity_id} not found`);
+      }
+      if (target.target_entity_id != null) {
+        throw new Error(
+          `entity_id=${payload.target_entity_id} is not a root target ` +
+          `(its own target_entity_id is non-NULL)`,
+        );
+      }
+
+      const nextId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      const now    = new Date().toISOString();
+
+      const firstName = String(payload.first_name || '').trim();
+      const lastRaw   = payload.last_name == null ? null : String(payload.last_name).trim();
+      const lastName  = lastRaw || null;
+
+      // Names land in extra_data alongside any caller-supplied keys.
+      // The structured fields are the canonical source — they win on
+      // conflict with stale keys inside extra_data.
+      const mergedExtra = { ...(payload.extra_data || {}), first_name: firstName };
+      if (lastName) mergedExtra.last_name = lastName;
+
+      const newEntity = {
+        id:               nextId,
+        client_id:        target.client_id,             // inherited
+        relation_type:    'associated',
+        entity_type:      payload.relation_type,
+        target_entity_id: target.id,
+        extra_data:       mergedExtra,
+        created_at:       now,
+        updated_at:       now,
+      };
+
+      result = {
+        id:               newEntity.id,
+        client_id:        newEntity.client_id,
+        relation_type:    newEntity.entity_type,   // operator-facing label = entity_type
+        target_entity_id: newEntity.target_entity_id,
+        first_name:       firstName,
+        last_name:        lastName,
+        created_at:       now,
+      };
+
+      return { ...prev, entities: [...prev.entities, newEntity] };
+    });
+    return result;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // applyBulkIngest — mock-mode parity for POST /api/v1/phones/bulk-text.
   //
   // Mirrors BulkIngestionService.ingest_bulk_text on the backend:
@@ -972,6 +1039,7 @@ export function MockDataProvider({ children }) {
     spliceActionLog,
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
+    applyCreateEntity,
     applyBulkIngest,
     applyBulkUploadCsv,
     applyPatchPhone,

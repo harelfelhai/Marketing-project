@@ -8,9 +8,10 @@
 
 import { Routes, Route } from 'react-router-dom';
 
-import AppShell       from './components/layout/AppShell';
-import ToastStack     from './components/primitives/Toast';
-import IngestionModal from './components/ingestion/IngestionModal';
+import AppShell             from './components/layout/AppShell';
+import ToastStack           from './components/primitives/Toast';
+import IngestionModal       from './components/ingestion/IngestionModal';
+import EntityIngestionModal from './components/entityIngestion/EntityIngestionModal';
 
 import ClientHubPage       from './pages/ClientHubPage';
 import PhoneGridPage       from './pages/PhoneGridPage';
@@ -35,6 +36,7 @@ export default function App() {
 
       {/* Global portals — rendered outside AppShell to overlay all content. */}
       <IngestionModal />
+      <EntityIngestionModal />
       <ToastStack />
     </>
   );
