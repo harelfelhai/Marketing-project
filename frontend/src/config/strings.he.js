@@ -177,6 +177,76 @@ export const INGEST_TOAST_SUCCESS        = 'מספר הטלפון נקלט וע�
 export const INGEST_TOAST_ERROR          = (msg) => `קליטה נכשלה: ${msg}`;
 
 // ---------------------------------------------------------------------------
+// Phase E1 — Bulk Ingestion (multi-tab modal)
+// ---------------------------------------------------------------------------
+
+// Tab labels on the modal header.
+export const INGEST_TAB_SINGLE     = 'מספר בודד';
+export const INGEST_TAB_MULTI_TEXT = 'הדבקת רשימה';
+export const INGEST_TAB_FILE       = 'העלאת קובץ';
+
+// Wrapper modal title (replaces the single-entry title when multi-tab).
+export const INGEST_MODAL_TITLE_BULK = 'קליטת מספרי טלפון';
+
+// --- Multi-Text tab labels --------------------------------------------------
+export const BULK_TEXT_INTRO =
+  'הדבק רשימת מספרי טלפון. כל קריטריון ה"מעטפת" שלמטה (לקוח, סוג ישות, מקור) חל על כל המספרים בבקשה.';
+
+export const BULK_TEXT_FIELD_NUMBERS         = 'מספרי טלפון';
+export const BULK_TEXT_FIELD_NUMBERS_HELP    =
+  'הפרד מספרים בפסיק, נקודה-פסיק, רווח או שורה חדשה. ניתן להדביק עד 10,000 תווים.';
+export const BULK_TEXT_FIELD_NUMBERS_PLACE   =
+  '+972521234567, +972529876543\n+1 415 555 0123';
+
+export const BULK_TEXT_FIELD_CLIENT          = 'לקוח';
+export const BULK_TEXT_FIELD_ENTITY_TYPE     = 'סוג ישות';
+export const BULK_TEXT_FIELD_SOURCE          = 'מקור הקליטה';
+export const BULK_TEXT_FIELD_REASON          = 'סיבת/הסבר הקליטה (לא חובה)';
+export const BULK_TEXT_FIELD_REASON_PLACE    = 'למשל: חבילת קמפיין Q2';
+export const BULK_TEXT_FIELD_TARGET          = 'מזהה ישות-יעד (לא חובה)';
+export const BULK_TEXT_FIELD_TARGET_HELP     =
+  'אם המספרים משויכים לישות-יעד קיימת — הכנס את מזהה הישות המספרי כאן. השאר ריק כדי ליצור ישות חדשה.';
+export const BULK_TEXT_FIELD_TARGET_PLACE    = 'למשל: 42';
+
+// Live token counter.
+export const BULK_TEXT_TOKEN_COUNT = (n) => `${n} מספרים זוהו`;
+
+// Buttons.
+export const BULK_TEXT_BTN_SUBMIT     = 'קלוט אצווה';
+export const BULK_TEXT_BTN_SUBMITTING = 'קולט אצווה…';
+export const BULK_TEXT_BTN_NEW_BATCH  = 'אצווה חדשה';
+
+// Validation errors.
+export const BULK_TEXT_ERR_EMPTY_BODY    = 'הזן לפחות מספר טלפון אחד.';
+export const BULK_TEXT_ERR_MISSING_CLIENT = 'יש לבחור לקוח.';
+export const BULK_TEXT_ERR_MISSING_ENTITY_TYPE = 'יש לבחור סוג ישות.';
+export const BULK_TEXT_ERR_MISSING_SOURCE = 'יש לבחור מקור קליטה.';
+export const BULK_TEXT_ERR_BAD_TARGET   = 'מזהה ישות-יעד חייב להיות מספר חיובי שלם.';
+
+// Toasts.
+export const BULK_TEXT_TOAST_PARTIAL = (ok, fail) =>
+  `נקלטו ${ok} מספרים, ${fail} נכשלו — ראה פירוט בלשונית.`;
+export const BULK_TEXT_TOAST_ALL_OK = (ok) => `כל ${ok} המספרים נקלטו בהצלחה.`;
+export const BULK_TEXT_TOAST_NONE_OK = (fail) => `אף מספר לא נקלט — ${fail} שורות נכשלו.`;
+export const BULK_TEXT_TOAST_ERROR   = (msg) => `קליטת אצווה נכשלה: ${msg}`;
+
+// Summary panel.
+export const BULK_SUMMARY_TITLE         = 'סיכום קליטה';
+export const BULK_SUMMARY_SUCCESS_LABEL = 'נקלטו';
+export const BULK_SUMMARY_FAILED_LABEL  = 'נכשלו';
+export const BULK_SUMMARY_TOTAL_LABEL   = 'סה״כ שורות';
+export const BULK_SUMMARY_FAILED_HEADER = 'שורות שנכשלו';
+export const BULK_SUMMARY_COL_ROW       = 'שורה';
+export const BULK_SUMMARY_COL_INPUT     = 'קלט';
+export const BULK_SUMMARY_COL_ERROR     = 'שגיאה';
+export const BULK_SUMMARY_SUBMISSION_ID = (id) => `מזהה אצווה: ${id}`;
+export const BULK_SUMMARY_EMPTY_FAILED  = 'אין שורות שנכשלו — כל המספרים נקלטו בהצלחה.';
+
+// File-upload tab placeholder (Phase E1-D will populate this fully).
+export const BULK_FILE_COMING_SOON =
+  'העלאת קובץ Excel/CSV — תהיה זמינה בקרוב.';
+
+// ---------------------------------------------------------------------------
 // Dynamic Field
 // ---------------------------------------------------------------------------
 

@@ -38,3 +38,45 @@ export async function ingestCircleMember(payload, mockDb) {
     created_at:          newest.created_at,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Phase E1-A — Bulk text ingestion
+//
+// Submits a free-form textarea of phone numbers under a SHARED envelope
+// context (one new Entity is created server-side for the whole batch).
+// The server returns a BulkIngestSummary payload describing per-row
+// successes/failures; the modal renders that summary inline rather than
+// dismissing — operators need to see which lines failed and why.
+//
+// Resilience contract: per-row failures land in `failed_rows` alongside
+// a 200 response. Only request-shape errors (invalid target_entity_id,
+// empty input) raise.
+// ---------------------------------------------------------------------------
+
+/**
+ * bulkIngestText — submit a batch of phone numbers under a shared envelope.
+ *
+ * @param {object} payload   Matches BulkTextIngestRequest:
+ *   - phone_numbers_raw (string, required)
+ *   - client_id         (number, required)
+ *   - entity_type       (string, required)
+ *   - ingestion_source  (string, required)
+ *   - target_entity_id  (number, optional)
+ *   - ingestion_reason  (string, optional)
+ *   - entity_extra      (object, optional)
+ *   - phone_extra_shared (object, optional)
+ * @param {object} mockDb    MockDataContext instance for parity in mock mode.
+ * @returns {Promise<object>} BulkIngestSummary-shaped object.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
+ */
+export async function bulkIngestText(payload, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post('/phones/bulk-text', payload);
+    await mockDb.refetchPhones();
+    return data;
+  }
+
+  await mockDelay(500);
+  return mockDb.applyBulkIngest(payload);
+}

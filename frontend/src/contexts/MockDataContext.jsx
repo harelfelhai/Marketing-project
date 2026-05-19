@@ -290,6 +290,139 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyBulkIngest — mock-mode parity for POST /api/v1/phones/bulk-text.
+  //
+  // Mirrors BulkIngestionService.ingest_bulk_text on the backend:
+  //   - tokenize on commas, semicolons, whitespace
+  //   - normalize each token (strip non-digit / non-plus chars)
+  //   - validate format (^\+?\d{7,15}$)
+  //   - within-batch dedup keyed on the normalized form
+  //   - collect failed rows, return BulkIngestSummary-shaped object
+  //   - no orphan Entity when zero rows survive
+  //
+  // Synchronous (operates on state via the same setDb closure other mock
+  // mutators use); returns the summary via a synchronous read of the state
+  // captured before/after the update.
+  // -------------------------------------------------------------------------
+  const applyBulkIngest = useCallback((payload) => {
+    const submissionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `mock-${Date.now()}-${Math.random()}`;
+
+    const TOKEN_SPLIT = /[,\s;]+/;
+    const PHONE_CLEAN = /[^\d+]/g;
+    const PHONE_REGEX = /^\+?\d{7,15}$/;
+    const INPUT_CAP   = 200;
+
+    // ----- Pass 1: tokenize / normalize / validate / dedup ------------------
+    const tokens = (payload.phone_numbers_raw || '').split(TOKEN_SPLIT).filter(Boolean);
+    const failedRows = [];
+    const candidates = [];      // { row, raw, normalized }
+    const seen       = new Map();   // normalized → first row
+
+    tokens.forEach((raw, i) => {
+      const row = i + 1;
+      const normalized = raw.trim().replace(PHONE_CLEAN, '');
+      if (!normalized) {
+        failedRows.push({ row, input: raw.slice(0, INPUT_CAP), error: 'Empty after normalization' });
+        return;
+      }
+      if (!PHONE_REGEX.test(normalized)) {
+        failedRows.push({ row, input: raw.slice(0, INPUT_CAP), error: 'Invalid phone format' });
+        return;
+      }
+      if (seen.has(normalized)) {
+        failedRows.push({
+          row,
+          input: raw.slice(0, INPUT_CAP),
+          error: `Duplicate of row ${seen.get(normalized)} in this batch`,
+        });
+        return;
+      }
+      seen.set(normalized, row);
+      candidates.push({ row, raw, normalized });
+    });
+
+    // Empty-candidates short-circuit — no orphan entity created.
+    if (candidates.length === 0) {
+      return {
+        success_count:      0,
+        failed_count:       failedRows.length,
+        phone_ids:          [],
+        entity_ids:         [],
+        failed_rows:        failedRows.sort((a, b) => a.row - b.row),
+        bulk_submission_id: submissionId,
+      };
+    }
+
+    // ----- Pass 2: commit the new Entity + N PhoneNumbers to mock state -----
+    // Wrap in a setDb to perform the mutation atomically. We hoist the
+    // resulting summary out via a closure-mutated `result` ref.
+    let result;
+    setDb((prev) => {
+      const nextEntityId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      let nextPhoneId    = Math.max(0, ...prev.phones.map((p) => p.id)) + 1;
+      const now = new Date().toISOString();
+
+      const newEntity = {
+        id:                nextEntityId,
+        entity_type:       payload.entity_type || 'target',
+        relation_type:     payload.entity_type === 'target' ? 'primary' : 'associated',
+        client_id:         payload.client_id ?? null,
+        target_entity_id:  payload.target_entity_id ?? null,
+        extra_data: {
+          ...(payload.entity_extra || {}),
+          bulk_submission_id: submissionId,
+        },
+      };
+
+      const newPhones = candidates.map(({ normalized }) => {
+        const id = nextPhoneId;
+        nextPhoneId += 1;
+        return {
+          id,
+          entity_id:           nextEntityId,
+          phone_number:        normalized,
+          classification_type: null,
+          ingestion_source:    payload.ingestion_source,
+          ingestion_reason:    payload.ingestion_reason || null,
+          ingested_at:         now,
+          verification_status: 'pending',
+          verification_source: null,
+          verification_reason: null,
+          verified_at:         null,
+          created_at:          now,
+          updated_at:          now,
+          confidence_score:    0,
+          priority_score:      0,
+          priority_updated_at: null,
+          extra_data: {
+            ...(payload.phone_extra_shared || {}),
+            bulk_submission_id: submissionId,
+          },
+        };
+      });
+
+      result = {
+        success_count:      newPhones.length,
+        failed_count:       failedRows.length,
+        phone_ids:          newPhones.map((p) => p.id),
+        entity_ids:         [newEntity.id],
+        failed_rows:        failedRows.sort((a, b) => a.row - b.row),
+        bulk_submission_id: submissionId,
+      };
+
+      return {
+        ...prev,
+        entities: [...prev.entities, newEntity],
+        phones:   [...prev.phones, ...newPhones],
+      };
+    });
+
+    return result;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // applyPatchPhone
   // -------------------------------------------------------------------------
   const applyPatchPhone = useCallback((phoneId, partial) => {
@@ -623,6 +756,7 @@ export function MockDataProvider({ children }) {
     spliceActionLog,
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
+    applyBulkIngest,
     applyPatchPhone,
     applyVerdict,
     applyTwoAxisVerdict,
