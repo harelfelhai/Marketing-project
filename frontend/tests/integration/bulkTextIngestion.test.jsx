@@ -134,13 +134,16 @@ describe('Phase E1-C — bulk-text ingestion modal', () => {
     expect(submit).toBeDisabled();
   });
 
-  it('File-Upload tab renders the E1-D placeholder, not the bulk form', async () => {
+  it('File-Upload tab renders the dropzone, not the multi-text form', async () => {
     const user = userEvent.setup();
     renderApp({ route: '/' });
     const openBtn = await screen.findByRole('button', { name: /קליטת מספר חדש/ });
     await user.click(openBtn);
 
     await user.click(screen.getByRole('tab', { name: /העלאת קובץ/ }));
-    expect(screen.getByText(/בקרוב/)).toBeInTheDocument();
+    // The dropzone is the centerpiece of the file-upload tab (E1-D).
+    expect(screen.getByTestId('bulk-file-dropzone')).toBeInTheDocument();
+    // The multi-text textarea should NOT be present on the file tab.
+    expect(screen.queryByLabelText(/מספרי טלפון/)).toBeNull();
   });
 });

@@ -423,6 +423,222 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // applyBulkUploadCsv — mock-mode parity for POST /api/v1/phones/bulk-upload.
+  //
+  // Mirrors BulkIngestionService.ingest_bulk_upload on the backend:
+  //   - parse CSV text (header row required; required columns must be present)
+  //   - per-row validation: phone format, client_id int, required fields,
+  //     optional target_entity_id integer, within-batch dedup
+  //   - one Entity per surviving row (NOT one shared envelope — different
+  //     from bulk-text)
+  //   - per-row failures collected; no orphan if every row failed
+  //
+  // Throws ValueError-equivalent (Error with descriptive message) on
+  // file-shape problems: missing required columns, empty file, etc.
+  // The caller (bulkIngestUpload) surfaces these as endpoint-level errors.
+  // -------------------------------------------------------------------------
+  const applyBulkUploadCsv = useCallback((csvText) => {
+    const REQUIRED = ['phone_number', 'client_id', 'entity_type', 'ingestion_source'];
+    const PHONE_CLEAN = /[^\d+]/g;
+    const PHONE_REGEX = /^\+?\d{7,15}$/;
+    const INPUT_CAP   = 200;
+
+    // -------- Minimal CSV parser (no quoted-comma support; sufficient for
+    // the mock-mode workflow since operators paste structured contact lists,
+    // not free-form prose). Backend uses csv.DictReader for the real path.
+    const lines = csvText.split(/\r?\n/).map((l) => l).filter((l, idx) => {
+      // Drop the trailing blank line that splitlines naturally produces.
+      if (idx === 0) return true;
+      return l.trim() !== '' || idx === 0;
+    });
+    if (lines.length === 0 || !lines[0].trim()) {
+      throw new Error('CSV is empty or has no header row');
+    }
+    // Strip UTF-8 BOM if present.
+    const bom = '﻿';
+    if (lines[0].startsWith(bom)) lines[0] = lines[0].slice(bom.length);
+
+    const header = lines[0].split(',').map((c) => c.trim());
+    const missing = REQUIRED.filter((c) => !header.includes(c));
+    if (missing.length) {
+      throw new Error(`CSV header missing required columns: ${missing.join(', ')}`);
+    }
+
+    const dataRows = [];
+    for (let i = 1; i < lines.length; i += 1) {
+      const raw = lines[i];
+      if (raw.trim() === '') continue;
+      const cells = raw.split(',').map((c) => c.trim());
+      const row = {};
+      header.forEach((col, idx) => { row[col] = cells[idx] ?? ''; });
+      dataRows.push(row);
+    }
+
+    const submissionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `mock-${Date.now()}-${Math.random()}`;
+
+    const failedRows = [];
+    const candidates = [];          // { row_idx, row_dict, normalized }
+    const seenPhones = new Map();
+
+    const safeInputStr = (row) => {
+      const parts = REQUIRED.concat(['target_entity_id', 'ingestion_reason'])
+        .map((c) => (row[c] != null && row[c] !== '' ? `${c}=${row[c]}` : null))
+        .filter(Boolean);
+      return (parts.join(' | ') || '(empty row)').slice(0, INPUT_CAP);
+    };
+
+    dataRows.forEach((rowIn, idx) => {
+      const rowIdx = idx + 1;
+      const row = { ...rowIn };
+      const rawPhone = String(row.phone_number || '').trim();
+      if (!rawPhone) {
+        failedRows.push({ row: rowIdx, input: safeInputStr(row), error: 'Missing phone_number' });
+        return;
+      }
+      const normalized = rawPhone.replace(PHONE_CLEAN, '');
+      if (!normalized || !PHONE_REGEX.test(normalized)) {
+        failedRows.push({ row: rowIdx, input: rawPhone.slice(0, INPUT_CAP), error: 'Invalid phone format' });
+        return;
+      }
+      const missingFields = ['entity_type', 'ingestion_source'].filter((c) => !row[c]);
+      // client_id may legitimately be "0" — treat presence-of-value as the test.
+      if (row.client_id === '' || row.client_id == null) missingFields.unshift('client_id');
+      if (missingFields.length) {
+        failedRows.push({
+          row: rowIdx,
+          input: rawPhone.slice(0, INPUT_CAP),
+          error: `Missing required field(s): ${missingFields.join(', ')}`,
+        });
+        return;
+      }
+      const clientIdNum = Number(row.client_id);
+      if (!Number.isInteger(clientIdNum)) {
+        failedRows.push({
+          row: rowIdx, input: rawPhone.slice(0, INPUT_CAP),
+          error: 'client_id must be an integer',
+        });
+        return;
+      }
+      row.client_id = clientIdNum;
+      if (row.target_entity_id !== '' && row.target_entity_id != null) {
+        const tgt = Number(row.target_entity_id);
+        if (!Number.isInteger(tgt)) {
+          failedRows.push({
+            row: rowIdx, input: rawPhone.slice(0, INPUT_CAP),
+            error: 'target_entity_id must be an integer',
+          });
+          return;
+        }
+        row.target_entity_id = tgt;
+      } else {
+        row.target_entity_id = null;
+      }
+      if (seenPhones.has(normalized)) {
+        failedRows.push({
+          row: rowIdx, input: rawPhone.slice(0, INPUT_CAP),
+          error: `Duplicate of row ${seenPhones.get(normalized)} in this batch`,
+        });
+        return;
+      }
+      seenPhones.set(normalized, rowIdx);
+      row._normalized_phone = normalized;
+      candidates.push({ rowIdx, row });
+    });
+
+    if (candidates.length === 0) {
+      return {
+        success_count:      0,
+        failed_count:       failedRows.length,
+        phone_ids:          [],
+        entity_ids:         [],
+        failed_rows:        failedRows.sort((a, b) => a.row - b.row),
+        bulk_submission_id: submissionId,
+      };
+    }
+
+    let result;
+    setDb((prev) => {
+      let nextEntityId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      let nextPhoneId  = Math.max(0, ...prev.phones.map((p) => p.id)) + 1;
+      const now = new Date().toISOString();
+
+      // Per-row target_entity_id existence check INSIDE the mutation — a
+      // bad id is a per-row failure, not a request-level abort (this is the
+      // contract that differs from /bulk-text).
+      const existingEntityIds = new Set(prev.entities.map((e) => e.id));
+
+      const newEntities = [];
+      const newPhones   = [];
+      const succeededRows = [];
+
+      candidates.forEach(({ rowIdx, row }) => {
+        if (row.target_entity_id != null && !existingEntityIds.has(row.target_entity_id)) {
+          failedRows.push({
+            row: rowIdx,
+            input: row._normalized_phone.slice(0, INPUT_CAP),
+            error: `target_entity_id=${row.target_entity_id} not found`,
+          });
+          return;
+        }
+        const entityId = nextEntityId;
+        nextEntityId += 1;
+        const phoneId = nextPhoneId;
+        nextPhoneId += 1;
+
+        newEntities.push({
+          id:               entityId,
+          entity_type:      row.entity_type,
+          relation_type:    row.entity_type === 'target' ? 'primary' : 'associated',
+          client_id:        row.client_id,
+          target_entity_id: row.target_entity_id,
+          extra_data:       { bulk_submission_id: submissionId },
+        });
+
+        newPhones.push({
+          id:                  phoneId,
+          entity_id:           entityId,
+          phone_number:        row._normalized_phone,
+          classification_type: null,
+          ingestion_source:    row.ingestion_source,
+          ingestion_reason:    row.ingestion_reason || null,
+          ingested_at:         now,
+          verification_status: 'pending',
+          verification_source: null,
+          verification_reason: null,
+          verified_at:         null,
+          created_at:          now,
+          updated_at:          now,
+          confidence_score:    0,
+          priority_score:      0,
+          priority_updated_at: null,
+          extra_data:          { bulk_submission_id: submissionId },
+        });
+
+        succeededRows.push({ entityId, phoneId });
+      });
+
+      result = {
+        success_count:      succeededRows.length,
+        failed_count:       failedRows.length,
+        phone_ids:          succeededRows.map((r) => r.phoneId),
+        entity_ids:         succeededRows.map((r) => r.entityId),
+        failed_rows:        failedRows.sort((a, b) => a.row - b.row),
+        bulk_submission_id: submissionId,
+      };
+
+      return {
+        ...prev,
+        entities: [...prev.entities, ...newEntities],
+        phones:   [...prev.phones, ...newPhones],
+      };
+    });
+
+    return result;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // applyPatchPhone
   // -------------------------------------------------------------------------
   const applyPatchPhone = useCallback((phoneId, partial) => {
@@ -757,6 +973,7 @@ export function MockDataProvider({ children }) {
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
     applyBulkIngest,
+    applyBulkUploadCsv,
     applyPatchPhone,
     applyVerdict,
     applyTwoAxisVerdict,

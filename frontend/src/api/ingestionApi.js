@@ -80,3 +80,125 @@ export async function bulkIngestText(payload, mockDb) {
   await mockDelay(500);
   return mockDb.applyBulkIngest(payload);
 }
+
+// ---------------------------------------------------------------------------
+// Phase E1-B / E1-D — Excel/CSV bulk file upload + template download
+// ---------------------------------------------------------------------------
+
+/**
+ * Read a File/Blob as UTF-8 text. Uses File.text() when available (modern
+ * browsers) and falls back to FileReader (jsdom / older browsers / older
+ * Safari versions).
+ */
+function readFileAsText(file) {
+  if (typeof file.text === 'function') return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('File read failed'));
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * bulkIngestUpload — submit an .xlsx or .csv file for per-row ingestion.
+ *
+ * Unlike bulkIngestText (single shared envelope), bulkIngestUpload creates
+ * ONE Entity per row — each row carries its own context columns.
+ *
+ * Real mode: posts multipart/form-data with a `file` field to
+ *   POST /api/v1/phones/bulk-upload.
+ *
+ * Mock mode: reads the File as text in-browser, parses CSV, and delegates
+ * to MockDataContext.applyBulkUploadRows() for parity with the backend's
+ * tokenize/normalize/dedup per-row contract. XLSX cannot be parsed in
+ * mock mode without shipping an xlsx library — the mock will throw a
+ * friendly error suggesting CSV or the real API.
+ *
+ * @param {File} file       Selected file from the upload input.
+ * @param {object} mockDb   MockDataContext instance.
+ * @returns {Promise<object>} BulkIngestSummary-shaped object.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
+ */
+export async function bulkIngestUpload(file, mockDb) {
+  if (!MOCK_MODE) {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await apiClient.post('/phones/bulk-upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    await mockDb.refetchPhones();
+    return data;
+  }
+
+  await mockDelay(500);
+
+  const name = (file.name || '').toLowerCase();
+  if (name.endsWith('.xlsx')) {
+    // The mock can't parse xlsx without bundling openpyxl-equivalent JS.
+    // We surface a clear operator-friendly error rather than silently
+    // pretending an empty workbook.
+    throw new Error(
+      'Excel (.xlsx) parsing requires the real backend. Use a .csv file in mock mode.'
+    );
+  }
+  if (!name.endsWith('.csv')) {
+    throw new Error(`Unsupported file extension: '${file.name}'. Allowed: .xlsx, .csv`);
+  }
+
+  const text = await readFileAsText(file);
+  return mockDb.applyBulkUploadCsv(text);
+}
+
+/**
+ * getBulkTemplate — download the .xlsx (or, in mock mode, .csv) upload template.
+ *
+ * Real mode: streams the .xlsx bytes from GET /api/v1/phones/bulk-template and
+ * triggers a browser download via an object URL.
+ *
+ * Mock mode: synthesizes a CSV template in-browser (the column contract
+ * is identical to the backend's "data" sheet); operators in mock mode get
+ * a usable template even with no live backend, at the cost of a different
+ * file extension. Acceptable since the bulk-upload mock also requires CSV.
+ *
+ * Side-effect: triggers the browser download. Returns nothing.
+ *
+ * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
+ */
+export async function getBulkTemplate() {
+  let blob;
+  let filename;
+
+  if (!MOCK_MODE) {
+    const res = await apiClient.get('/phones/bulk-template', { responseType: 'blob' });
+    blob = res.data;
+    // Try to extract filename from Content-Disposition; fall back to a default.
+    const cd = res.headers['content-disposition'] || res.headers['Content-Disposition'] || '';
+    const match = /filename="([^"]+)"/.exec(cd);
+    filename = match ? match[1] : 'bulk_phones_template.xlsx';
+  } else {
+    await mockDelay(150);
+    // CSV mirror of the backend template's "data" sheet: header + 3 examples.
+    // Operators ingest a populated copy of this file via the upload tab.
+    const csvLines = [
+      'phone_number,client_id,entity_type,ingestion_source,target_entity_id,ingestion_reason',
+      '+14155551111,1,family,manual,,Spouse — found via referral',
+      '+14155551112,1,friend,manual,,Close friend',
+      '+14155551113,2,social_envelope,automated,,Cluster scrape, unknown owner',
+    ];
+    blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
+    filename = 'bulk_phones_template.csv';
+  }
+
+  // Trigger a one-shot download via an anchor element.
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoke after a tick so the click has time to process in all browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}

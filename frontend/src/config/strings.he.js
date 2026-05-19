@@ -242,9 +242,33 @@ export const BULK_SUMMARY_COL_ERROR     = 'שגיאה';
 export const BULK_SUMMARY_SUBMISSION_ID = (id) => `מזהה אצווה: ${id}`;
 export const BULK_SUMMARY_EMPTY_FAILED  = 'אין שורות שנכשלו — כל המספרים נקלטו בהצלחה.';
 
-// File-upload tab placeholder (Phase E1-D will populate this fully).
-export const BULK_FILE_COMING_SOON =
-  'העלאת קובץ Excel/CSV — תהיה זמינה בקרוב.';
+// --- File-Upload tab (Phase E1-D) ------------------------------------------
+export const BULK_FILE_INTRO =
+  'העלה קובץ Excel (.xlsx) או CSV. כל שורה תיקלט עם הקשר משלה (לקוח, סוג ישות, מקור). הורד את התבנית למבנה הצפוי של העמודות.';
+
+export const BULK_FILE_DROPZONE        = 'גרור קובץ לכאן או לחץ לבחירה';
+export const BULK_FILE_DROPZONE_HINT   = 'מותרות סיומות: .xlsx, .csv · מקסימום 5MB · עד 5,000 שורות';
+export const BULK_FILE_BTN_BROWSE      = 'בחר קובץ';
+export const BULK_FILE_BTN_REMOVE      = 'הסר';
+export const BULK_FILE_BTN_DOWNLOAD    = 'הורד תבנית';
+export const BULK_FILE_BTN_SUBMIT      = 'העלה והפעל קליטה';
+export const BULK_FILE_BTN_SUBMITTING  = 'מעלה ומעבד…';
+
+// Preflight errors (client-side, before upload).
+export const BULK_FILE_ERR_EMPTY       = 'יש לבחור קובץ.';
+export const BULK_FILE_ERR_EXTENSION   = (ext) =>
+  `סיומת לא נתמכת${ext ? `: ${ext}` : ''}. מותרות: .xlsx, .csv`;
+export const BULK_FILE_ERR_SIZE        = (size, max) =>
+  `גודל הקובץ ${size} חורג מהמגבלה (${max}).`;
+
+// Toasts.
+export const BULK_FILE_TOAST_TEMPLATE_OK    = 'התבנית הורדה.';
+export const BULK_FILE_TOAST_TEMPLATE_ERR   = (msg) => `הורדת התבנית נכשלה: ${msg}`;
+export const BULK_FILE_TOAST_UPLOAD_ERR     = (msg) => `העלאה נכשלה: ${msg}`;
+
+// File-size formatting helper label fragment.
+export const BULK_FILE_SIZE_KB = (n) => `${n} KB`;
+export const BULK_FILE_SIZE_MB = (n) => `${n} MB`;
 
 // ---------------------------------------------------------------------------
 // Dynamic Field
