@@ -51,6 +51,9 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
     : null;
 
   const filtered = rows.filter(({ phone, entity, client }) => {
+    // UAT round-3: hide soft-deleted rows from the regular grid. The
+    // admin tab queries the same data with include_deleted=true.
+    if (phone.deleted_at || entity?.deleted_at)                                                    return false;
     if (clientIdsAllowed && !clientIdsAllowed.has(entity?.client_id))                              return false;
     // UAT regression: the PhoneFilterBar's <select> emits e.target.value
     // as a string ("1"), but the real-mode entity.client_id arrives as

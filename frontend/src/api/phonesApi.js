@@ -167,3 +167,41 @@ export async function patchPhone(id, body, mockDb) {
   mockDb.applyPatchPhone(id, body);
   return mockDb.phones.find((p) => p.id === id);
 }
+
+
+/* ===========================================================================
+ * UAT round-3 — admin patch / soft-delete / restore for phones
+ * =========================================================================== */
+
+
+export async function adminPatchPhone(id, body, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.patch(`/phones/${id}/admin`, body);
+    await mockDb.refetchPhoneById?.(id);
+    return data;
+  }
+  await mockDelay(250);
+  return mockDb.applyAdminPatchPhone(id, body);
+}
+
+
+export async function softDeletePhone(id, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.delete(`/phones/${id}`);
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(250);
+  return mockDb.applySoftDeletePhone(id);
+}
+
+
+export async function restorePhone(id, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post(`/phones/${id}/restore`);
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(250);
+  return mockDb.applyRestorePhone(id);
+}

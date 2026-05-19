@@ -20,6 +20,46 @@ export const NAV_PHONE_GRID    = 'רשת טלפונים';
 export const NAV_SYSTEM_OPS    = 'מבצעי מערכת';
 export const NAV_DASHBOARD     = 'לוח בקרה';
 export const NAV_OPERATIONS    = 'מרכז משימות';
+export const NAV_ENTITIES      = 'ישויות';
+export const NAV_DATA_ADMIN    = 'ניהול נתונים';
+
+// EntitiesPage (UAT round-3 view tab).
+export const PAGE_ENTITIES_TITLE  = 'ישויות';
+export const PAGE_ENTITIES_SUB    = 'תצוגה של כל הישויות במערכת — ראשיות וטפלות.';
+export const ENTITIES_COL_ID      = 'מזהה';
+export const ENTITIES_COL_NAME    = 'שם';
+export const ENTITIES_COL_RELATION = 'סוג קרבה';
+export const ENTITIES_COL_CLIENT  = 'לקוח';
+export const ENTITIES_COL_PHONES  = 'מספרי טלפון';
+export const ENTITIES_COL_CREATED = 'נוצר';
+export const ENTITIES_EMPTY       = 'לא נמצאו ישויות.';
+
+// DataAdminPage (UAT round-3 admin tab).
+export const ADMIN_PAGE_TITLE  = 'ניהול נתונים';
+export const ADMIN_PAGE_SUB    = 'עריכה ומחיקה רכה של ישויות וטלפונים. נמחקים נשמרים במאגר לתיעוד.';
+export const ADMIN_TAB_PERSONS = 'אנשים';
+export const ADMIN_TAB_PHONES  = 'טלפונים';
+export const ADMIN_TOGGLE_INCLUDE_DELETED = 'הצג נמחקים';
+export const ADMIN_BTN_EDIT    = 'ערוך';
+export const ADMIN_BTN_DELETE  = 'מחק';
+export const ADMIN_BTN_RESTORE = 'שחזר';
+export const ADMIN_BTN_SAVE    = 'שמור';
+export const ADMIN_BTN_CANCEL  = 'ביטול';
+export const ADMIN_CONFIRM_DELETE_ENTITY = (name, phonesCount) =>
+  `האם למחוק את "${name}"?\n` +
+  `פעולה זו תמחק גם את ${phonesCount} מספרי הטלפון השייכים אליו.\n` +
+  `הנתונים יישמרו במאגר לתיעוד וניתן לשחזרם.`;
+export const ADMIN_CONFIRM_DELETE_PHONE = (num) =>
+  `האם למחוק את הטלפון ${num}?\nהנתונים יישמרו במאגר לתיעוד וניתן לשחזרם.`;
+export const ADMIN_TOAST_SAVED    = 'השינוי נשמר.';
+export const ADMIN_TOAST_DELETED  = 'הרשומה נמחקה (מחיקה רכה).';
+export const ADMIN_TOAST_RESTORED = 'הרשומה שוחזרה.';
+export const ADMIN_TOAST_ERROR    = (msg) => `שגיאה: ${msg}`;
+export const ADMIN_FIELD_FIRST_NAME    = 'שם פרטי';
+export const ADMIN_FIELD_LAST_NAME     = 'שם משפחה';
+export const ADMIN_FIELD_RELATION      = 'סוג קרבה';
+export const ADMIN_FIELD_PHONE_NUMBER  = 'מספר טלפון';
+export const ADMIN_FIELD_VERIFICATION  = 'סטטוס אימות';
 export const BTN_INGEST_NEW    = 'קליטת מספר חדש';
 export const ROLE_TITLE        = (role) => `תפקיד: ${role}`;
 

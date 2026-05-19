@@ -184,3 +184,80 @@ export async function getEntityBulkTemplate() {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+
+
+/* ===========================================================================
+ * UAT round-3 — admin CRUD: list / detail / patch / soft-delete / restore
+ * ===========================================================================
+ *
+ * The same five mutation shapes wrapped for entities and phones. Each
+ * function follows the established pattern: MOCK_MODE branch first
+ * (calls into MockDataContext mutators), real-API branch second. The
+ * mutators on mockDb keep mock-mode tests honest end-to-end.
+ */
+
+
+/**
+ * listEntities — paginated entities for the view tab + admin tab.
+ *
+ * filters: { clientId?, clientIds?, entityType?, includeDeleted?, q? }
+ */
+export async function listEntities(filters = {}, mockDb) {
+  if (!MOCK_MODE) {
+    const params = {};
+    if (filters.clientId != null && filters.clientId !== '') params.client_id = filters.clientId;
+    if (filters.clientIds?.length)                            params.client_ids = filters.clientIds;
+    if (filters.entityType)                                   params.entity_type = filters.entityType;
+    if (filters.includeDeleted)                               params.include_deleted = true;
+    if (filters.q)                                            params.q = filters.q;
+    const { data } = await apiClient.get('/entities', { params });
+    return data.items || [];
+  }
+  await mockDelay(200);
+  return mockDb.applyListEntities(filters);
+}
+
+
+export async function getEntityDetail(id, includeDeleted, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.get(`/entities/${id}`, {
+      params: includeDeleted ? { include_deleted: true } : {},
+    });
+    return data;
+  }
+  await mockDelay(150);
+  return mockDb.applyGetEntityDetail(id, includeDeleted);
+}
+
+
+export async function patchEntity(id, body, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.patch(`/entities/${id}`, body);
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(250);
+  return mockDb.applyPatchEntity(id, body);
+}
+
+
+export async function softDeleteEntity(id, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.delete(`/entities/${id}`);
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(250);
+  return mockDb.applySoftDeleteEntity(id);
+}
+
+
+export async function restoreEntity(id, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post(`/entities/${id}/restore`);
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(250);
+  return mockDb.applyRestoreEntity(id);
+}

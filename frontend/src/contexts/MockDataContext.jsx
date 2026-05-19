@@ -1700,6 +1700,183 @@ export function MockDataProvider({ children }) {
   }, [db]);
 
   // -------------------------------------------------------------------------
+  // UAT round-3 — admin CRUD mock parity (entities + phones)
+  // -------------------------------------------------------------------------
+  // Mirrors the DataAdminService contract in MOCK_MODE so the new
+  // view + admin tabs work end-to-end without a live backend. The
+  // tombstone field here is a real `deleted_at` ISO string on the
+  // mock entity / phone row — frontend filters honor it the same
+  // way the backend WHERE clause does.
+
+  const _entityToView = useCallback((e) => {
+    const extra = e.extra_data || {};
+    return {
+      id:               e.id,
+      client_id:        e.client_id,
+      entity_type:      e.entity_type,
+      target_entity_id: e.target_entity_id,
+      first_name:       extra.first_name ?? null,
+      last_name:        extra.last_name ?? null,
+      strong_identifier: extra.strong_identifier ?? null,
+      extra_data:       extra,
+      created_at:       e.created_at ?? null,
+      updated_at:       e.updated_at ?? null,
+      deleted_at:       e.deleted_at ?? null,
+    };
+  }, []);
+
+  const applyListEntities = useCallback((filters = {}) => {
+    let rows = (db.entities || []).slice();
+    if (!filters.includeDeleted) rows = rows.filter((e) => !e.deleted_at);
+    if (filters.clientId != null && filters.clientId !== '') {
+      rows = rows.filter((e) => String(e.client_id) === String(filters.clientId));
+    }
+    if (filters.clientIds?.length) {
+      const set = new Set(filters.clientIds.map(String));
+      rows = rows.filter((e) => set.has(String(e.client_id)));
+    }
+    if (filters.entityType) {
+      rows = rows.filter((e) => e.entity_type === filters.entityType);
+    }
+    if (filters.q) {
+      const needle = String(filters.q).toLowerCase();
+      rows = rows.filter((e) => {
+        const fn = (e.extra_data?.first_name || '').toLowerCase();
+        const ln = (e.extra_data?.last_name  || '').toLowerCase();
+        return `${fn} ${ln} ${e.id}`.includes(needle);
+      });
+    }
+    return rows.map(_entityToView);
+  }, [db, _entityToView]);
+
+  const applyGetEntityDetail = useCallback((id, includeDeleted) => {
+    const e = (db.entities || []).find((x) => x.id === id);
+    if (!e) throw new Error(`Entity ${id} not found`);
+    if (e.deleted_at && !includeDeleted) throw new Error(`Entity ${id} not found`);
+    return _entityToView(e);
+  }, [db, _entityToView]);
+
+  const applyPatchEntity = useCallback((id, body) => {
+    let snapshot;
+    setDb((prev) => {
+      const idx = prev.entities.findIndex((e) => e.id === id);
+      if (idx === -1) throw new Error(`Entity ${id} not found`);
+      const existing = prev.entities[idx];
+      if (existing.deleted_at) throw new Error(`Entity ${id} not found`);
+      const nextExtra = { ...(existing.extra_data || {}) };
+      if (body.first_name !== undefined && body.first_name !== null) {
+        nextExtra.first_name = body.first_name.trim();
+      }
+      if (body.last_name !== undefined && body.last_name !== null) {
+        nextExtra.last_name = body.last_name.trim() || null;
+      }
+      if (body.strong_identifier !== undefined && body.strong_identifier !== null) {
+        const sid = String(body.strong_identifier).trim();
+        if (sid) nextExtra.strong_identifier = sid;
+        else delete nextExtra.strong_identifier;
+      }
+      const next = {
+        ...existing,
+        entity_type:      body.relation_type ?? existing.entity_type,
+        target_entity_id: body.target_entity_id ?? existing.target_entity_id,
+        client_id:        body.client_id ?? existing.client_id,
+        extra_data:       nextExtra,
+        updated_at:       new Date().toISOString(),
+      };
+      snapshot = next;
+      const entities = prev.entities.slice();
+      entities[idx] = next;
+      return { ...prev, entities };
+    });
+    return _entityToView(snapshot);
+  }, [_entityToView]);
+
+  const applySoftDeleteEntity = useCallback((id) => {
+    let phonesDeleted = 0;
+    setDb((prev) => {
+      const idx = prev.entities.findIndex((e) => e.id === id);
+      if (idx === -1) throw new Error(`Entity ${id} not found`);
+      if (prev.entities[idx].deleted_at) throw new Error(`Entity ${id} not found`);
+      const now = new Date().toISOString();
+      const entities = prev.entities.slice();
+      entities[idx] = { ...entities[idx], deleted_at: now };
+      const phones = prev.phones.map((p) => {
+        if (p.entity_id === id && !p.deleted_at) {
+          phonesDeleted += 1;
+          return { ...p, deleted_at: now };
+        }
+        return p;
+      });
+      return { ...prev, entities, phones };
+    });
+    return { entity_id: id, phones_deleted: phonesDeleted };
+  }, []);
+
+  const applyRestoreEntity = useCallback((id) => {
+    let snapshot;
+    setDb((prev) => {
+      const idx = prev.entities.findIndex((e) => e.id === id);
+      if (idx === -1) throw new Error(`Entity ${id} not found`);
+      const next = { ...prev.entities[idx], deleted_at: null };
+      snapshot = next;
+      const entities = prev.entities.slice();
+      entities[idx] = next;
+      return { ...prev, entities };
+    });
+    return _entityToView(snapshot);
+  }, [_entityToView]);
+
+  const applyAdminPatchPhone = useCallback((id, body) => {
+    let snapshot;
+    setDb((prev) => {
+      const idx = prev.phones.findIndex((p) => p.id === id);
+      if (idx === -1) throw new Error(`Phone ${id} not found`);
+      if (prev.phones[idx].deleted_at) throw new Error(`Phone ${id} not found`);
+      const next = {
+        ...prev.phones[idx],
+        ...(body.phone_number != null        ? { phone_number:        body.phone_number.trim() } : {}),
+        ...(body.classification_type != null ? { classification_type: body.classification_type } : {}),
+        ...(body.verification_status != null ? { verification_status: body.verification_status } : {}),
+        updated_at: new Date().toISOString(),
+      };
+      snapshot = next;
+      const phones = prev.phones.slice();
+      phones[idx] = next;
+      return { ...prev, phones };
+    });
+    return snapshot;
+  }, []);
+
+  const applySoftDeletePhone = useCallback((id) => {
+    let snapshot;
+    setDb((prev) => {
+      const idx = prev.phones.findIndex((p) => p.id === id);
+      if (idx === -1) throw new Error(`Phone ${id} not found`);
+      if (prev.phones[idx].deleted_at) throw new Error(`Phone ${id} not found`);
+      const next = { ...prev.phones[idx], deleted_at: new Date().toISOString() };
+      snapshot = next;
+      const phones = prev.phones.slice();
+      phones[idx] = next;
+      return { ...prev, phones };
+    });
+    return snapshot;
+  }, []);
+
+  const applyRestorePhone = useCallback((id) => {
+    let snapshot;
+    setDb((prev) => {
+      const idx = prev.phones.findIndex((p) => p.id === id);
+      if (idx === -1) throw new Error(`Phone ${id} not found`);
+      const next = { ...prev.phones[idx], deleted_at: null };
+      snapshot = next;
+      const phones = prev.phones.slice();
+      phones[idx] = next;
+      return { ...prev, phones };
+    });
+    return snapshot;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
@@ -1770,6 +1947,15 @@ export function MockDataProvider({ children }) {
     applyResolveTask,
     applyBulkResolveTasks,
     applyTableExport,
+    // UAT round-3 admin CRUD mock parity
+    applyListEntities,
+    applyGetEntityDetail,
+    applyPatchEntity,
+    applySoftDeleteEntity,
+    applyRestoreEntity,
+    applyAdminPatchPhone,
+    applySoftDeletePhone,
+    applyRestorePhone,
     // Phase NOTIF
     listNotificationSubscriptions,
     applyCreateNotificationSubscription,

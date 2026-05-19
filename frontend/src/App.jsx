@@ -38,6 +38,8 @@ import PhoneGridPage       from './pages/PhoneGridPage';
 import SystemOpsPage       from './pages/SystemOpsPage';
 import DashboardPage       from './pages/DashboardPage';
 import OperationsQueuePage from './pages/OperationsQueuePage';
+import EntitiesPage        from './pages/EntitiesPage';
+import DataAdminPage       from './pages/DataAdminPage';
 import LoginPage           from './pages/LoginPage';
 import RegisterPage        from './pages/RegisterPage';
 
@@ -87,10 +89,12 @@ export default function App() {
           <AppShell>
             <Routes>
               <Route path="/"           element={<ClientHubPage />} />
+              <Route path="/entities"   element={<EntitiesPage />} />
               <Route path="/phones"     element={<PhoneGridPage />} />
               <Route path="/ops"        element={<SystemOpsPage />} />
               <Route path="/operations" element={<OperationsQueuePage />} />
               <Route path="/dashboard"  element={<DashboardPage />} />
+              <Route path="/admin"      element={<DataAdminPage />} />
               <Route path="*"           element={<ClientHubPage />} />
             </Routes>
           </AppShell>
