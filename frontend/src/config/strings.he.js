@@ -460,6 +460,37 @@ export const EXPORT_TOAST_TOO_MANY       = (n) =>
   `יותר מדי שורות (${n}). צמצם את הסינון ונסה שוב.`;
 export const EXPORT_TOAST_ERROR          = (msg) => `ייצוא נכשל: ${msg}`;
 
+// ---------------------------------------------------------------------------
+// Phase NOTIF — inline notification opt-in panel
+// ---------------------------------------------------------------------------
+
+// Three visual states of the panel.
+export const NOTIF_OPT_IN_COLLAPSED_CTA   = 'קבל התראות לרשומה זו';
+export const NOTIF_OPT_IN_ACTIVE_LABEL    = (count) =>
+  `התראות פעילות (${count})`;
+export const NOTIF_OPT_IN_EDIT            = 'ערוך';
+
+// Form labels in the expanded state.
+export const NOTIF_FORM_EVENTS_LABEL      = 'על איזה אירוע להתריע?';
+export const NOTIF_FORM_RECIPIENTS_LABEL  = 'לאן לשלוח?';
+export const NOTIF_FORM_RECIPIENTS_PLACE  = 'בחר ערוצים…';
+
+// Buttons.
+export const NOTIF_BTN_SAVE               = 'שמור';
+export const NOTIF_BTN_SUBMITTING         = 'שומר…';
+export const NOTIF_BTN_CANCEL             = 'ביטול';
+export const NOTIF_BTN_DELETE             = 'מחק התראות';
+
+// Validation + empty-state.
+export const NOTIF_ERR_NO_EVENTS          = 'יש לבחור לפחות אירוע אחד.';
+export const NOTIF_ERR_NO_RECIPIENTS      = 'יש לבחור ערוץ אחד לפחות.';
+
+// Toasts.
+export const NOTIF_TOAST_SAVED            = 'התראות הוגדרו בהצלחה.';
+export const NOTIF_TOAST_UPDATED          = 'הגדרות ההתראות עודכנו.';
+export const NOTIF_TOAST_DELETED          = 'ההתראות בוטלו.';
+export const NOTIF_TOAST_ERROR            = (msg) => `שגיאה בהגדרת התראות: ${msg}`;
+
 // Default-hide toggle for resolved/rejected tasks. Off (= hide) by
 // default so managers land on a clean "action required now" queue;
 // when the operator wants the historical audit view, flipping this

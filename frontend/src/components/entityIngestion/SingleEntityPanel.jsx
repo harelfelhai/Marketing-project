@@ -25,6 +25,7 @@ import { Loader2, UserPlus, Phone, Check } from 'lucide-react';
 import { createEntity }         from '../../api/entityApi';
 import { useMockData }          from '../../contexts/MockDataContext';
 import { useUI }                from '../../contexts/UIContext';
+import NotificationOptInPanel   from '../notifications/NotificationOptInPanel';
 import {
   ENTITY_FIELD_FIRST_NAME, ENTITY_FIELD_LAST_NAME,
   ENTITY_FIELD_RELATION, ENTITY_FIELD_CLIENT, ENTITY_FIELD_TARGET,
@@ -205,6 +206,15 @@ export default function SingleEntityPanel({ active }) {
             </p>
           </div>
         </div>
+
+        {/* Phase NOTIF — inline opt-in for alerts about this person.
+            Operator can subscribe to events on the newly-created
+            entity without leaving the modal. Mock parity makes this
+            functional end-to-end without a real backend. */}
+        <NotificationOptInPanel
+          contextKind="entity"
+          contextId={createdEntity.id}
+        />
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <button

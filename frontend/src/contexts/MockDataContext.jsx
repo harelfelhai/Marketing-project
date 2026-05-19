@@ -34,6 +34,12 @@ const EMPTY_DB = {
     retry:        { executing: false, lastRunAt: null, lastProcessedCount: 0 },
     verification: { executing: false, lastRunAt: null, lastProcessedCount: 0 },
   },
+  // Phase NOTIF — subscription rules + delivery audit trail seeded
+  // empty. Operators populate them inline at workflow completion
+  // (NotificationOptInPanel). buildInitialDb() merges over these
+  // defaults so the seed file can stay focused on phone / task data.
+  notificationSubscriptions: [],
+  notificationDeliveries:    [],
 };
 
 export function MockDataProvider({ children }) {
@@ -1338,6 +1344,135 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // Phase NOTIF — mock-mode parity for the 5 notification endpoints.
+  //
+  // The skeleton lives entirely in-memory: subscriptions + delivery
+  // rows are arrays on the mock db. Mirrors the backend at the
+  // contract level (same filter recognition, same target_kind/target_id
+  // invariant, same "channel always succeeds" mock semantics).
+  // -------------------------------------------------------------------------
+
+  const listNotificationSubscriptions = useCallback((filters = {}) => {
+    const rows = (db.notificationSubscriptions || []).filter((s) => {
+      if (filters.targetKind !== undefined && s.target_kind !== filters.targetKind) return false;
+      if (filters.targetId !== undefined && s.target_id !== filters.targetId) return false;
+      if (filters.triggerEventType !== undefined && s.trigger_event_type !== filters.triggerEventType) return false;
+      if (filters.active !== undefined && s.active !== filters.active) return false;
+      return true;
+    });
+    return rows.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }, [db.notificationSubscriptions]);
+
+  const applyCreateNotificationSubscription = useCallback((body) => {
+    // Mirror the backend's invariant guards so mock-mode operators
+    // hit the same error paths the real API enforces.
+    const SUPPORTED = new Set(['phone', 'entity', 'task', 'global']);
+    if (!SUPPORTED.has(body.target_kind)) {
+      throw new Error(`Unsupported target_kind '${body.target_kind}'`);
+    }
+    if (body.target_kind === 'global' && body.target_id != null) {
+      throw new Error('target_id must be NULL when target_kind=global.');
+    }
+    if (body.target_kind !== 'global' && body.target_id == null) {
+      throw new Error(`target_id is required when target_kind='${body.target_kind}'`);
+    }
+    if (!Array.isArray(body.recipients) || body.recipients.length === 0) {
+      throw new Error('recipients must contain at least one entry.');
+    }
+
+    let created;
+    setDb((prev) => {
+      const nextId = Math.max(0, ...(prev.notificationSubscriptions || []).map((s) => s.id)) + 1;
+      const now = new Date().toISOString();
+      created = {
+        id:                  nextId,
+        trigger_event_type:  body.trigger_event_type,
+        target_kind:         body.target_kind,
+        target_id:           body.target_id ?? null,
+        recipients:          [...body.recipients],
+        title_template:      body.title_template ?? null,
+        body_template:       body.body_template ?? null,
+        active:              true,
+        created_by:          body.created_by,
+        created_at:          now,
+        updated_at:          now,
+        extra_data:          body.extra_data ?? null,
+      };
+      return {
+        ...prev,
+        notificationSubscriptions: [...(prev.notificationSubscriptions || []), created],
+      };
+    });
+    return created;
+  }, []);
+
+  const applyUpdateNotificationSubscription = useCallback((id, body) => {
+    if (body.recipients != null && body.recipients.length === 0) {
+      throw new Error('recipients must contain at least one entry.');
+    }
+    let updated;
+    setDb((prev) => {
+      const subs = (prev.notificationSubscriptions || []).slice();
+      const idx = subs.findIndex((s) => s.id === id);
+      if (idx === -1) {
+        throw new Error(`NotificationSubscription with id=${id} was not found.`);
+      }
+      const next = { ...subs[idx], updated_at: new Date().toISOString() };
+      if (body.recipients !== undefined)     next.recipients     = [...body.recipients];
+      if (body.title_template !== undefined) next.title_template = body.title_template;
+      if (body.body_template !== undefined)  next.body_template  = body.body_template;
+      if (body.active !== undefined)         next.active         = body.active;
+      if (body.extra_data !== undefined)     next.extra_data     = body.extra_data;
+      subs[idx] = next;
+      updated = next;
+      return { ...prev, notificationSubscriptions: subs };
+    });
+    return updated;
+  }, []);
+
+  const applyDeleteNotificationSubscription = useCallback((id) => {
+    setDb((prev) => {
+      const subs = (prev.notificationSubscriptions || []).filter((s) => s.id !== id);
+      if (subs.length === (prev.notificationSubscriptions || []).length) {
+        throw new Error(`NotificationSubscription with id=${id} was not found.`);
+      }
+      return { ...prev, notificationSubscriptions: subs };
+    });
+  }, []);
+
+  const applyNotificationTestFire = useCallback((body) => {
+    // Mirrors the backend's mock_chat: always succeeds. Lands as a
+    // NotificationDelivery row tagged trigger_event_type='manual.test'.
+    let delivery;
+    setDb((prev) => {
+      const nextId = Math.max(0, ...(prev.notificationDeliveries || []).map((d) => d.id)) + 1;
+      const now = new Date().toISOString();
+      delivery = {
+        id:                   nextId,
+        subscription_id:      null,
+        trigger_event_type:   'manual.test',
+        title:                body.title,
+        body:                 body.body,
+        recipients:           [...body.recipients],
+        status:               'sent',
+        retry_count:          0,
+        last_error:           null,
+        provider_message_id:  `mock_${nextId}`,
+        attempted_at:         now,
+        delivered_at:         now,
+        created_at:           now,
+        updated_at:           now,
+        extra_data:           { raw_response: { mock: true, recipients_count: body.recipients.length } },
+      };
+      return {
+        ...prev,
+        notificationDeliveries: [...(prev.notificationDeliveries || []), delivery],
+      };
+    });
+    return delivery;
+  }, []);
+
+  // -------------------------------------------------------------------------
   // applyTableExport — mock-mode parity for POST /api/v1/{table}/export.
   //
   // Mirrors ExportService on the backend at the contract level (same
@@ -1452,6 +1587,12 @@ export function MockDataProvider({ children }) {
     applyResolveTask,
     applyBulkResolveTasks,
     applyTableExport,
+    // Phase NOTIF
+    listNotificationSubscriptions,
+    applyCreateNotificationSubscription,
+    applyUpdateNotificationSubscription,
+    applyDeleteNotificationSubscription,
+    applyNotificationTestFire,
     setEngineExecuting,
     // Derived helpers
     getClientMetrics,

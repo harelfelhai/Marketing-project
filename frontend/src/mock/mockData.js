@@ -1024,6 +1024,10 @@ export function buildInitialDb() {
     actionLogs: structuredClone(SEED_ACTION_LOGS),
     tasks:      structuredClone(SEED_TASKS),
     engines:    structuredClone(DEFAULT_ENGINE_STATES),
+    // Phase NOTIF — subscriptions + deliveries seeded empty.
+    // Operators populate inline via NotificationOptInPanel.
+    notificationSubscriptions: [],
+    notificationDeliveries:    [],
   };
 }
 
