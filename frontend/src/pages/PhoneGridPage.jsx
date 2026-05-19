@@ -17,12 +17,22 @@ import PhoneTable         from '../components/phones/PhoneTable';
 import PhoneDetailDrawer  from '../components/phones/PhoneDetailDrawer';
 import TableExportButton  from '../components/exports/TableExportButton';
 import { useUI }          from '../contexts/UIContext';
+import { useAuth }        from '../contexts/MockAuthContext';
 import { PAGE_PHONE_GRID_TITLE, PAGE_PHONE_GRID_SUB } from '../config/strings.he';
 
 export default function PhoneGridPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { seedClientFilter, phoneFilters } = useUI();
+  const { personalizationActive, user }    = useAuth();
   const [selectedId, setSelectedId]     = useState(null);
+
+  // Phase AUTH-C — derive effective personalization clientIds from
+  // useAuth(). When the global toggle is ON and the user has managed
+  // clients, every list view + export narrows to those clients.
+  const personalizationClientIds =
+    personalizationActive && user?.managed_client_ids?.length
+      ? user.managed_client_ids
+      : null;
 
   // Translate the UIContext filter shape into the GET /phones query
   // shape that ExportService expects. Lazy callback (not memoized
@@ -35,8 +45,9 @@ export default function PhoneGridPage() {
     if (phoneFilters.ingestionSource)                                   f.ingestion_source    = phoneFilters.ingestionSource;
     if (phoneFilters.classificationType)                                f.classification_type = phoneFilters.classificationType;
     if (phoneFilters.search)                                            f.q                   = phoneFilters.search.trim();
+    if (personalizationClientIds)                                       f.client_ids          = personalizationClientIds;
     return f;
-  }, [phoneFilters]);
+  }, [phoneFilters, personalizationClientIds]);
 
   // Seed the persistent filter from ?client_id on mount (and any subsequent
   // change). Filter state lives in UIContext so it survives nav.
@@ -92,7 +103,11 @@ export default function PhoneGridPage() {
       </header>
 
       <PhoneFilterBar />
-      <PhoneTable selectedId={selectedId} onSelect={setSelectedId} />
+      <PhoneTable
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        clientIds={personalizationClientIds}
+      />
 
       <PhoneDetailDrawer phoneId={selectedId} onClose={handleCloseDrawer} />
     </section>

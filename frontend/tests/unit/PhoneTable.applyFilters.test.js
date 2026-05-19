@@ -98,3 +98,54 @@ describe('applyFilters — Phase DY sortBy', () => {
     expect(rows.map((r) => r.phone.id)).toEqual([40, 30, 20, 10]);
   });
 });
+
+
+describe('applyFilters — Phase AUTH-C clientIds personalization', () => {
+  const MIXED_ENTITIES = [
+    { id: 1, entity_type: 'target', client_id: 1 },
+    { id: 2, entity_type: 'target', client_id: 2 },
+    { id: 3, entity_type: 'target', client_id: 3 },
+  ];
+  const MIXED_CLIENTS = [
+    { id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' },
+  ];
+  const MIXED_PHONES = [
+    { id: 100, entity_id: 1, phone_number: '+a', ingested_at: '2026-05-01',
+      verification_status: 'pending', priority_score: 10 },
+    { id: 200, entity_id: 2, phone_number: '+b', ingested_at: '2026-05-02',
+      verification_status: 'pending', priority_score: 20 },
+    { id: 300, entity_id: 3, phone_number: '+c', ingested_at: '2026-05-03',
+      verification_status: 'pending', priority_score: 30 },
+  ];
+
+  it('omits clientIds → no narrowing applied', () => {
+    const rows = applyFilters(MIXED_PHONES, MIXED_ENTITIES, MIXED_CLIENTS, [], NO_FILTERS);
+    expect(rows.map((r) => r.phone.id).sort()).toEqual([100, 200, 300]);
+  });
+
+  it('clientIds=[1,3] narrows to entities owned by those clients', () => {
+    const rows = applyFilters(MIXED_PHONES, MIXED_ENTITIES, MIXED_CLIENTS, [],
+                              { ...NO_FILTERS, clientIds: [1, 3] });
+    expect(rows.map((r) => r.phone.id).sort()).toEqual([100, 300]);
+  });
+
+  it('empty clientIds array is treated as no filter (toggle off)', () => {
+    const rows = applyFilters(MIXED_PHONES, MIXED_ENTITIES, MIXED_CLIENTS, [],
+                              { ...NO_FILTERS, clientIds: [] });
+    expect(rows).toHaveLength(3);
+  });
+
+  it('clientIds compose with other filters via AND', () => {
+    const onePending = [
+      ...MIXED_PHONES.slice(0, 2),
+      { ...MIXED_PHONES[2], verification_status: 'verified' },
+    ];
+    const rows = applyFilters(onePending, MIXED_ENTITIES, MIXED_CLIENTS, [], {
+      ...NO_FILTERS,
+      clientIds: [1, 3],
+      verificationStatus: 'pending',
+    });
+    // id=300 is now 'verified', so only id=100 (client 1, pending) survives.
+    expect(rows.map((r) => r.phone.id)).toEqual([100]);
+  });
+});

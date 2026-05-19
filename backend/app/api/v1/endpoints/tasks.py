@@ -170,6 +170,16 @@ def list_tasks(
             "matched — filter by the client_id dropdown for that."
         ),
     ),
+    client_ids: Optional[list[int]] = Query(
+        default=None,
+        description=(
+            "Phase AUTH-C — multi-value client filter for the "
+            "personalization view. When present, restricts results "
+            "to tasks whose owning phone's entity has client_id IN "
+            "this list. Frontend builds this from the admin's "
+            "managed_client_ids when personalization is on."
+        ),
+    ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     page_size: int = Query(
         default=20,
@@ -199,6 +209,7 @@ def list_tasks(
         phone_id_filter=phone_id,
         exclude_terminal=exclude_terminal,
         q=q,
+        client_ids=client_ids,
         page=page,
         page_size=page_size,
     )

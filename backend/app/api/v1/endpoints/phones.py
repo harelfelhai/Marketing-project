@@ -115,9 +115,22 @@ def list_phones(
     client_id: Optional[int] = Query(
         default=None,
         description=(
-            "Filter by integer client partition identifier. "
+            "Filter by single integer client partition identifier. "
             "Matches against Entity.client_id. "
             "Example: pass 1 to return only phones for the first client partition."
+        ),
+    ),
+    client_ids: Optional[list[int]] = Query(
+        default=None,
+        description=(
+            "Phase AUTH-C — multi-value client filter for the "
+            "personalization view. When present, restricts results "
+            "to phones whose entity's client_id is in this list. "
+            "Frontend builds this from the logged-in user's "
+            "managed_client_ids. Mutually compatible with `client_id`: "
+            "if both are set, both filters AND together (operator "
+            "drilled into one specific client within their personalized "
+            "subset)."
         ),
     ),
     sort_by: str = Query(
@@ -208,6 +221,9 @@ def list_phones(
         filters.append(PhoneNumber.classification_type == classification_type)
     if client_id is not None:
         filters.append(Entity.client_id == client_id)
+    if client_ids:
+        # Phase AUTH-C — multi-value personalization filter.
+        filters.append(Entity.client_id.in_(client_ids))
     if q:
         like = f"%{q}%"
         # Substring across the operator-visible text in PhoneGrid. The

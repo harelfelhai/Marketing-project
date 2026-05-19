@@ -35,6 +35,8 @@ export async function listTasks(filters = {}, mockDb) {
     if (filters.status)    params.status    = filters.status;
     if (filters.taskType)  params.task_type = filters.taskType;
     if (filters.phoneId)   params.phone_id  = filters.phoneId;
+    // Phase AUTH-C — multi-value personalization filter.
+    if (filters.clientIds?.length) params.client_ids = filters.clientIds;
 
     const { data }  = await apiClient.get('/tasks', { params });
     const { items } = unwrapPage(data);
@@ -47,6 +49,10 @@ export async function listTasks(filters = {}, mockDb) {
   if (filters.status)   rows = rows.filter((t) => t.status    === filters.status);
   if (filters.taskType) rows = rows.filter((t) => t.task_type === filters.taskType);
   if (filters.phoneId)  rows = rows.filter((t) => t.phone_id  === filters.phoneId);
+  if (filters.clientIds?.length) {
+    const allowed = new Set(filters.clientIds.map(String));
+    rows = rows.filter((t) => allowed.has(String(t.client_id)));
+  }
   rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   return enrichTaskList(rows);
 }

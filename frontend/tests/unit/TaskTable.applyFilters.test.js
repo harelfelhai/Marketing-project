@@ -230,3 +230,40 @@ describe('applyFilters — hideResolved (Task Center default-hide)', () => {
     expect(result.length).toBe(5);
   });
 });
+
+
+describe('applyFilters — Phase AUTH-C clientIds personalization', () => {
+  it('omitted clientIds → no filter', () => {
+    expect(applyFilters(fixtures(), ALL_DEFAULT)).toHaveLength(5);
+  });
+
+  it('clientIds=[1] narrows to tasks for that client only', () => {
+    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, clientIds: [1] });
+    expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4]);
+  });
+
+  it('clientIds=[1,3] narrows to the union of those clients', () => {
+    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, clientIds: [1, 3] });
+    expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4, 5]);
+  });
+
+  it('empty clientIds array is a no-op (toggle off)', () => {
+    expect(applyFilters(fixtures(), { ...ALL_DEFAULT, clientIds: [] })).toHaveLength(5);
+  });
+
+  it('clientIds AND-composes with status and openOnly', () => {
+    const result = applyFilters(fixtures(), {
+      ...ALL_DEFAULT,
+      clientIds: [1, 3],
+      openOnly:  true,
+    });
+    // Open (pending|assigned) AND client in {1,3} → tasks 1, 3.
+    expect(result.map((t) => t.id).sort()).toEqual([1, 3]);
+  });
+
+  it('clientIds string-coercion: works for both integer and string client_id values', () => {
+    const stringy = fixtures().map((t) => ({ ...t, client_id: String(t.client_id) }));
+    const result = applyFilters(stringy, { ...ALL_DEFAULT, clientIds: [1, 3] });
+    expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4, 5]);
+  });
+});

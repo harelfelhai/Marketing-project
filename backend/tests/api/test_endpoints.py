@@ -2730,3 +2730,109 @@ class TestAuthBIngestionAttribution:
             select(Entity).where(Entity.id == r.json()["id"])
         ).first()
         assert ent.created_by_user_id is not None
+
+
+# ===========================================================================
+# Phase AUTH-C — multi-value `client_ids` personalization filter
+# ===========================================================================
+
+
+def _seed_phones_across_clients(session):
+    """Three entities on different clients + one phone each.
+    Returns the (client_id → phone_number) mapping for assertion convenience."""
+    from models.entity import Entity
+    from models.phone_number import PhoneNumber
+
+    mapping = {}
+    for client_id, phone_num in [(1, "+15550001001"), (2, "+15550002002"), (3, "+15550003003")]:
+        e = Entity(entity_type="target", relation_type="primary", client_id=client_id)
+        session.add(e)
+        session.flush()
+        p = PhoneNumber(
+            entity_id=e.id, phone_number=phone_num, ingestion_source="manual",
+        )
+        session.add(p)
+        mapping[client_id] = phone_num
+    session.commit()
+    return mapping
+
+
+class TestAuthCClientIdsFilter:
+    """The personalization multi-value filter on /phones and /tasks."""
+
+    def test_phones_client_ids_filter_narrows_to_listed_clients(self, client):
+        tc, session = client
+        mapping = _seed_phones_across_clients(session)
+
+        # Personalized view: clients 1 + 3 only.
+        r = tc.get("/api/v1/phones?client_ids=1&client_ids=3")
+        assert r.status_code == 200
+        nums = {row["phone_number"] for row in r.json()["items"]}
+        assert mapping[1] in nums
+        assert mapping[3] in nums
+        assert mapping[2] not in nums
+
+    def test_phones_client_ids_empty_returns_everything(self, client):
+        """Omitting the param is equivalent to 'all system data' —
+        the unset / null query param disables the filter."""
+        tc, session = client
+        mapping = _seed_phones_across_clients(session)
+        r = tc.get("/api/v1/phones")
+        assert r.status_code == 200
+        nums = {row["phone_number"] for row in r.json()["items"]}
+        # All three seeded phones present (alongside any fixture seeds).
+        for pn in mapping.values():
+            assert pn in nums
+
+    def test_phones_client_id_and_client_ids_AND_together(self, client):
+        """When both single + multi are set, both narrow — operator
+        drilling into a specific client within their personalized
+        subset shouldn't trigger an OR widening."""
+        tc, session = client
+        mapping = _seed_phones_across_clients(session)
+        # Single = 2 (NOT in client_ids list).
+        r = tc.get("/api/v1/phones?client_id=2&client_ids=1&client_ids=3")
+        assert r.status_code == 200
+        # Empty intersection → empty result set.
+        assert r.json()["items"] == []
+
+    def test_tasks_client_ids_filter_narrows_to_listed_clients(self, client):
+        """Multi-value filter on /tasks. Seed tasks on different
+        client partitions, then filter to a subset."""
+        from services.tasks import PipelineTaskService
+        tc, session = client
+        mapping = _seed_phones_across_clients(session)
+        svc = PipelineTaskService(session=session)
+
+        # Open one task per client.
+        for cid, phone_num in mapping.items():
+            from sqlmodel import select
+            from models.phone_number import PhoneNumber
+            phone = session.exec(
+                select(PhoneNumber).where(PhoneNumber.phone_number == phone_num)
+            ).first()
+            svc.open_task(phone_id=phone.id, task_type="x", requested_by="seed")
+
+        r = tc.get("/api/v1/tasks?client_ids=1&client_ids=2")
+        assert r.status_code == 200
+        client_ids_in_result = {row["client_id"] for row in r.json()["items"]}
+        assert client_ids_in_result == {1, 2}
+
+    def test_phones_export_honors_client_ids(self, client):
+        """Export endpoint mirrors the list endpoint's filter shape."""
+        import io as _io
+        import openpyxl as _openpyxl
+
+        tc, session = client
+        mapping = _seed_phones_across_clients(session)
+        r = tc.post("/api/v1/phones/export", json={
+            "filters": {"client_ids": [1, 3]},
+            "columns": [{"key": "phone_number", "label": "P", "format": "text"}],
+        })
+        assert r.status_code == 200
+        wb = _openpyxl.load_workbook(_io.BytesIO(r.content), read_only=True)
+        rows = [r for r in wb["data"].iter_rows(values_only=True)]
+        nums = {r[0] for r in rows[1:]}    # skip header
+        assert mapping[1] in nums
+        assert mapping[3] in nums
+        assert mapping[2] not in nums

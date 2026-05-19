@@ -6,7 +6,10 @@
  * here on the next render.
  */
 
+import { useMemo } from 'react';
+
 import { useMockData } from '../contexts/MockDataContext';
+import { useAuth }     from '../contexts/MockAuthContext';
 import ClientCard       from '../components/clients/ClientCard';
 import Skeleton         from '../components/primitives/Skeleton';
 import { PAGE_CLIENT_HUB_TITLE, PAGE_CLIENT_HUB_SUB } from '../config/strings.he';
@@ -14,7 +17,19 @@ import { PAGE_CLIENT_HUB_TITLE, PAGE_CLIENT_HUB_SUB } from '../config/strings.he
 const SKELETON_CARD_COUNT = 4;
 
 export default function ClientHubPage() {
-  const { clients, loading } = useMockData();
+  const { clients, loading }            = useMockData();
+  const { personalizationActive, user } = useAuth();
+
+  // Phase AUTH-C — when the global toggle is ON and the operator has
+  // managed clients, narrow the hub to those tiles. Admins (no managed
+  // clients) see the full list regardless of toggle position.
+  const visibleClients = useMemo(() => {
+    if (!personalizationActive) return clients;
+    const allowed = user?.managed_client_ids;
+    if (!allowed?.length) return clients;
+    const allowedSet = new Set(allowed.map(String));
+    return clients.filter((c) => allowedSet.has(String(c.id)));
+  }, [clients, personalizationActive, user]);
 
   return (
     <section className="space-y-6">
@@ -31,7 +46,7 @@ export default function ClientHubPage() {
           ? Array.from({ length: SKELETON_CARD_COUNT }).map((_, i) => (
               <ClientCardSkeleton key={i} />
             ))
-          : clients.map((client) => (
+          : visibleClients.map((client) => (
               <ClientCard key={client.id} client={client} />
             ))}
       </div>

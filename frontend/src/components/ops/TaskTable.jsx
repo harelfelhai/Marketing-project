@@ -41,7 +41,13 @@ const SKELETON_ROW_COUNT = 8;
  * imports the default export below; tests import the named export.
  */
 export function applyFilters(tasks, filters) {
+  // Phase AUTH-C — multi-value personalization filter, derived in
+  // OperationsQueuePage from useAuth().
+  const clientIdsAllowed = filters.clientIds?.length
+    ? new Set(filters.clientIds.map(String))
+    : null;
   return tasks.filter((t) => {
+    if (clientIdsAllowed && !clientIdsAllowed.has(String(t.client_id))) return false;
     if (filters.status   && t.status    !== filters.status)   return false;
     if (filters.taskType && t.task_type !== filters.taskType) return false;
     // phoneId is seeded from the /operations?phone_id=N cross-link from
@@ -89,13 +95,21 @@ export default function TaskTable({
   selectedIds,
   onToggleRow,
   onToggleAll,
+  clientIds,
 }) {
   const { tasks, loading } = useMockData();
   const { taskFilters }    = useUI();
 
+  // Phase AUTH-C — same merge pattern as PhoneTable: the page derives
+  // personalization clientIds from useAuth and hands them in here.
+  const effectiveFilters = useMemo(
+    () => (clientIds?.length ? { ...taskFilters, clientIds } : taskFilters),
+    [taskFilters, clientIds]
+  );
+
   const rows = useMemo(
-    () => applyFilters(tasks, taskFilters),
-    [tasks, taskFilters]
+    () => applyFilters(tasks, effectiveFilters),
+    [tasks, effectiveFilters]
   );
 
   // Selection state semantics for the header checkbox:

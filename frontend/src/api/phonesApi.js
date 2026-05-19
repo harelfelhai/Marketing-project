@@ -18,6 +18,10 @@ export async function listPhones(filters = {}, mockDb) {
     if (filters.verificationStatus) params.verification_status = filters.verificationStatus;
     if (filters.ingestionSource)    params.ingestion_source    = filters.ingestionSource;
     if (filters.classificationType) params.classification_type = filters.classificationType;
+    // Phase AUTH-C — multi-value personalization filter. Frontend
+    // builds this from the operator's managed_client_ids when
+    // personalizationActive is true.
+    if (filters.clientIds?.length)  params.client_ids          = filters.clientIds;
     // Phase DY — sort_by toggles between 'priority' (default, the
     // prioritised review queue) and 'ingested_at' (legacy chronological
     // ordering). Backend default is already 'priority' so omitting the
@@ -61,6 +65,10 @@ export async function listPhones(filters = {}, mockDb) {
   });
 
   if (filters.clientId)           results = results.filter((p) => p.client_id === filters.clientId);
+  if (filters.clientIds?.length) {
+    const allowed = new Set(filters.clientIds.map(String));
+    results = results.filter((p) => allowed.has(String(p.client_id)));
+  }
   if (filters.verificationStatus) results = results.filter((p) => p.verification_status === filters.verificationStatus);
   if (filters.ingestionSource)    results = results.filter((p) => p.ingestion_source    === filters.ingestionSource);
   if (filters.classificationType) results = results.filter((p) => p.classification_type === filters.classificationType);

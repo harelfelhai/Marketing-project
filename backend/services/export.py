@@ -294,6 +294,10 @@ class ExportService:
             out.append(PhoneNumber.classification_type == f["classification_type"])
         if f.get("client_id") is not None and f.get("client_id") != "":
             out.append(Entity.client_id == f["client_id"])
+        # Phase AUTH-C — multi-value personalization filter.
+        cids = f.get("client_ids")
+        if cids:
+            out.append(Entity.client_id.in_(cids))
         q = f.get("q")
         if q:
             like = f"%{q}%"
@@ -320,6 +324,10 @@ class ExportService:
         if f.get("exclude_terminal") and not f.get("status"):
             # Mirrors the list endpoint contract: explicit status wins.
             out.append(PipelineTask.status.notin_(["resolved", "rejected"]))
+        # Phase AUTH-C — multi-value personalization filter.
+        cids = f.get("client_ids")
+        if cids:
+            out.append(Entity.client_id.in_(cids))
         q = f.get("q")
         if q:
             like = f"%{q}%"
@@ -429,7 +437,13 @@ class ExportService:
         meta.append(["", ""])    # spacer
         meta.append(["applied_filters", ""])
         for k, v in applied_filters.items():
-            meta.append([f"  {k}", v if not isinstance(v, dict) else str(v)])
+            # openpyxl can only put scalars in cells — coerce lists +
+            # dicts to JSON-ish strings so multi-value filters
+            # (e.g. Phase AUTH-C's client_ids=[1,3]) round-trip into
+            # the audit sheet rather than crashing the export.
+            if isinstance(v, (list, dict)):
+                v = str(v)
+            meta.append([f"  {k}", v])
 
         buf = io.BytesIO()
         wb.save(buf)

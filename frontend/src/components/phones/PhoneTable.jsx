@@ -42,7 +42,16 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
     return { phone, entity, client, logs };
   });
 
+  // Phase AUTH-C — multi-value personalization filter. When the
+  // header toggle is ON, PhoneGridPage passes the operator's
+  // managed_client_ids as filters.clientIds; rows whose entity
+  // doesn't belong to one of those clients are hidden.
+  const clientIdsAllowed = filters.clientIds?.length
+    ? new Set(filters.clientIds.map(Number))
+    : null;
+
   const filtered = rows.filter(({ phone, entity, client }) => {
+    if (clientIdsAllowed && !clientIdsAllowed.has(entity?.client_id))                              return false;
     if (filters.clientId           && entity?.client_id           !== filters.clientId)           return false;
     if (filters.verificationStatus && phone.verification_status   !== filters.verificationStatus) return false;
     if (filters.ingestionSource    && phone.ingestion_source      !== filters.ingestionSource)    return false;
@@ -87,13 +96,22 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
   return filtered;
 }
 
-export default function PhoneTable({ selectedId, onSelect }) {
+export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   const { phones, entities, clients, actionLogs, loading } = useMockData();
   const { phoneFilters } = useUI();
 
+  // Phase AUTH-C — merge personalization clientIds (from PhoneGridPage,
+  // which derives them from useAuth) into the filter shape so the
+  // table view honors the global toggle without re-reading the auth
+  // context here.
+  const effectiveFilters = useMemo(
+    () => (clientIds?.length ? { ...phoneFilters, clientIds } : phoneFilters),
+    [phoneFilters, clientIds]
+  );
+
   const rows = useMemo(
-    () => applyFilters(phones, entities, clients, actionLogs, phoneFilters),
-    [phones, entities, clients, actionLogs, phoneFilters]
+    () => applyFilters(phones, entities, clients, actionLogs, effectiveFilters),
+    [phones, entities, clients, actionLogs, effectiveFilters]
   );
 
   return (

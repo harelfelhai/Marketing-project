@@ -47,6 +47,12 @@ export const apiClient = axios.create({
   // marketing_session cookie on every request. Same-origin only
   // (backend's CORS allow_credentials=True permits this).
   withCredentials: true,
+  // Phase AUTH-C — emit repeated query params for arrays
+  // (`?client_ids=1&client_ids=2`) instead of the axios default
+  // bracket notation (`?client_ids[]=1&...`). FastAPI's
+  // `list[int] = Query(None)` parses repeated params natively but
+  // ignores the bracket form. `indexes: null` flattens arrays.
+  paramsSerializer: { indexes: null },
 });
 
 // Stamp every outgoing request with a correlation ID for end-to-end log tracing.

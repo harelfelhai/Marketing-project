@@ -1,22 +1,33 @@
 /**
- * AppShell — top-level chrome: header bar, nav tabs, and content slot.
+ * AppShell — top-level chrome: header bar, nav tabs, content slot.
+ *
+ * Header right-cluster components (left to right in RTL):
+ *   - HeaderActions ("+ Add Person", "+ Ingest")
+ *   - PersonalizationToggle — Phase AUTH-C global "Show my / Show all"
+ *     chip. Visible only when the operator is authenticated (logged-in
+ *     regular OR admin). Hidden for guest mode (no personalization
+ *     context to toggle).
+ *   - Operator chip (avatar + username) + Logout link
  *
  * ms-auto is used (logical property) so the right cluster pushes to the
  * inline-end edge in both LTR and RTL layouts.
- * The operator chip uses ps-4 / border-s for the same reason.
- *
- * // HOOK FOR ENTERPRISE AUTH: swap operator chip to real user dropdown.
  */
 
-import { Activity } from 'lucide-react';
+import { Activity, Filter, Globe, LogOut } from 'lucide-react';
 
 import NavTabs       from './NavTabs';
 import HeaderActions from './HeaderActions';
 import { useAuth }   from '../../contexts/MockAuthContext';
-import { APP_NAME, ROLE_TITLE } from '../../config/strings.he';
+import { useUI }     from '../../contexts/UIContext';
+import {
+  APP_NAME, ROLE_TITLE,
+  AUTH_HEADER_GUEST_BADGE, AUTH_HEADER_LOGOUT,
+  AUTH_TOAST_LOGOUT,
+} from '../../config/strings.he';
+
 
 export default function AppShell({ children }) {
-  const { operatorId, operatorRole } = useAuth();
+  const { status, operatorId, operatorRole, user, logout } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -35,20 +46,26 @@ export default function AppShell({ children }) {
           {/* Tabs */}
           <NavTabs />
 
-          {/* End cluster: actions + operator chip — ms-auto pushes to inline-end */}
-          <div className="ms-auto flex items-center gap-4">
+          {/* End cluster — ms-auto pushes to the inline-end edge. */}
+          <div className="ms-auto flex items-center gap-3">
             <HeaderActions />
-            <div
-              className="flex items-center gap-2 ps-4 border-s border-slate-200"
-              title={ROLE_TITLE(operatorRole)}
-            >
-              <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center">
-                {operatorId.slice(-2).toUpperCase()}
-              </div>
-              <span className="text-xs text-slate-600 truncate max-w-[120px]">
-                {operatorId}
-              </span>
-            </div>
+
+            {/* Phase AUTH-C — personalization toggle. Visible only to
+                authenticated operators with at least one managed
+                client; guests have nothing to personalize. */}
+            {status === 'authenticated'
+              && (user?.managed_client_ids?.length || 0) > 0
+              && <PersonalizationToggle />
+            }
+
+            {/* Operator chip + logout (or just guest badge) */}
+            <OperatorChip
+              status={status}
+              operatorId={operatorId}
+              operatorRole={operatorRole}
+              displayName={user?.display_name}
+              onLogout={logout}
+            />
           </div>
         </div>
       </header>
@@ -56,6 +73,97 @@ export default function AppShell({ children }) {
       <main className="flex-1 max-w-screen-2xl w-full mx-auto px-6 py-6">
         {children}
       </main>
+    </div>
+  );
+}
+
+
+/* ===========================================================================
+ * Personalization toggle chip
+ * ========================================================================= */
+
+
+function PersonalizationToggle() {
+  const { personalizationActive, togglePersonalization } = useAuth();
+  const label = personalizationActive
+    ? 'מציג: הנתונים שלי'
+    : 'מציג: כל המערכת';
+  const Icon = personalizationActive ? Filter : Globe;
+  return (
+    <button
+      type="button"
+      onClick={togglePersonalization}
+      data-testid="personalization-toggle"
+      aria-pressed={personalizationActive}
+      className={[
+        'inline-flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm transition-colors',
+        personalizationActive
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+      ].join(' ')}
+      title={label}
+    >
+      <Icon className="w-4 h-4" />
+      <span className="text-xs font-medium">{label}</span>
+    </button>
+  );
+}
+
+
+/* ===========================================================================
+ * Operator chip — username + role tooltip + logout (or guest badge)
+ * ========================================================================= */
+
+
+function OperatorChip({ status, operatorId, operatorRole, displayName, onLogout }) {
+  const { pushToast } = useUI();
+
+  const handleLogout = async () => {
+    try {
+      await onLogout();
+      pushToast({ variant: 'success', message: AUTH_TOAST_LOGOUT });
+    } catch (err) {
+      // Logout is idempotent server-side; nothing useful to surface.
+    }
+  };
+
+  // Guest mode — small static badge, no logout (there's no session).
+  if (status === 'guest') {
+    return (
+      <div
+        className="inline-flex items-center gap-2 ps-3 border-s border-slate-200 text-xs text-slate-500"
+        data-testid="auth-guest-badge"
+      >
+        <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-semibold">
+          ?
+        </div>
+        <span>{AUTH_HEADER_GUEST_BADGE}</span>
+      </div>
+    );
+  }
+
+  // Authenticated — avatar + name + logout.
+  const initials = (displayName || operatorId || '??').slice(0, 2).toUpperCase();
+  return (
+    <div className="inline-flex items-center gap-2 ps-3 border-s border-slate-200">
+      <div
+        className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center"
+        title={ROLE_TITLE(operatorRole)}
+      >
+        {initials}
+      </div>
+      <span className="text-xs text-slate-600 truncate max-w-[120px]">
+        {displayName || operatorId}
+      </span>
+      <button
+        type="button"
+        onClick={handleLogout}
+        data-testid="auth-logout-btn"
+        aria-label={AUTH_HEADER_LOGOUT}
+        className="ms-1 text-slate-400 hover:text-slate-700 transition-colors"
+      >
+        <LogOut className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }

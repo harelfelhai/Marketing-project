@@ -297,6 +297,7 @@ class PipelineTaskService:
         phone_id_filter: Optional[int] = None,
         exclude_terminal: bool = False,
         q: Optional[str] = None,
+        client_ids: Optional[List[int]] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[TaskJoinRow], int]:
@@ -355,6 +356,9 @@ class PipelineTaskService:
         # toggle the UI defaults to ON.
         if exclude_terminal and status_filter is None:
             filters.append(PipelineTask.status.notin_(_TERMINAL_STATUSES))
+        # Phase AUTH-C — multi-value client personalization filter.
+        if client_ids:
+            filters.append(Entity.client_id.in_(client_ids))
         # Substring search — mirrors TaskTable.applyFilters' frontend
         # search semantics: matches phone_number, requested_by,
         # resolved_by, and client_id (stringified) so an operator

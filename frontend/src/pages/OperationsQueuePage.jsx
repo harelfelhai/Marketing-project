@@ -28,6 +28,7 @@ import BulkActionBar    from '../components/ops/BulkActionBar';
 import TableExportButton from '../components/exports/TableExportButton';
 import RequireRole      from '../components/primitives/RequireRole';
 import { useUI }        from '../contexts/UIContext';
+import { useAuth }      from '../contexts/MockAuthContext';
 import {
   PAGE_OPERATIONS_TITLE,
   PAGE_OPERATIONS_SUB,
@@ -48,6 +49,16 @@ export default function OperationsQueuePage() {
     updateTaskFilters,
     taskFilters,
   } = useUI();
+  const { personalizationActive, user } = useAuth();
+
+  // Phase AUTH-C — derive personalization clientIds. Admins typically
+  // don't have managed_client_ids so this resolves to null and the
+  // filter is a no-op for them; non-admin operators are gated out of
+  // this page entirely by <RequireRole role="admin">.
+  const personalizationClientIds =
+    personalizationActive && user?.managed_client_ids?.length
+      ? user.managed_client_ids
+      : null;
 
   // Translate UIContext.taskFilters into the GET /tasks query shape
   // ExportService expects. Lazy callback so the live filter state is
@@ -65,8 +76,9 @@ export default function OperationsQueuePage() {
     if (taskFilters.hideResolved || taskFilters.openOnly) {
       f.exclude_terminal = true;
     }
+    if (personalizationClientIds)                 f.client_ids = personalizationClientIds;
     return f;
-  }, [taskFilters]);
+  }, [taskFilters, personalizationClientIds]);
 
   // Row toggle — adds or removes one id without mutating the existing
   // Set (React only re-renders when the reference changes, so we build
@@ -146,6 +158,7 @@ export default function OperationsQueuePage() {
           selectedIds={selectedIds}
           onToggleRow={toggleRow}
           onToggleAll={toggleAll}
+          clientIds={personalizationClientIds}
         />
 
         <TaskDetailDrawer taskId={selectedId} onClose={() => setSelectedId(null)} />

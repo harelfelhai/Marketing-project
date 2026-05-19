@@ -1845,6 +1845,11 @@ function _mockFilterPhones(db, f) {
   if (f.client_id != null && f.client_id !== '') {
     rows = rows.filter((r) => String(r.client_id) === String(f.client_id));
   }
+  // Phase AUTH-C — multi-value personalization filter parity.
+  if (f.client_ids?.length) {
+    const allowed = new Set(f.client_ids.map(String));
+    rows = rows.filter((r) => allowed.has(String(r.client_id)));
+  }
   if (f.q) {
     const needle = String(f.q).toLowerCase();
     rows = rows.filter((r) => {
@@ -1873,6 +1878,11 @@ function _mockFilterTasks(db, f) {
   }
   if (f.phone_id != null && f.phone_id !== '') {
     rows = rows.filter((r) => String(r.phone_id) === String(f.phone_id));
+  }
+  // Phase AUTH-C — multi-value personalization filter parity.
+  if (f.client_ids?.length) {
+    const allowed = new Set(f.client_ids.map(String));
+    rows = rows.filter((r) => allowed.has(String(r.client_id)));
   }
   if (f.exclude_terminal && !f.status) {
     // Mirrors the backend: explicit status filter wins.
