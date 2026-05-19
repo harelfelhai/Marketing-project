@@ -19,6 +19,7 @@ import { MOCK_MODE } from '../api/client';
 import { listPhones, getPhoneDetail }     from '../api/phonesApi';
 import { listActionLogs }                  from '../api/actionsApi';
 import { listTasks, getTaskDetail }        from '../api/tasksApi';
+import { listEntities }                    from '../api/entityApi';
 import { CLIENT_REGISTRY } from '../config/clientRegistry';
 
 const MockDataContext = createContext(null);
@@ -96,38 +97,32 @@ export function MockDataProvider({ children }) {
     // Phase AUTH-C — tolerate per-slice failures. /tasks is admin-only
     // and /action-logs requires an authenticated session; guests and
     // regular users should still see Phones + Clients Hub even when
-    // those endpoints 401/403. Using Promise.allSettled instead of
-    // Promise.all means one rejected slice no longer collapses the
-    // whole boot hydration into an empty state.
+    // those endpoints 401/403.
+    //
+    // UAT round-3 fix: entities used to be SYNTHESIZED from the phones
+    // list (one synthetic entity per distinct phone.entity_id). That
+    // missed every entity with zero phones — newly-created entities,
+    // freshly minted envelopes, root targets in clients with no phones
+    // yet — and made them invisible in the pickers. Switch to a real
+    // GET /entities boot fetch so the entities slice is authoritative.
     Promise.allSettled([
       listPhones({ pageSize: 200 }),
       listActionLogs({ pageSize: 500 }),
       listTasks({ pageSize: 500 }),
+      listEntities({}, /* mockDb */ null),
     ])
-      .then(([phonesRes, logsRes, tasksRes]) => {
-        const phonesData = phonesRes.status === 'fulfilled' ? phonesRes.value : [];
-        const logsData   = logsRes.status   === 'fulfilled' ? logsRes.value   : [];
-        const tasksData  = tasksRes.status  === 'fulfilled' ? tasksRes.value  : [];
-
-        // Synthesize entities from the phone JOIN data.
-        // Each phone carries entity_id, entity_type, and client_id from the backend.
-        const entityMap = new Map();
-        phonesData.forEach((p) => {
-          if (!entityMap.has(p.entity_id)) {
-            entityMap.set(p.entity_id, {
-              id:          p.entity_id,
-              entity_type: p.entity_type,
-              client_id:   p.client_id,
-            });
-          }
-        });
+      .then(([phonesRes, logsRes, tasksRes, entitiesRes]) => {
+        const phonesData   = phonesRes.status   === 'fulfilled' ? phonesRes.value   : [];
+        const logsData     = logsRes.status     === 'fulfilled' ? logsRes.value     : [];
+        const tasksData    = tasksRes.status    === 'fulfilled' ? tasksRes.value    : [];
+        const entitiesData = entitiesRes.status === 'fulfilled' ? entitiesRes.value : [];
 
         setDb((prev) => ({
           ...prev,
           phones:     phonesData,
           actionLogs: logsData,
           tasks:      tasksData,
-          entities:   Array.from(entityMap.values()),
+          entities:   entitiesData,
           clients:    CLIENT_REGISTRY,
         }));
       })
@@ -289,6 +284,16 @@ export function MockDataProvider({ children }) {
     if (MOCK_MODE) return;
     const fresh = await listTasks({ pageSize: 500 });
     setDb((prev) => ({ ...prev, tasks: fresh }));
+  }, []);
+
+  // UAT round-3: entities is now a real slice (not synthesized). Mutators
+  // that create/patch/delete entities (createEntity, createEnvelope,
+  // patchEntity, soft-delete, restore) call this so the pickers see the
+  // freshly-minted row without a page reload.
+  const refetchEntities = useCallback(async () => {
+    if (MOCK_MODE) return;
+    const fresh = await listEntities({}, null);
+    setDb((prev) => ({ ...prev, entities: fresh }));
   }, []);
 
   const refetchTaskById = useCallback(async (id) => {
@@ -1988,6 +1993,7 @@ export function MockDataProvider({ children }) {
     refetchPhones,
     refetchActionLogs,
     refetchTasks,
+    refetchEntities,
     // Phase D / DX — narrowed refetches (real-API mode only; no-op in mock mode).
     // Consumers should prefer these over the wholesale refetches when the
     // mutation scope is a single id.

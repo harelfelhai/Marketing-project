@@ -778,15 +778,21 @@ from pydantic import BaseModel as _AdminBaseModel, Field as _AdminField  # noqa:
 
 
 def _phone_to_dict(ph) -> dict:
+    """
+    Minimal serialiser for the admin + quick endpoints. Carries only
+    real PhoneNumber columns — customer_tier is NOT one of them
+    (it's a JOIN-derived field exposed only on PhoneSummary; pulling
+    it off the ORM object raises AttributeError).
+    """
     return {
         "id":                  ph.id,
         "entity_id":           ph.entity_id,
         "phone_number":        ph.phone_number,
         "classification_type": ph.classification_type,
         "ingestion_source":    ph.ingestion_source,
+        "ingestion_reason":    getattr(ph, "ingestion_reason", None),
         "verification_status": ph.verification_status,
         "priority_score":      ph.priority_score,
-        "customer_tier":       ph.customer_tier,
         "ingested_at":         ph.ingested_at,
         "created_at":          ph.created_at,
         "updated_at":          ph.updated_at,

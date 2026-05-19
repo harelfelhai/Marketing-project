@@ -34,8 +34,9 @@ import { mockDelay, MOCK_MODE, apiClient } from './client';
 export async function createEntity(payload, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.post('/entities', payload);
-    // Entities don't appear in the phones list, so no refetchPhones here.
-    // If a refetchEntities path lands later, plug it in.
+    // UAT round-3: pull the fresh entities slice so pickers see the
+    // newly-minted row immediately.
+    await mockDb?.refetchEntities?.();
     return data;
   }
 
@@ -233,7 +234,7 @@ export async function getEntityDetail(id, includeDeleted, mockDb) {
 export async function patchEntity(id, body, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.patch(`/entities/${id}`, body);
-    await mockDb.refetchPhones?.();
+    await mockDb.refetchPhones?.(); await mockDb.refetchEntities?.();
     return data;
   }
   await mockDelay(250);
@@ -244,7 +245,7 @@ export async function patchEntity(id, body, mockDb) {
 export async function softDeleteEntity(id, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.delete(`/entities/${id}`);
-    await mockDb.refetchPhones?.();
+    await mockDb.refetchPhones?.(); await mockDb.refetchEntities?.();
     return data;
   }
   await mockDelay(250);
@@ -255,7 +256,7 @@ export async function softDeleteEntity(id, mockDb) {
 export async function restoreEntity(id, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.post(`/entities/${id}/restore`);
-    await mockDb.refetchPhones?.();
+    await mockDb.refetchPhones?.(); await mockDb.refetchEntities?.();
     return data;
   }
   await mockDelay(250);
@@ -271,7 +272,7 @@ export async function restoreEntity(id, mockDb) {
 export async function createEnvelopeEntity(clientId, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.post('/entities/envelope', { client_id: clientId });
-    await mockDb.refetchPhones?.();
+    await mockDb.refetchPhones?.(); await mockDb.refetchEntities?.();
     return data;
   }
   await mockDelay(200);
@@ -286,7 +287,7 @@ export async function createEnvelopeEntity(clientId, mockDb) {
 export async function quickAttachPhone(body, mockDb) {
   if (!MOCK_MODE) {
     const { data } = await apiClient.post('/phones/quick', body);
-    await mockDb.refetchPhones?.();
+    await mockDb.refetchPhones?.(); await mockDb.refetchEntities?.();
     return data;
   }
   await mockDelay(300);
