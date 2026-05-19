@@ -136,14 +136,13 @@ describe('Phase E2-C — entity ingestion modal (single entry)', () => {
     // Entity modal is no longer in the DOM.
     expect(screen.queryByText(/הוספת אדם חדש/)).not.toBeInTheDocument();
 
-    // The phone modal's single-entry panel pre-fills entity_type with
-    // the relation we just chose. The mock lead-form schema labels
-    // the field 'Entity Type' (the backend's wire-format name);
-    // verifying the select carries the preset value confirms the
-    // friction-free handoff threaded the value through UIContext.
+    // UAT round-3: the new SingleIngestionPanel no longer renders an
+    // "Entity Type" field. Instead, the preset's targetEntityId
+    // switches the panel into "existing entity" mode with that entity
+    // pre-selected. Verify the existing-entity dropdown has a value.
     await waitFor(() => {
-      const entityTypeInput = screen.getByLabelText(/Entity Type/i);
-      expect(entityTypeInput.value).toBe('colleague');
+      const sel = screen.getByTestId('ingest-existing-entity');
+      expect(sel.value).not.toBe('');
     });
   });
 

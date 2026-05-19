@@ -261,3 +261,34 @@ export async function restoreEntity(id, mockDb) {
   await mockDelay(250);
   return mockDb.applyRestoreEntity(id);
 }
+
+
+/**
+ * createEnvelopeEntity — UAT round-3: mint an anonymous social-envelope
+ * entity for the given client. Used by the simplified phone-ingestion
+ * form when the operator knows the client but not the named owner.
+ */
+export async function createEnvelopeEntity(clientId, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post('/entities/envelope', { client_id: clientId });
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyCreateEnvelope(clientId);
+}
+
+
+/**
+ * quickAttachPhone — UAT round-3: create a PhoneNumber attached to an
+ * existing entity_id. Hits POST /phones/quick on the real API.
+ */
+export async function quickAttachPhone(body, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.post('/phones/quick', body);
+    await mockDb.refetchPhones?.();
+    return data;
+  }
+  await mockDelay(300);
+  return mockDb.applyQuickAttachPhone(body);
+}

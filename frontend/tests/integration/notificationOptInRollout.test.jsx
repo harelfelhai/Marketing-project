@@ -32,20 +32,22 @@ beforeEach(() => {
 
 
 async function submitSinglePhone(user) {
+  // UAT round-3: the single-ingestion form is now a fixed 4-field panel
+  // (phone, mode, mode-specific subform, reason). Drive it via the
+  // "existing entity" mode picking the first seeded entity.
   const openBtn = await screen.findByRole('button', { name: /קליטת מספר חדש/ });
   await user.click(openBtn);
 
-  // Fill the dynamic form. The mock schema's labels are English
-  // (Phone Number / Entity Type / Source / etc.); the form is rendered
-  // by DynamicField against whatever the schema says.
-  const phoneInput = await screen.findByLabelText(/Phone Number/i);
+  const phoneInput = await screen.findByLabelText(/^מספר טלפון/);
   await user.type(phoneInput, '+15559990777');
-  await user.selectOptions(screen.getByLabelText(/Entity Type/i), 'family');
-  await user.selectOptions(screen.getByLabelText(/Source/i), 'manual');
-  // `client_id` is also marked required in the mock schema; pick the
-  // first listed seed client to satisfy the validation gate.
-  await user.selectOptions(screen.getByLabelText(/^Client/i), 'alpha');
-  await user.click(screen.getByRole('button', { name: /^שלח$/ }));
+
+  // Default mode is "existing"; pick the first real entity option.
+  const existingSel = screen.getByTestId('ingest-existing-entity');
+  const options = Array.from(existingSel.querySelectorAll('option'))
+    .filter((o) => o.value !== '');
+  await user.selectOptions(existingSel, options[0].value);
+
+  await user.click(screen.getByTestId('single-ingest-submit'));
 }
 
 

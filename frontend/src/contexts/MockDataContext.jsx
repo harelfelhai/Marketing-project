@@ -1861,6 +1861,72 @@ export function MockDataProvider({ children }) {
     return snapshot;
   }, []);
 
+  // UAT round-3 — quick-attach + envelope creation mock parity.
+  const applyCreateEnvelope = useCallback((clientId) => {
+    let snapshot;
+    setDb((prev) => {
+      const nextId = 1 + (prev.entities.reduce((m, e) => Math.max(m, e.id || 0), 0));
+      const now = new Date().toISOString();
+      const ent = {
+        id: nextId,
+        client_id: clientId,
+        entity_type: 'social_envelope',
+        target_entity_id: null,
+        extra_data: {},
+        created_at: now,
+        updated_at: now,
+        deleted_at: null,
+      };
+      snapshot = ent;
+      return { ...prev, entities: [...prev.entities, ent] };
+    });
+    return {
+      id: snapshot.id,
+      client_id: snapshot.client_id,
+      entity_type: snapshot.entity_type,
+      target_entity_id: null,
+      first_name: null,
+      last_name: null,
+      strong_identifier: null,
+      extra_data: {},
+      created_at: snapshot.created_at,
+      updated_at: snapshot.updated_at,
+      deleted_at: null,
+    };
+  }, []);
+
+  const applyQuickAttachPhone = useCallback((body) => {
+    let snapshot;
+    setDb((prev) => {
+      const ent = prev.entities.find((e) => e.id === body.entity_id);
+      if (!ent) throw new Error(`Entity ${body.entity_id} not found`);
+      if (ent.deleted_at) throw new Error(`Entity ${body.entity_id} not found`);
+      const nextId = 1 + (prev.phones.reduce((m, p) => Math.max(m, p.id || 0), 0));
+      const now = new Date().toISOString();
+      const ph = {
+        id: nextId,
+        entity_id: body.entity_id,
+        phone_number: String(body.phone_number || '').trim(),
+        classification_type: null,
+        ingestion_source: 'manual',
+        ingestion_reason: (body.ingestion_reason || '').trim() || null,
+        verification_status: 'pending',
+        priority_score: null,
+        customer_tier: null,
+        ingested_at: now,
+        created_at: now,
+        updated_at: now,
+        deleted_at: null,
+        extra_data: {},
+        client_id: ent.client_id,
+        entity_type: ent.entity_type,
+      };
+      snapshot = ph;
+      return { ...prev, phones: [...prev.phones, ph] };
+    });
+    return snapshot;
+  }, []);
+
   const applyRestorePhone = useCallback((id) => {
     let snapshot;
     setDb((prev) => {
@@ -1955,6 +2021,8 @@ export function MockDataProvider({ children }) {
     applyAdminPatchPhone,
     applySoftDeletePhone,
     applyRestorePhone,
+    applyCreateEnvelope,
+    applyQuickAttachPhone,
     // Phase NOTIF
     listNotificationSubscriptions,
     applyCreateNotificationSubscription,

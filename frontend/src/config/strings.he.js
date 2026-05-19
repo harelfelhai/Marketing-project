@@ -77,6 +77,24 @@ export const PROFILE_BTN_SAVING   = 'שומר…';
 export const PROFILE_BTN_BACK     = 'חזרה';
 export const PROFILE_TOAST_SAVED  = 'הפרופיל עודכן.';
 export const PROFILE_TOAST_ERROR  = (msg) => `שגיאה: ${msg}`;
+
+// SingleIngestionPanel — UAT round-3 simplified phone-add form.
+export const INGEST_FIELD_PHONE        = 'מספר טלפון';
+export const INGEST_FIELD_REASON       = 'סיבת הצפה';
+export const INGEST_MODE_LABEL         = 'קישור לישות';
+export const INGEST_MODE_EXISTING      = 'ישות קיימת';
+export const INGEST_MODE_NEW           = 'ישות חדשה';
+export const INGEST_MODE_ENVELOPE      = 'מעטפת כללית';
+export const INGEST_PICK_ENTITY        = 'בחר ישות קיימת';
+export const INGEST_PICK_CLIENT        = 'בחר לקוח';
+export const INGEST_PICK_TARGET        = 'ישות ראשית';
+export const INGEST_NEW_FIRST          = 'שם פרטי';
+export const INGEST_NEW_LAST           = 'שם משפחה';
+export const INGEST_NEW_RELATION       = 'סוג קרבה';
+export const INGEST_ERR_PHONE_DIGITS   = 'מספר טלפון חייב להכיל ספרות בלבד.';
+export const INGEST_ERR_PICK_ENTITY    = 'יש לבחור ישות.';
+export const INGEST_ERR_PICK_CLIENT    = 'יש לבחור לקוח.';
+export const INGEST_ERR_PICK_TARGET    = 'יש לבחור ישות ראשית.';
 export const BTN_INGEST_NEW    = 'קליטת מספר חדש';
 export const ROLE_TITLE        = (role) => `תפקיד: ${role}`;
 
