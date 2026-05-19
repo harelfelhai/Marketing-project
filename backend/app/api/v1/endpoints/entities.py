@@ -479,3 +479,31 @@ def restore_entity(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _entity_to_dict(ent)
+
+
+class _EnvelopeIn(BaseModel):
+    """Body for POST /entities/envelope — UAT round-3 envelope mint."""
+    client_id: int
+
+
+@router.post(
+    "/envelope",
+    status_code=status.HTTP_201_CREATED,
+    summary="Mint a nameless social-envelope entity for a client (UAT round-3)",
+    description=(
+        "Used by the simplified phone-ingestion form when the operator "
+        "knows the client but not the named person. Creates an Entity "
+        "with entity_type='social_envelope', no first/last name in "
+        "extra_data, and target_entity_id=NULL."
+    ),
+)
+def create_envelope(
+    body: _EnvelopeIn,
+    current_user: Optional[User] = Depends(get_current_user),
+    service: EntityIngestionService = Depends(get_entity_ingestion_service),
+) -> dict:
+    ent = service.create_envelope(
+        client_id=body.client_id,
+        created_by_user_id=current_user.id if current_user else None,
+    )
+    return _entity_to_dict(ent)

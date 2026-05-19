@@ -206,6 +206,43 @@ class EntityIngestionService:
         return new_entity
 
     # ----------------------------------------------------------------
+    # UAT round-3 — synthetic social envelope (no name)
+    # ----------------------------------------------------------------
+
+    def create_envelope(
+        self,
+        client_id: int,
+        *,
+        created_by_user_id: Optional[int] = None,
+    ):
+        """
+        Mint an anonymous social-envelope entity for a client.
+
+        Used by the new simplified phone-ingestion form when the
+        operator picks the "general envelope" option — there's no
+        named owner, just a known client and an unknown person near
+        them. The envelope keeps the schema invariant that every
+        PhoneNumber has an entity_id while still distinguishing
+        unattached numbers from named ones.
+
+        entity_type      = 'social_envelope'
+        target_entity_id = NULL (envelopes have no parent target)
+        extra_data       = empty dict (no first/last name)
+        """
+        from models.entity import Entity
+        ent = Entity(
+            client_id=client_id,
+            entity_type=RelationType.SOCIAL_ENVELOPE.value,
+            target_entity_id=None,
+            extra_data={},
+            created_by_user_id=created_by_user_id,
+        )
+        self.session.add(ent)
+        self.session.commit()
+        self.session.refresh(ent)
+        return ent
+
+    # ----------------------------------------------------------------
     # Public — bulk-text entry point (Phase E2-B)
     # ----------------------------------------------------------------
 

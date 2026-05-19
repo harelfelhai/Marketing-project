@@ -120,7 +120,11 @@ export default function EntitiesPage() {
               <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">{ENTITIES_EMPTY}</td></tr>
             ) : (
               items.map((e) => {
-                const name = [e.first_name, e.last_name].filter(Boolean).join(' ') || `#${e.id}`;
+                // UAT round-3 fix: render an explicit "ללא שם" marker
+                // when first + last are both empty (envelopes, in-
+                // progress drafts) rather than echoing the row id —
+                // operators were confused by the duplicate "#N" look.
+                const fullName = [e.first_name, e.last_name].filter(Boolean).join(' ');
                 const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
                 const created = e.created_at ? new Date(e.created_at).toLocaleDateString('he-IL') : '—';
                 const phoneCount = (phonesByEntity.get(e.id) || []).length;
@@ -131,7 +135,9 @@ export default function EntitiesPage() {
                     className="border-t border-slate-100 hover:bg-slate-50/60"
                   >
                     <td className="px-3 py-2 text-slate-500 font-mono text-xs">#{e.id}</td>
-                    <td className="px-3 py-2 text-slate-900">{name}</td>
+                    <td className="px-3 py-2 text-slate-900">
+                      {fullName || <span className="text-slate-400 italic">ללא שם</span>}
+                    </td>
                     <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>
                     <td className="px-3 py-2">

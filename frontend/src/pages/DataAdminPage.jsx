@@ -28,7 +28,7 @@ import {
   listEntities, patchEntity, softDeleteEntity, restoreEntity,
 } from '../api/entityApi';
 import {
-  adminPatchPhone, softDeletePhone, restorePhone,
+  listPhones, adminPatchPhone, softDeletePhone, restorePhone,
 } from '../api/phonesApi';
 import { getClientById } from '../config/clientRegistry';
 import { normalizeError } from '../api/client';
@@ -206,7 +206,11 @@ function PersonsAdmin({ includeDeleted }) {
               <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">לא נמצאו ישויות.</td></tr>
             ) : (
               rows.map((e) => {
-                const name = [e.first_name, e.last_name].filter(Boolean).join(' ') || `#${e.id}`;
+                // UAT round-3 fix: when both name parts are empty
+                // (envelopes, in-progress drafts) show a soft "ללא שם"
+                // marker instead of falling back to the row id —
+                // operators were confused by the "#5" lookalike.
+                const fullName = [e.first_name, e.last_name].filter(Boolean).join(' ');
                 const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
                 const isDeleted = !!e.deleted_at;
                 return (
@@ -216,7 +220,9 @@ function PersonsAdmin({ includeDeleted }) {
                     className={`border-t border-slate-100 ${isDeleted ? 'opacity-50' : ''}`}
                   >
                     <td className="px-3 py-2 font-mono text-xs text-slate-500">#{e.id}</td>
-                    <td className="px-3 py-2 text-slate-900">{name}</td>
+                    <td className="px-3 py-2 text-slate-900">
+                      {fullName || <span className="text-slate-400 italic">ללא שם</span>}
+                    </td>
                     <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>
                     <td className="px-3 py-2 text-xs">
@@ -300,11 +306,19 @@ function PhonesAdmin({ includeDeleted }) {
   const { pushToast } = useUI();
   const [editing,  setEditing]  = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [rows, setRows]         = useState([]);
 
-  const rows = useMemo(() => {
-    const all = mockDb.phones || [];
-    return includeDeleted ? all : all.filter((p) => !p.deleted_at);
-  }, [mockDb.phones, includeDeleted]);
+  // UAT round-3 fix: PhonesAdmin owns its own list-query because the
+  // global mockDb.phones is purged of soft-deleted rows after every
+  // refetchPhones (the boot loader uses GET /phones which hides them
+  // by default). To support "show deleted" we must hit the endpoint
+  // with include_deleted=true on demand.
+  const load = useCallback(async () => {
+    const items = await listPhones({ includeDeleted, pageSize: 200 }, mockDb);
+    setRows(items);
+  }, [mockDb, includeDeleted]);
+
+  useEffect(() => { load(); }, [load]);
 
   const entityById = useMemo(() => {
     const map = new Map();
@@ -318,6 +332,7 @@ function PhonesAdmin({ includeDeleted }) {
       await adminPatchPhone(editing.id, body, mockDb);
       pushToast({ variant: 'success', message: ADMIN_TOAST_SAVED });
       setEditing(null);
+      await load();
     } catch (err) {
       pushToast({ variant: 'error', message: ADMIN_TOAST_ERROR(normalizeError(err).message) });
     }
@@ -329,6 +344,7 @@ function PhonesAdmin({ includeDeleted }) {
       await softDeletePhone(deleting.id, mockDb);
       pushToast({ variant: 'success', message: ADMIN_TOAST_DELETED });
       setDeleting(null);
+      await load();
     } catch (err) {
       pushToast({ variant: 'error', message: ADMIN_TOAST_ERROR(normalizeError(err).message) });
     }
@@ -338,6 +354,7 @@ function PhonesAdmin({ includeDeleted }) {
     try {
       await restorePhone(row.id, mockDb);
       pushToast({ variant: 'success', message: ADMIN_TOAST_RESTORED });
+      await load();
     } catch (err) {
       pushToast({ variant: 'error', message: ADMIN_TOAST_ERROR(normalizeError(err).message) });
     }
@@ -372,7 +389,14 @@ function PhonesAdmin({ includeDeleted }) {
                     className={`border-t border-slate-100 ${isDeleted ? 'opacity-50' : ''}`}
                   >
                     <td className="px-3 py-2 font-mono text-xs text-slate-500">#{p.id}</td>
-                    <td className="px-3 py-2 text-slate-900" dir="ltr">{p.phone_number}</td>
+                    {/* UAT round-3 fix: keep the cell RTL-aligned (right side
+                        in the table), but wrap the number itself so its
+                        digits stay LTR. The previous dir="ltr" on the
+                        whole <td> pushed the content to the cell's left
+                        edge under an RTL document layout. */}
+                    <td className="px-3 py-2 text-slate-900">
+                      <span dir="ltr" className="inline-block">{p.phone_number}</span>
+                    </td>
                     <td className="px-3 py-2 text-slate-700">{p.verification_status}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>
                     <td className="px-3 py-2 text-xs">

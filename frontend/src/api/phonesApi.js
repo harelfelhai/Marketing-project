@@ -22,6 +22,8 @@ export async function listPhones(filters = {}, mockDb) {
     // builds this from the operator's managed_client_ids when
     // personalizationActive is true.
     if (filters.clientIds?.length)  params.client_ids          = filters.clientIds;
+    // UAT round-3 — surface soft-deleted rows for the data-admin tab.
+    if (filters.includeDeleted)     params.include_deleted     = true;
     // Phase DY — sort_by toggles between 'priority' (default, the
     // prioritised review queue) and 'ingested_at' (legacy chronological
     // ordering). Backend default is already 'priority' so omitting the
@@ -47,7 +49,12 @@ export async function listPhones(filters = {}, mockDb) {
 
   // --- mock path ---
   await mockDelay(300);
-  let results = mockDb.phones.map((phone) => {
+  // UAT round-3: hide soft-deleted phones unless the caller explicitly
+  // asks for them (data-admin tab).
+  const phonePool = filters.includeDeleted
+    ? mockDb.phones
+    : mockDb.phones.filter((p) => !p.deleted_at);
+  let results = phonePool.map((phone) => {
     const entity = mockDb.entities.find((e) => e.id === phone.entity_id) || {};
     const client = mockDb.clients.find((c) => c.id === entity.client_id) || {};
     // Phase DY — customer_tier is a flat JOIN convenience field on the

@@ -230,3 +230,48 @@ class IngestionService:
             )
 
         return new_phone
+
+
+    # ----------------------------------------------------------------
+    # UAT round-3 — simplified phone ingestion
+    # ----------------------------------------------------------------
+
+    def quick_attach_phone(
+        self,
+        *,
+        phone_number: str,
+        entity_id: int,
+        ingestion_reason: Optional[str] = None,
+        uploaded_by_user_id: Optional[int] = None,
+    ) -> PhoneNumber:
+        """
+        Create a PhoneNumber attached to an EXISTING entity.
+
+        Skip the circle-of-trust expansion path (`ingest_circle_member`)
+        when the operator already knows the target entity id — for
+        example the new simplified "add phone" form, where the operator
+        picks an existing entity, creates a new one inline, or attaches
+        to a fresh social-envelope entity. All three paths converge
+        here at the actual phone-write step.
+
+        No scoring / routing side-effects — keep this minimal. Scoring
+        is recomputed by the regular boot path / `refetchPhones`.
+        """
+        from models.entity import Entity
+        ent = self.session.get(Entity, entity_id)
+        if ent is None or ent.deleted_at is not None:
+            raise TargetNotFoundError(target_phone_number=f"entity_id={entity_id}")
+
+        new_phone = PhoneNumber(
+            entity_id=entity_id,
+            phone_number=phone_number.strip(),
+            ingestion_source="manual",
+            ingestion_reason=(ingestion_reason or "").strip() or None,
+            ingested_at=utc_now(),
+            extra_data={},
+            uploaded_by_user_id=uploaded_by_user_id,
+        )
+        self.session.add(new_phone)
+        self.session.commit()
+        self.session.refresh(new_phone)
+        return new_phone

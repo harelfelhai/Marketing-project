@@ -160,6 +160,15 @@ def list_phones(
     ),
     page: int = Query(default=1, ge=1, description="1-based page index."),
     page_size: int = Query(default=20, ge=1, le=200, description="Records per page (max 200)."),
+    include_deleted: bool = Query(
+        default=False,
+        description=(
+            "UAT round-3: when true, the response includes soft-deleted "
+            "phones (and phones whose owning entity is soft-deleted). "
+            "Used by the data-admin tab to show the restore view; the "
+            "normal phone grid leaves it at the default of false."
+        ),
+    ),
     session: Session = Depends(get_session),
 ) -> PhoneListResponse:
     """
@@ -213,13 +222,13 @@ def list_phones(
     )
 
     # Apply filters symmetrically to both queries.
-    # UAT round-3: hide soft-deleted rows. List endpoints never surface
-    # tombstones; the admin tab queries via DataAdminService with
-    # include_deleted=True explicitly.
-    filters = [
-        PhoneNumber.deleted_at.is_(None),
-        Entity.deleted_at.is_(None),
-    ]
+    # UAT round-3: hide soft-deleted rows by default. The admin tab
+    # passes ?include_deleted=true to surface tombstones for the
+    # restore view.
+    filters = []
+    if not include_deleted:
+        filters.append(PhoneNumber.deleted_at.is_(None))
+        filters.append(Entity.deleted_at.is_(None))
     if verification_status is not None:
         filters.append(PhoneNumber.verification_status == verification_status)
     if ingestion_source is not None:
@@ -847,4 +856,46 @@ def restore_phone(
         ph = admin.restore_phone(phone_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _phone_to_dict(ph)
+
+
+# ===========================================================================
+# UAT round-3 — simplified phone ingestion (quick attach)
+# ===========================================================================
+
+
+from app.api.deps import get_ingestion_service  # noqa: E402
+from services.ingestion import IngestionService  # noqa: E402
+
+
+class _QuickAttachIn(_AdminBaseModel):
+    """Body for POST /phones/quick — minimal phone-attach form."""
+    phone_number:    str
+    entity_id:       int
+    ingestion_reason: Optional[str] = None
+
+
+@router.post(
+    "/quick",
+    summary="Attach a phone to an existing entity (UAT round-3 simplified form)",
+    description=(
+        "Skip the circle-of-trust expansion path. The operator picked "
+        "(or just created) an entity in the new simplified ingestion "
+        "form; we just write the PhoneNumber row attached to it."
+    ),
+)
+def quick_attach_phone(
+    body: _QuickAttachIn,
+    current_user: Optional[User] = Depends(get_current_user),
+    service: IngestionService = Depends(get_ingestion_service),
+) -> dict:
+    try:
+        ph = service.quick_attach_phone(
+            phone_number=body.phone_number,
+            entity_id=body.entity_id,
+            ingestion_reason=body.ingestion_reason,
+            uploaded_by_user_id=current_user.id if current_user else None,
+        )
+    except TargetNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _phone_to_dict(ph)
