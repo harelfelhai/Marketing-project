@@ -26,12 +26,48 @@ keeps the SQL schema speaking only in opaque integers and controlled
 vocabulary, exactly as the Secrets-Free Mandate requires.
 """
 
-from typing import Optional
+import csv
+import io
+import uuid
+from typing import Any, Optional
 
-from sqlmodel import Session
+import openpyxl
+from openpyxl import Workbook
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
 
 from exceptions import TargetNotFoundError
+from interfaces.relation_types import ASSOCIATED_RELATIONS, RelationType
 from models.entity import Entity
+
+
+# ---------------------------------------------------------------------------
+# Bulk-upload constants (Phase E2-B)
+# ---------------------------------------------------------------------------
+
+# Required header columns for the entity bulk-upload sheet. `last_name`
+# is intentionally optional — operators submitting single-name rows
+# (mononym, no surname known) should not be forced to leave a column
+# empty in the header. This mirrors the phone-side template's
+# required-vs-optional split.
+BULK_ENTITY_REQUIRED_COLUMNS = (
+    "first_name",
+    "relation_type",
+    "target_entity_id",
+)
+BULK_ENTITY_OPTIONAL_COLUMNS = (
+    "last_name",
+)
+BULK_ENTITY_ALL_COLUMNS = BULK_ENTITY_REQUIRED_COLUMNS + BULK_ENTITY_OPTIONAL_COLUMNS
+
+# Same upload-row cap as the phone-side endpoint — keeps the operator
+# UX consistent across both bulk-upload paths.
+BULK_ENTITY_MAX_ROWS = 5_000
+
+# Cap on the `input` field of a failed-row entry (mirrors the phone
+# bulk service constant). Prevents megabytes of garbage from being
+# echoed back in the response body.
+_FAILURE_INPUT_CAP = 200
 
 
 class EntityIngestionService:
@@ -166,3 +202,564 @@ class EntityIngestionService:
         self.session.commit()
         self.session.refresh(new_entity)
         return new_entity
+
+    # ----------------------------------------------------------------
+    # Public — bulk-text entry point (Phase E2-B)
+    # ----------------------------------------------------------------
+
+    def ingest_bulk_text(
+        self,
+        *,
+        rows: list[dict],
+        default_relation_type: str,
+        default_target_entity_id: int,
+    ) -> dict:
+        """
+        Insert one Entity row per item in `rows` with per-row resilience.
+
+        Two-pass execution mirrors the phone-side bulk-text contract:
+
+            Pass 1 (in-memory)
+                - Resolve the request-level default target. A missing /
+                  non-root default aborts the WHOLE submission with
+                  TargetNotFoundError (mapped to 422 at the endpoint).
+                - Pre-load every per-row target override in ONE query,
+                  building a cache so Pass 2 has zero per-row lookups.
+                - Validate each row's first_name, relation_type, and
+                  target. Failures append to `failed_rows`.
+
+            Pass 2 (DB writes)
+                - For each surviving candidate, open a SAVEPOINT,
+                  INSERT the Entity, release-or-rollback.
+                - Per-row IntegrityError lands in `failed_rows` without
+                  affecting the outer transaction.
+                - One COMMIT at the end persists all surviving rows
+                  atomically.
+
+        Args:
+            rows (list[dict]): Curated payload from the inline editor
+                grid. Each dict carries keys `row_token`, `first_name`,
+                `last_name`, `relation_type`, `target_entity_id` — the
+                Pydantic layer is the source of truth for shapes.
+            default_relation_type (str): Modal-level default applied to
+                any row whose `relation_type` is None. Validated by the
+                Pydantic enum upstream; arriving as a known-good token.
+            default_target_entity_id (int): Modal-level default applied
+                to any row whose `target_entity_id` is None.
+
+        Returns:
+            dict: BulkIngestSummary-shaped (matches the existing
+            `phones/bulk-*` response). `phone_ids` is ALWAYS empty
+            (entity ingestion creates no phones).
+
+        Raises:
+            TargetNotFoundError: The request-level default target does
+                not exist OR is not a root target. The endpoint maps
+                this to 422 — per-row override failures DO NOT raise.
+        """
+        submission_id = str(uuid.uuid4())
+
+        # ----------------------------------------------------------------
+        # Pre-flight — validate the request-level default target.
+        # ----------------------------------------------------------------
+        default_target = self.session.get(Entity, default_target_entity_id)
+        if default_target is None:
+            raise TargetNotFoundError(
+                target_phone_number=f"entity_id={default_target_entity_id}"
+            )
+        if default_target.target_entity_id is not None:
+            raise TargetNotFoundError(
+                target_phone_number=(
+                    f"entity_id={default_target_entity_id} is not a root "
+                    "target (its own target_entity_id is non-NULL)"
+                )
+            )
+
+        # ----------------------------------------------------------------
+        # Pre-resolve per-row target overrides in ONE query to avoid the
+        # N+1 lookup that would otherwise happen inside Pass 1. The
+        # default target is added to the cache so Pass 1's lookup loop
+        # has a single uniform shape.
+        # ----------------------------------------------------------------
+        override_ids: set[int] = {
+            int(r["target_entity_id"])
+            for r in rows
+            if r.get("target_entity_id") is not None
+            and int(r["target_entity_id"]) != default_target_entity_id
+        }
+        target_lookup: dict[int, Entity] = {default_target.id: default_target}
+        if override_ids:
+            for ent in self.session.exec(
+                select(Entity).where(Entity.id.in_(override_ids))
+            ).all():
+                target_lookup[ent.id] = ent
+
+        # ----------------------------------------------------------------
+        # Pass 1 — in-memory validation, build the candidate list.
+        # ----------------------------------------------------------------
+        failed_rows: list[dict] = []
+        candidates: list[dict] = []
+
+        for idx, row in enumerate(rows, start=1):
+            token = (row.get("row_token") or "")[:_FAILURE_INPUT_CAP]
+
+            first = (row.get("first_name") or "").strip()
+            if not first:
+                failed_rows.append({
+                    "row": idx,
+                    "input": token,
+                    "error": "first_name is required",
+                })
+                continue
+
+            relation = row.get("relation_type") or default_relation_type
+            # The Pydantic enum already filtered illegal request-level
+            # values, but a defensive check here protects callers that
+            # construct rows in code (e.g. tests) without the enum.
+            if relation not in ASSOCIATED_RELATIONS:
+                failed_rows.append({
+                    "row": idx,
+                    "input": token,
+                    "error": (
+                        f"Invalid relation_type '{relation}' (allowed: "
+                        f"{', '.join(sorted(ASSOCIATED_RELATIONS))})"
+                    ),
+                })
+                continue
+
+            override_tgt = row.get("target_entity_id")
+            tgt_id = int(override_tgt) if override_tgt is not None else default_target_entity_id
+            tgt = target_lookup.get(tgt_id)
+            if tgt is None:
+                failed_rows.append({
+                    "row": idx,
+                    "input": token,
+                    "error": f"target_entity_id={tgt_id} not found",
+                })
+                continue
+            if tgt.target_entity_id is not None:
+                failed_rows.append({
+                    "row": idx,
+                    "input": token,
+                    "error": (
+                        f"target_entity_id={tgt_id} is not a root target"
+                    ),
+                })
+                continue
+
+            last = row.get("last_name")
+            last_trim = last.strip() if isinstance(last, str) else None
+
+            candidates.append({
+                "row": idx,
+                "row_token": row.get("row_token") or "",
+                "first_name": first,
+                "last_name": last_trim or None,
+                "relation_type": relation,
+                "target": tgt,
+            })
+
+        # ----------------------------------------------------------------
+        # Pass 2 — per-row inserts under SAVEPOINTs.
+        # ----------------------------------------------------------------
+        entity_ids: list[int] = []
+        for c in candidates:
+            try:
+                with self.session.begin_nested():
+                    extra: dict[str, Any] = {
+                        "first_name": c["first_name"],
+                        "bulk_submission_id": submission_id,
+                    }
+                    if c["last_name"]:
+                        extra["last_name"] = c["last_name"]
+                    if c["row_token"]:
+                        # Round-trip the original token so failed-row
+                        # reports can correlate back to the operator's
+                        # grid input on the client side.
+                        extra["row_token"] = c["row_token"]
+
+                    ent = Entity(
+                        client_id=c["target"].client_id,
+                        relation_type="associated",
+                        entity_type=c["relation_type"],
+                        target_entity_id=c["target"].id,
+                        extra_data=extra,
+                    )
+                    self.session.add(ent)
+                    self.session.flush()
+                entity_ids.append(ent.id)
+            except IntegrityError as exc:
+                detail = str(exc.orig) if exc.orig else "Database constraint violation"
+                failed_rows.append({
+                    "row": c["row"],
+                    "input": c["row_token"][:_FAILURE_INPUT_CAP],
+                    "error": f"DB error: {detail[:120]}",
+                })
+
+        failed_rows.sort(key=lambda r: r["row"])
+        self.session.commit()
+        return {
+            "success_count":      len(entity_ids),
+            "failed_count":       len(failed_rows),
+            "phone_ids":          [],
+            "entity_ids":         entity_ids,
+            "failed_rows":        failed_rows,
+            "bulk_submission_id": submission_id,
+        }
+
+    # ----------------------------------------------------------------
+    # Public — bulk-upload entry point (Phase E2-B)
+    # ----------------------------------------------------------------
+
+    def ingest_bulk_upload(
+        self,
+        file_bytes: bytes,
+        filename: str,
+    ) -> dict:
+        """
+        Parse an Excel (.xlsx) or CSV file and insert one Entity per row.
+
+        Each row is its own ingestion context: own target_entity_id, own
+        relation_type. No request-level defaults — the file is the full
+        statement of intent. (Operators who want shared defaults should
+        use the bulk-text endpoint with the inline grid.)
+
+        Args:
+            file_bytes (bytes): Raw file content from the upload.
+            filename   (str):   Original filename — used only to pick
+                                the parser (.xlsx vs .csv) and to echo
+                                back in error messages.
+
+        Returns:
+            dict: BulkIngestSummary-shaped dict.
+
+        Raises:
+            ValueError: malformed file, wrong extension, missing
+                required columns, or row cap exceeded. The endpoint
+                maps this to 422.
+        """
+        submission_id = str(uuid.uuid4())
+
+        lower = filename.lower()
+        if lower.endswith(".csv"):
+            rows = self._parse_csv(file_bytes)
+        elif lower.endswith(".xlsx"):
+            rows = self._parse_xlsx(file_bytes)
+        else:
+            raise ValueError(
+                f"Unsupported file extension: '{filename}'. Allowed: .xlsx, .csv"
+            )
+
+        if len(rows) > BULK_ENTITY_MAX_ROWS:
+            raise ValueError(
+                f"Too many rows: {len(rows)} (max {BULK_ENTITY_MAX_ROWS})"
+            )
+
+        # ----------------------------------------------------------------
+        # Pre-resolve target FKs in one pass to avoid N+1 lookups.
+        # ----------------------------------------------------------------
+        candidate_target_ids: set[int] = set()
+        for row in rows:
+            tgt = row.get("target_entity_id")
+            if tgt not in (None, ""):
+                try:
+                    candidate_target_ids.add(int(tgt))
+                except (TypeError, ValueError):
+                    # bad-format target lands as a per-row failure below
+                    pass
+        target_lookup: dict[int, Entity] = {}
+        if candidate_target_ids:
+            for ent in self.session.exec(
+                select(Entity).where(Entity.id.in_(candidate_target_ids))
+            ).all():
+                target_lookup[ent.id] = ent
+
+        # ----------------------------------------------------------------
+        # Pass 1 — per-row format / FK validation.
+        # ----------------------------------------------------------------
+        failed_rows: list[dict] = []
+        candidates: list[tuple[int, dict]] = []
+
+        for row_idx, row in enumerate(rows, start=1):
+            first = str(row.get("first_name") or "").strip()
+            if not first:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": "Missing first_name",
+                })
+                continue
+
+            relation = str(row.get("relation_type") or "").strip()
+            if relation not in ASSOCIATED_RELATIONS:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": (
+                        f"Invalid relation_type '{relation}' (allowed: "
+                        f"{', '.join(sorted(ASSOCIATED_RELATIONS))})"
+                    ),
+                })
+                continue
+
+            tgt_raw = row.get("target_entity_id")
+            if tgt_raw in (None, ""):
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": "Missing target_entity_id",
+                })
+                continue
+            try:
+                tgt_id = int(tgt_raw)
+            except (TypeError, ValueError):
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": "target_entity_id must be an integer",
+                })
+                continue
+
+            tgt = target_lookup.get(tgt_id)
+            if tgt is None:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": f"target_entity_id={tgt_id} not found",
+                })
+                continue
+            if tgt.target_entity_id is not None:
+                failed_rows.append({
+                    "row": row_idx,
+                    "input": _safe_input_str(row),
+                    "error": (
+                        f"target_entity_id={tgt_id} is not a root target"
+                    ),
+                })
+                continue
+
+            last_raw = row.get("last_name")
+            last = str(last_raw).strip() if last_raw not in (None, "") else None
+
+            candidates.append((row_idx, {
+                "first_name":    first,
+                "last_name":     last,
+                "relation_type": relation,
+                "target":        tgt,
+            }))
+
+        # ----------------------------------------------------------------
+        # Pass 2 — per-row insert under SAVEPOINT.
+        # ----------------------------------------------------------------
+        entity_ids: list[int] = []
+        for row_idx, c in candidates:
+            try:
+                with self.session.begin_nested():
+                    extra: dict[str, Any] = {
+                        "first_name":         c["first_name"],
+                        "bulk_submission_id": submission_id,
+                    }
+                    if c["last_name"]:
+                        extra["last_name"] = c["last_name"]
+                    ent = Entity(
+                        client_id=c["target"].client_id,
+                        relation_type="associated",
+                        entity_type=c["relation_type"],
+                        target_entity_id=c["target"].id,
+                        extra_data=extra,
+                    )
+                    self.session.add(ent)
+                    self.session.flush()
+                entity_ids.append(ent.id)
+            except IntegrityError as exc:
+                detail = str(exc.orig) if exc.orig else "Database constraint violation"
+                failed_rows.append({
+                    "row":   row_idx,
+                    "input": _safe_input_str({
+                        "first_name":       c["first_name"],
+                        "last_name":        c["last_name"],
+                        "relation_type":    c["relation_type"],
+                        "target_entity_id": c["target"].id,
+                    }),
+                    "error": f"DB error: {detail[:120]}",
+                })
+
+        failed_rows.sort(key=lambda r: r["row"])
+        self.session.commit()
+        return {
+            "success_count":      len(entity_ids),
+            "failed_count":       len(failed_rows),
+            "phone_ids":          [],
+            "entity_ids":         entity_ids,
+            "failed_rows":        failed_rows,
+            "bulk_submission_id": submission_id,
+        }
+
+    # ----------------------------------------------------------------
+    # File parsers — kept as private static methods so they're trivial
+    # to test without instantiating the service.
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def _parse_csv(file_bytes: bytes) -> list[dict]:
+        """
+        Parse a CSV upload into a list of dict rows.
+
+        UTF-8-SIG is the default decoding to handle Excel's BOM exports.
+        Raises ValueError if the header is missing required columns.
+        """
+        try:
+            text = file_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"CSV not UTF-8 decodable: {exc}") from exc
+
+        reader = csv.DictReader(io.StringIO(text))
+        if reader.fieldnames is None:
+            raise ValueError("CSV is empty or has no header row")
+        missing = [
+            c for c in BULK_ENTITY_REQUIRED_COLUMNS if c not in reader.fieldnames
+        ]
+        if missing:
+            raise ValueError(
+                f"CSV header missing required columns: {', '.join(missing)}"
+            )
+        return list(reader)
+
+    @staticmethod
+    def _parse_xlsx(file_bytes: bytes) -> list[dict]:
+        """
+        Parse an .xlsx upload into a list of dict rows.
+
+        read_only + data_only modes for streaming-style access and to
+        read formula RESULTS instead of `=A1+B1` literals.
+        """
+        try:
+            wb = openpyxl.load_workbook(
+                io.BytesIO(file_bytes),
+                read_only=True,
+                data_only=True,
+            )
+        except Exception as exc:
+            raise ValueError(f"Not a valid .xlsx workbook: {exc}") from exc
+
+        ws = wb.active
+        if ws is None:
+            raise ValueError("Workbook has no active sheet")
+
+        rows_iter = ws.iter_rows(values_only=True)
+        header_row = None
+        for row in rows_iter:
+            if any(cell is not None and str(cell).strip() for cell in row):
+                header_row = row
+                break
+        if header_row is None:
+            raise ValueError("Workbook is empty")
+
+        header = [str(c).strip() if c is not None else "" for c in header_row]
+        missing = [c for c in BULK_ENTITY_REQUIRED_COLUMNS if c not in header]
+        if missing:
+            raise ValueError(
+                f"Workbook header missing required columns: {', '.join(missing)}"
+            )
+
+        result = []
+        for row in rows_iter:
+            if not any(cell is not None and str(cell).strip() for cell in row):
+                continue
+            row_dict: dict[str, Any] = {}
+            for col_name, cell in zip(header, row):
+                if not col_name:
+                    continue
+                if isinstance(cell, str):
+                    cell = cell.strip() or None
+                row_dict[col_name] = cell
+            result.append(row_dict)
+        return result
+
+    # ----------------------------------------------------------------
+    # Template generation (Phase E2-B)
+    # ----------------------------------------------------------------
+
+    def generate_template_xlsx(self) -> bytes:
+        """
+        Build the entity bulk-upload template in memory.
+
+        Three sheets:
+            1. "data" — header row + 2 example rows the operator
+               replaces with real data.
+            2. "valid_targets" — REFERENCE list of every current root
+               target (entity_type='target', target_entity_id IS NULL),
+               showing the integer FKs the operator can copy into the
+               data sheet's `target_entity_id` column. Each row shows
+               only structural identifiers (target_entity_id,
+               client_id) per the Secrets-Free Mandate; the operator's
+               frontend clientRegistry resolves the integer client_id
+               to a display name.
+            3. "instructions" — Hebrew operator notes describing each
+               column.
+
+        The reference sheet is computed at download time from a live
+        DB query, so it always reflects the current state of the
+        target table (no stale checked-in artifact). Static methods
+        would have made this impossible — generating the template
+        requires the session.
+        """
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "data"
+
+        # Header row. The column order is REQUIRED-then-OPTIONAL, so:
+        #   first_name, relation_type, target_entity_id, last_name
+        ws.append(list(BULK_ENTITY_ALL_COLUMNS))
+        # Two example rows in the same column order as the header.
+        # `target_entity_id` is deliberately a numeric placeholder (0);
+        # the operator looks up the correct id in the valid_targets
+        # sheet and edits the cell before upload.
+        ws.append(["Jane", "family",    0, "Doe"])
+        ws.append(["Sam",  "colleague", 0, "Chen"])
+
+        # Reference sheet — live snapshot of every root target.
+        ref = wb.create_sheet(title="valid_targets")
+        ref.append(["target_entity_id", "client_id"])
+        targets = self.session.exec(
+            select(Entity)
+            .where(Entity.target_entity_id.is_(None))
+            .where(Entity.entity_type == RelationType.TARGET.value)
+            .order_by(Entity.client_id, Entity.id)
+        ).all()
+        for t in targets:
+            ref.append([t.id, t.client_id])
+
+        # Instructions sheet — Hebrew operator notes.
+        ins = wb.create_sheet(title="instructions")
+        ins.append(["שדה", "תיאור", "חובה"])
+        ins.append(["first_name",       "שם פרטי של האדם החדש",                                            "כן"])
+        ins.append(["last_name",        "שם משפחה (אופציונלי — מקובל גם רק שם פרטי)",                       "לא"])
+        ins.append(["relation_type",    "סוג קרבה לישות הראשית: family / friend / colleague / spouse",     "כן"])
+        ins.append(["target_entity_id", "מזהה מספרי של הישות הראשית. ראה גיליון valid_targets לערכים תקפים", "כן"])
+
+        # Serialize to bytes via an in-memory stream.
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers (private to the bulk-upload path)
+# ---------------------------------------------------------------------------
+
+
+def _safe_input_str(row: dict) -> str:
+    """
+    Build a short, operator-readable echo of a failing row dict for the
+    `input` field of a per-row failure entry. Capped at _FAILURE_INPUT_CAP
+    characters so a row with megabytes of garbage in one cell can't blow
+    up the response payload.
+    """
+    parts = []
+    for col in BULK_ENTITY_ALL_COLUMNS:
+        val = row.get(col)
+        if val is not None and val != "":
+            parts.append(f"{col}={val}")
+    rendered = " | ".join(parts)
+    return rendered[:_FAILURE_INPUT_CAP] if rendered else "(empty row)"

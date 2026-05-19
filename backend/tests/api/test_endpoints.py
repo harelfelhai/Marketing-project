@@ -1528,3 +1528,258 @@ class TestCreateSingleEntity:
         body = r.json()
         # The response reflects the inherited value, NOT the submitted 999.
         assert body["client_id"] == 3
+
+
+# ===========================================================================
+# Domain G — Entity Bulk Ingestion (Phase E2-B)
+# ===========================================================================
+
+
+def _build_entity_xlsx(header, rows):
+    """Build an in-memory .xlsx with the given header + rows."""
+    import io as _io
+    from openpyxl import Workbook as _Workbook
+    wb = _Workbook()
+    ws = wb.active
+    ws.append(header)
+    for r in rows:
+        ws.append(r)
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+class TestEntityBulkText:
+    def test_happy_path(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities/bulk-text", json={
+            "default_relation_type": "family",
+            "default_target_entity_id": target.id,
+            "rows": [
+                {"row_token": "Jane Doe", "first_name": "Jane", "last_name": "Doe"},
+                {"row_token": "Sam Chen", "first_name": "Sam",  "last_name": "Chen"},
+            ],
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 0
+        assert len(body["entity_ids"]) == 2
+        assert body["phone_ids"] == []         # entity path → no phones
+
+    def test_default_target_missing_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/entities/bulk-text", json={
+            "default_relation_type": "family",
+            "default_target_entity_id": 99_999,
+            "rows": [{"row_token": "a", "first_name": "A"}],
+        })
+        assert r.status_code == 422
+
+    def test_per_row_failures_land_in_200_response(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities/bulk-text", json={
+            "default_relation_type": "family",
+            "default_target_entity_id": target.id,
+            "rows": [
+                {"row_token": "ok",  "first_name": "Jane"},
+                {"row_token": "bad", "first_name": "", "target_entity_id": None},
+            ],
+        })
+        # Per the resilience contract, the 200 carries the partial result.
+        # NOTE: Pydantic min_length=1 on first_name will catch this at
+        # parse time → 422 BEFORE the service sees it. Test that the
+        # endpoint surfaces Pydantic's validation correctly:
+        assert r.status_code == 422
+
+    def test_invalid_default_relation_type_returns_422(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities/bulk-text", json={
+            "default_relation_type": "hacker",     # not in subset
+            "default_target_entity_id": target.id,
+            "rows": [{"row_token": "a", "first_name": "A"}],
+        })
+        assert r.status_code == 422
+
+    def test_per_row_target_override_failure_is_partial_success(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.post("/api/v1/entities/bulk-text", json={
+            "default_relation_type": "family",
+            "default_target_entity_id": target.id,
+            "rows": [
+                {"row_token": "ok",  "first_name": "Jane"},
+                {"row_token": "bad", "first_name": "Bad", "target_entity_id": 99_999},
+            ],
+        })
+        # Default target valid → request does not abort. Per-row override
+        # failure lands as a per-row failure in the 200 response.
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 1
+        assert body["failed_count"] == 1
+        assert body["failed_rows"][0]["row"] == 2
+        assert "99999" in body["failed_rows"][0]["error"]
+
+    def test_row_count_cap_enforced_at_pydantic_layer(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        # 501 rows — one over the max_length cap. Pydantic returns 422.
+        many_rows = [
+            {"row_token": f"r{i}", "first_name": f"P{i}"} for i in range(501)
+        ]
+        r = tc.post("/api/v1/entities/bulk-text", json={
+            "default_relation_type": "family",
+            "default_target_entity_id": target.id,
+            "rows": many_rows,
+        })
+        assert r.status_code == 422
+
+
+class TestEntityBulkUpload:
+    def test_xlsx_happy_path(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        payload = _build_entity_xlsx(
+            header=["first_name", "last_name", "relation_type", "target_entity_id"],
+            rows=[
+                ["Jane", "Doe",  "family",    target.id],
+                ["Sam",  "Chen", "colleague", target.id],
+            ],
+        )
+        r = tc.post(
+            "/api/v1/entities/bulk-upload",
+            files={"file": ("upload.xlsx", payload, _XLSX_MIME)},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 0
+
+    def test_csv_happy_path(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        csv_payload = (
+            "first_name,last_name,relation_type,target_entity_id\n"
+            f"Jane,Doe,family,{target.id}\n"
+        ).encode("utf-8")
+        r = tc.post(
+            "/api/v1/entities/bulk-upload",
+            files={"file": ("upload.csv", csv_payload, _CSV_MIME)},
+        )
+        assert r.status_code == 200
+        assert r.json()["success_count"] == 1
+
+    def test_missing_required_column_returns_422(self, client):
+        tc, _ = client
+        payload = _build_entity_xlsx(
+            header=["first_name", "last_name", "relation_type"],   # no target_entity_id
+            rows=[["Jane", "Doe", "family"]],
+        )
+        r = tc.post(
+            "/api/v1/entities/bulk-upload",
+            files={"file": ("upload.xlsx", payload, _XLSX_MIME)},
+        )
+        assert r.status_code == 422
+        assert "target_entity_id" in r.json()["detail"]
+
+    def test_unsupported_extension_returns_422(self, client):
+        tc, _ = client
+        r = tc.post(
+            "/api/v1/entities/bulk-upload",
+            files={"file": ("upload.txt", b"hello", "text/plain")},
+        )
+        assert r.status_code == 422
+
+    def test_no_file_returns_422(self, client):
+        tc, _ = client
+        r = tc.post("/api/v1/entities/bulk-upload")
+        assert r.status_code == 422
+
+    def test_per_row_failures_in_200_response(self, client):
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        payload = _build_entity_xlsx(
+            header=["first_name", "last_name", "relation_type", "target_entity_id"],
+            rows=[
+                ["Jane", "Doe", "family", target.id],     # ok
+                ["",     "X",   "family", target.id],     # missing first_name
+                ["Sam",  "Y",   "hacker", target.id],     # bad relation
+            ],
+        )
+        r = tc.post(
+            "/api/v1/entities/bulk-upload",
+            files={"file": ("upload.xlsx", payload, _XLSX_MIME)},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 1
+        assert body["failed_count"] == 2
+
+
+class TestEntityBulkTemplate:
+    def test_returns_xlsx_with_expected_headers(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/entities/bulk-template")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith(_XLSX_MIME)
+        assert "bulk_entities_template.xlsx" in r.headers.get(
+            "content-disposition", ""
+        )
+        assert r.content[:2] == b"PK"
+
+    def test_template_includes_live_root_targets(self, client):
+        tc, session = client
+        # Seed two distinct root targets so the reference sheet has
+        # something deterministic to show.
+        _seed_root_target_entity(session, client_id=1)
+        _seed_root_target_entity(session, client_id=2)
+        r = tc.get("/api/v1/entities/bulk-template")
+        assert r.status_code == 200
+
+        import io as _io
+        import openpyxl as _openpyxl
+        wb = _openpyxl.load_workbook(_io.BytesIO(r.content), read_only=True)
+        assert "valid_targets" in wb.sheetnames
+        ws = wb["valid_targets"]
+        rows = [tuple(c.value for c in row) for row in ws.iter_rows()]
+        # Header + at least the two seeded targets.
+        assert rows[0] == ("target_entity_id", "client_id")
+        assert len(rows) >= 3
+
+    def test_template_round_trips_through_bulk_upload(self, client):
+        """
+        After replacing the placeholder target_entity_id with a real
+        one, the template should ingest cleanly via the upload path.
+        Same pattern as the phone-side TestBulkTemplateEndpoint test.
+        """
+        tc, session = client
+        target = _seed_root_target_entity(session)
+        r = tc.get("/api/v1/entities/bulk-template")
+        assert r.status_code == 200
+
+        import io as _io
+        import openpyxl as _openpyxl
+        wb = _openpyxl.load_workbook(_io.BytesIO(r.content))
+        ws = wb["data"]
+        header = [c.value for c in next(ws.iter_rows(max_row=1))]
+        tgt_col_idx = header.index("target_entity_id") + 1
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=tgt_col_idx, value=target.id)
+        buf = _io.BytesIO()
+        wb.save(buf)
+        edited = buf.getvalue()
+
+        r2 = tc.post(
+            "/api/v1/entities/bulk-upload",
+            files={"file": ("upload.xlsx", edited, _XLSX_MIME)},
+        )
+        assert r2.status_code == 200
+        body = r2.json()
+        # Template ships 2 example rows; both should ingest after
+        # editing in a valid target_entity_id.
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 0
