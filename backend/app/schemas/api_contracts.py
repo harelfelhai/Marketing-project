@@ -1030,3 +1030,158 @@ class ResolveTaskRequest(BaseModel):
             "column (§Privacy Contract)."
         ),
     )
+
+
+# ===========================================================================
+# DOMAIN F — BULK INGESTION (Phase E1)
+# ===========================================================================
+# Two operator-facing endpoints share the BulkIngestSummary response shape:
+#   POST /api/v1/phones/bulk-text   — shared-context textarea ingestion
+#   POST /api/v1/phones/bulk-upload — multipart Excel/CSV (E1-B)
+#
+# Both follow the same resilience contract: per-row failures are collected
+# into `failed_rows` and reported back as part of a 200 response, NOT a
+# transaction rollback. Only request-shape errors (e.g. missing target,
+# invalid file format) raise 4xx.
+
+
+class BulkTextIngestRequest(BaseModel):
+    """
+    Request body for POST /api/v1/phones/bulk-text.
+
+    The operator fills the envelope-context fields ONCE and pastes a
+    block of phone numbers into `phone_numbers_raw`. The backend
+    tokenizes the block (commas / whitespace / newlines / semicolons),
+    normalizes each token, deduplicates within the batch, and creates a
+    single Entity with the shared context plus one PhoneNumber per
+    surviving token.
+
+    target_entity_id is the OPAQUE INTEGER FK (per Secrets-Free Mandate).
+    Frontend resolves the target via clientRegistry + entity picker
+    before submitting — the backend does not accept target_phone_number
+    here (use POST /ingest if you need that legacy lookup).
+    """
+
+    phone_numbers_raw: str = Field(
+        ...,
+        min_length=1,
+        max_length=10_000,
+        description=(
+            "Free-form block of phone numbers. Delimiters: comma, semicolon, "
+            "or any whitespace including newlines. Each token is normalized "
+            "(whitespace + non-digit chars stripped except the leading +) "
+            "before insertion."
+        ),
+    )
+    client_id: int = Field(
+        ...,
+        description=(
+            "Opaque integer client partition id. NOT validated against an "
+            "allowlist server-side — the frontend clientRegistry is the "
+            "source of truth for the integer/name mapping."
+        ),
+    )
+    entity_type: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Entity classification for the new Entity wrapping every "
+            "ingested phone. 'social_envelope' for Vector B clusters; "
+            "any other token (family / friend / colleague / target / ...) "
+            "for Vector A."
+        ),
+        examples=["family", "social_envelope"],
+    )
+    target_entity_id: Optional[int] = Field(
+        default=None,
+        description=(
+            "FK to the primary target Entity this batch's new Entity "
+            "should report to. Required for non-'target' entity_types "
+            "(checked at the service layer, not the schema, so the error "
+            "lands as 422 with a clear message). May be NULL when the "
+            "operator is creating a new primary target."
+        ),
+    )
+    ingestion_source: str = Field(
+        ...,
+        min_length=1,
+        examples=["manual", "automated"],
+    )
+    ingestion_reason: Optional[str] = Field(
+        default=None,
+        description="Free-form justification, copied onto every ingested phone.",
+    )
+    entity_extra: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Opaque JSON payload merged into the new Entity's extra_data. "
+            "Use for shared envelope metadata (e.g. {'envelope_id': 'EP-001'})."
+        ),
+    )
+    phone_extra_shared: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Opaque JSON payload applied to EVERY PhoneNumber in the batch. "
+            "The audit-trail bulk_submission_id (uuid) is automatically "
+            "merged in alongside whatever the caller supplies."
+        ),
+    )
+
+
+class BulkIngestFailedRow(BaseModel):
+    """One per-row failure inside a BulkIngestSummary."""
+
+    row: int = Field(
+        ...,
+        ge=1,
+        description="1-based index of the failing row inside the source.",
+    )
+    input: str = Field(
+        ...,
+        description=(
+            "Raw value (or excerpt) of the failing row, so the operator "
+            "can locate it in their original input. Truncated to 200 chars."
+        ),
+    )
+    error: str = Field(
+        ...,
+        description="Human-readable cause of the failure (Hebrew or English).",
+    )
+
+
+class BulkIngestSummary(BaseModel):
+    """
+    Response shape for both /bulk-text and /bulk-upload (E1-B).
+
+    Returns HTTP 200 even when failed_count > 0 — partial success is the
+    documented happy path of the resilience contract. The operator UI
+    renders the summary inline so they can see exactly which rows
+    failed and why.
+    """
+
+    success_count: int = Field(..., ge=0, description="Rows successfully inserted.")
+    failed_count:  int = Field(..., ge=0, description="Equals len(failed_rows); convenience.")
+    phone_ids: List[int] = Field(
+        default_factory=list,
+        description="PKs of newly-created PhoneNumber rows, in insertion order.",
+    )
+    entity_ids: List[int] = Field(
+        default_factory=list,
+        description=(
+            "PKs of Entity rows touched by the batch. /bulk-text always "
+            "yields a single entity (the shared envelope); /bulk-upload "
+            "may yield many."
+        ),
+    )
+    failed_rows: List[BulkIngestFailedRow] = Field(
+        default_factory=list,
+        description="Per-row failure details. Empty when failed_count == 0.",
+    )
+    bulk_submission_id: str = Field(
+        ...,
+        description=(
+            "UUID stamped into every ingested phone's extra_data under "
+            "the 'bulk_submission_id' key. Operators can later filter on "
+            "this value to retrieve everything from one batch."
+        ),
+    )

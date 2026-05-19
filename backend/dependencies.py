@@ -41,6 +41,7 @@ from interfaces.dispatcher import BaseActionHandler
 from interfaces.ingestion import BaseIngestionRoutingEngine
 from interfaces.scoring import BaseScoringStrategy
 from interfaces.verification import BaseVerificationStrategy
+from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDispatcher
 from services.ingestion import IngestionService
 from services.scoring import ScoringService
@@ -290,3 +291,31 @@ def get_scoring_service(
         ScoringService: Ready to recalculate any phone's priority score.
     """
     return ScoringService(session=session, strategy=strategy)
+
+
+# ===========================================================================
+# PHASE E1 — BULK INGESTION
+# ===========================================================================
+
+
+def get_bulk_ingestion_service(
+    session: Session = Depends(get_session),
+) -> BulkIngestionService:
+    """
+    Compose and return a fully wired `BulkIngestionService`.
+
+    The scoring service is composed inline (not via FastAPI Depends)
+    because it shares the same per-request session — using two separate
+    Depends() resolutions would risk inconsistent transaction scopes.
+
+    Args:
+        session (Session): Per-request DB session.
+
+    Returns:
+        BulkIngestionService: Ready to ingest one bulk-text submission.
+    """
+    scoring_service = get_scoring_service(session)
+    return BulkIngestionService(
+        session=session,
+        scoring_service=scoring_service,
+    )

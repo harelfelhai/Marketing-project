@@ -24,9 +24,15 @@ from sqlalchemy import func, nullslast, select as sa_select
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, select
 
-from app.api.deps import get_action_data_trigger_service, get_scoring_service
+from app.api.deps import (
+    get_action_data_trigger_service,
+    get_bulk_ingestion_service,
+    get_scoring_service,
+)
 from app.schemas.api_contracts import (
     ActionLogResponse,
+    BulkIngestSummary,
+    BulkTextIngestRequest,
     EntitySummary,
     IngestionResponse,
     PhoneDetailsResponse,
@@ -36,11 +42,12 @@ from app.schemas.api_contracts import (
     PhoneUpdateResponse,
 )
 from database import get_session
-from exceptions import PhoneNumberNotFoundError
+from exceptions import PhoneNumberNotFoundError, TargetNotFoundError
 from models.action_log import ActionLog
 from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.types import utc_now
+from services.bulk_ingestion import BulkIngestionService
 from services.dispatcher import ActionDataTriggerService
 from services.scoring import ScoringService
 
@@ -438,3 +445,65 @@ def update_phone(
         phone=IngestionResponse.model_validate(phone),
         triggered_action=ActionLogResponse.model_validate(triggered_log) if triggered_log else None,
     )
+
+
+# ===========================================================================
+# Phase E1 — Bulk text ingestion
+# ===========================================================================
+
+
+@router.post(
+    "/bulk-text",
+    response_model=BulkIngestSummary,
+    summary="Bulk-ingest phone numbers under a shared envelope context",
+    description=(
+        "Tokenizes `phone_numbers_raw` (delimiters: comma, semicolon, "
+        "any whitespace), normalizes each token, deduplicates within "
+        "the batch, and inserts one new Entity (the shared envelope) "
+        "plus one PhoneNumber per surviving token."
+        "\n\n"
+        "**Resilience contract:** per-row failures are collected into "
+        "`failed_rows` and returned alongside a 200 response. Only "
+        "request-shape errors (invalid `target_entity_id`, empty input, "
+        "etc.) raise 4xx."
+        "\n\n"
+        "Every ingested phone is stamped with `bulk_submission_id` "
+        "(uuid4) in its `extra_data`, allowing later filtering of "
+        "everything from one batch."
+    ),
+)
+def bulk_text_ingest(
+    body: BulkTextIngestRequest,
+    service: BulkIngestionService = Depends(get_bulk_ingestion_service),
+) -> BulkIngestSummary:
+    """
+    Args:
+        body    (BulkTextIngestRequest): Validated request payload.
+        service (BulkIngestionService):  Injected via FastAPI Depends.
+
+    Returns:
+        BulkIngestSummary: Counts + per-row failures + new IDs.
+
+    Raises:
+        HTTPException 422: `target_entity_id` was provided but does not
+            exist in the database. Per-row failures do NOT raise — they
+            land inside the 200 response body.
+    """
+    try:
+        summary = service.ingest_bulk_text(
+            phone_numbers_raw=body.phone_numbers_raw,
+            client_id=body.client_id,
+            entity_type=body.entity_type,
+            ingestion_source=body.ingestion_source,
+            target_entity_id=body.target_entity_id,
+            ingestion_reason=body.ingestion_reason,
+            entity_extra=body.entity_extra,
+            phone_extra_shared=body.phone_extra_shared,
+        )
+    except TargetNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return BulkIngestSummary.model_validate(summary)

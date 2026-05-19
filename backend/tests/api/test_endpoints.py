@@ -21,6 +21,7 @@ import models  # noqa: F401  — registers table metadata
 from app.api.deps import (
     get_action_data_trigger_service,
     get_action_dispatcher,
+    get_bulk_ingestion_service,
     get_pipeline_task_service,
     get_retry_engine,
     get_scoring_service,
@@ -45,6 +46,7 @@ from services.dispatcher import (
     RetryEngine,
     UserActionService,
 )
+from services.bulk_ingestion import BulkIngestionService
 from services.ingestion import IngestionService
 from services.scoring import ScoringService
 from services.tasks import PipelineTaskService
@@ -148,6 +150,11 @@ def client():
     app.dependency_overrides[get_verification_engine] = lambda: verification_eng
     app.dependency_overrides[get_pipeline_task_service] = lambda: task_svc
     app.dependency_overrides[get_scoring_service] = lambda: scoring_svc
+
+    # Phase E1 — bulk ingestion service (shares the same scoring service
+    # so the Phase DY hook works inside the test transaction too).
+    bulk_svc = BulkIngestionService(session=test_session, scoring_service=scoring_svc)
+    app.dependency_overrides[get_bulk_ingestion_service] = lambda: bulk_svc
 
     with TestClient(app) as tc:
         yield tc, test_session
@@ -1083,3 +1090,132 @@ class TestVerdictTwoAxisDispatch:
             json={"phone_id": 99999, "phone_axis": "confirm"},
         )
         assert r.status_code == 404
+
+
+# ===========================================================================
+# Phase E1-A — POST /api/v1/phones/bulk-text
+# ===========================================================================
+
+
+def _seed_primary_target(session, client_id=1):
+    """Seed a primary target Entity that bulk submissions can attach to."""
+    e = Entity(
+        entity_type="target", relation_type="primary",
+        client_id=client_id, extra_data={"customer_tier": 1},
+    )
+    session.add(e); session.commit(); session.refresh(e)
+    return e
+
+
+class TestBulkTextEndpoint:
+    def test_happy_path_returns_200_with_summary(self, client):
+        tc, session = client
+        target = _seed_primary_target(session)
+        r = tc.post(
+            "/api/v1/phones/bulk-text",
+            json={
+                "phone_numbers_raw": "+14155550701, +14155550702, +14155550703",
+                "client_id": 1,
+                "entity_type": "family",
+                "target_entity_id": target.id,
+                "ingestion_source": "manual",
+                "ingestion_reason": "Smoke-test batch",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 3
+        assert body["failed_count"] == 0
+        assert len(body["phone_ids"]) == 3
+        assert len(body["entity_ids"]) == 1
+        assert body["bulk_submission_id"]  # uuid populated
+
+    def test_partial_failure_returns_200_with_failed_rows(self, client):
+        tc, session = client
+        target = _seed_primary_target(session)
+        r = tc.post(
+            "/api/v1/phones/bulk-text",
+            json={
+                "phone_numbers_raw": "+14155550711, NOTAPHONE, +14155550712",
+                "client_id": 1,
+                "entity_type": "family",
+                "target_entity_id": target.id,
+                "ingestion_source": "manual",
+            },
+        )
+        # Per the resilience contract: still 200, with failed rows
+        # surfaced in the body.
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 2
+        assert body["failed_count"] == 1
+        assert body["failed_rows"][0]["row"] == 2
+
+    def test_unknown_target_entity_id_returns_422(self, client):
+        tc, _ = client
+        r = tc.post(
+            "/api/v1/phones/bulk-text",
+            json={
+                "phone_numbers_raw": "+14155550721",
+                "client_id": 1,
+                "entity_type": "family",
+                "target_entity_id": 99999,    # does not exist
+                "ingestion_source": "manual",
+            },
+        )
+        assert r.status_code == 422
+
+    def test_empty_phone_numbers_raw_returns_422(self, client):
+        tc, _ = client
+        r = tc.post(
+            "/api/v1/phones/bulk-text",
+            json={
+                "phone_numbers_raw": "",
+                "client_id": 1,
+                "entity_type": "family",
+                "ingestion_source": "manual",
+            },
+        )
+        # Pydantic min_length=1 enforces this.
+        assert r.status_code == 422
+
+    def test_all_invalid_returns_200_with_empty_success(self, client):
+        tc, session = client
+        target = _seed_primary_target(session)
+        r = tc.post(
+            "/api/v1/phones/bulk-text",
+            json={
+                "phone_numbers_raw": "abc, def, ghi",
+                "client_id": 1,
+                "entity_type": "family",
+                "target_entity_id": target.id,
+                "ingestion_source": "manual",
+            },
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success_count"] == 0
+        assert body["failed_count"] == 3
+        assert body["entity_ids"] == []   # no orphan entity created
+        assert body["phone_ids"] == []
+
+    def test_audit_trail_bulk_submission_id_returned_and_stamped(self, client):
+        tc, session = client
+        target = _seed_primary_target(session)
+        r = tc.post(
+            "/api/v1/phones/bulk-text",
+            json={
+                "phone_numbers_raw": "+14155550731",
+                "client_id": 1,
+                "entity_type": "family",
+                "target_entity_id": target.id,
+                "ingestion_source": "manual",
+            },
+        )
+        sid = r.json()["bulk_submission_id"]
+        assert sid
+        # Verify the stamp landed on the created phone's extra_data.
+        phone_id = r.json()["phone_ids"][0]
+        session.expire_all()
+        phone = session.get(PhoneNumber, phone_id)
+        assert phone.extra_data["bulk_submission_id"] == sid
