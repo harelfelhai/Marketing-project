@@ -93,12 +93,22 @@ export function MockDataProvider({ children }) {
     if (MOCK_MODE) return;
 
     setLoading(true);
-    Promise.all([
+    // Phase AUTH-C — tolerate per-slice failures. /tasks is admin-only
+    // and /action-logs requires an authenticated session; guests and
+    // regular users should still see Phones + Clients Hub even when
+    // those endpoints 401/403. Using Promise.allSettled instead of
+    // Promise.all means one rejected slice no longer collapses the
+    // whole boot hydration into an empty state.
+    Promise.allSettled([
       listPhones({ pageSize: 200 }),
       listActionLogs({ pageSize: 500 }),
       listTasks({ pageSize: 500 }),
     ])
-      .then(([phonesData, logsData, tasksData]) => {
+      .then(([phonesRes, logsRes, tasksRes]) => {
+        const phonesData = phonesRes.status === 'fulfilled' ? phonesRes.value : [];
+        const logsData   = logsRes.status   === 'fulfilled' ? logsRes.value   : [];
+        const tasksData  = tasksRes.status  === 'fulfilled' ? tasksRes.value  : [];
+
         // Synthesize entities from the phone JOIN data.
         // Each phone carries entity_id, entity_type, and client_id from the backend.
         const entityMap = new Map();
