@@ -1806,39 +1806,97 @@ export function MockDataProvider({ children }) {
   }, [_entityToView]);
 
   const applySoftDeleteEntity = useCallback((id) => {
-    let phonesDeleted = 0;
+    // UAT round-3 — mirrors backend cascade: tombstones the entity,
+    // every child entity (target_entity_id == id), and every active
+    // phone in that sub-graph. All rows stamped with a shared
+    // deletion_group_id so applyRestoreEntity can reverse exactly the
+    // set that fell together.
+    let summary;
     setDb((prev) => {
       const idx = prev.entities.findIndex((e) => e.id === id);
       if (idx === -1) throw new Error(`Entity ${id} not found`);
       if (prev.entities[idx].deleted_at) throw new Error(`Entity ${id} not found`);
       const now = new Date().toISOString();
-      const entities = prev.entities.slice();
-      entities[idx] = { ...entities[idx], deleted_at: now };
+      const groupId =
+        (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `del-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      const childIds = new Set(
+        prev.entities
+          .filter((e) => e.target_entity_id === id && !e.deleted_at)
+          .map((e) => e.id),
+      );
+      const entityIdsToKill = new Set([id, ...childIds]);
+
+      let phonesDeleted = 0;
+      const entities = prev.entities.map((e) => {
+        if (entityIdsToKill.has(e.id) && !e.deleted_at) {
+          return { ...e, deleted_at: now, deletion_group_id: groupId };
+        }
+        return e;
+      });
       const phones = prev.phones.map((p) => {
-        if (p.entity_id === id && !p.deleted_at) {
+        if (entityIdsToKill.has(p.entity_id) && !p.deleted_at) {
           phonesDeleted += 1;
-          return { ...p, deleted_at: now };
+          return { ...p, deleted_at: now, deletion_group_id: groupId };
         }
         return p;
       });
+      summary = {
+        entity_id:          id,
+        phones_deleted:     phonesDeleted,
+        entities_deleted:   childIds.size + 1,
+        deletion_group_id:  groupId,
+      };
       return { ...prev, entities, phones };
     });
-    return { entity_id: id, phones_deleted: phonesDeleted };
+    return summary;
   }, []);
 
   const applyRestoreEntity = useCallback((id) => {
-    let snapshot;
+    // UAT round-3 — symmetric counterpart: brings back every row
+    // sharing the same deletion_group_id, leaving unrelated tombstones
+    // (deleted by other actions) alone.
+    let summary;
     setDb((prev) => {
       const idx = prev.entities.findIndex((e) => e.id === id);
       if (idx === -1) throw new Error(`Entity ${id} not found`);
-      const next = { ...prev.entities[idx], deleted_at: null };
-      snapshot = next;
-      const entities = prev.entities.slice();
-      entities[idx] = next;
-      return { ...prev, entities };
+      const target = prev.entities[idx];
+      if (!target.deleted_at) {
+        summary = { entity_id: id, phones_restored: 0, entities_restored: 0 };
+        return prev;
+      }
+      const groupId = target.deletion_group_id;
+      let entitiesRestored = 0;
+      const entities = prev.entities.map((e) => {
+        if (e.id === id) {
+          entitiesRestored += 1;
+          return { ...e, deleted_at: null, deletion_group_id: null };
+        }
+        if (groupId && e.deletion_group_id === groupId && e.deleted_at) {
+          entitiesRestored += 1;
+          return { ...e, deleted_at: null, deletion_group_id: null };
+        }
+        return e;
+      });
+      let phonesRestored = 0;
+      const phones = prev.phones.map((p) => {
+        if (groupId && p.deletion_group_id === groupId && p.deleted_at) {
+          phonesRestored += 1;
+          return { ...p, deleted_at: null, deletion_group_id: null };
+        }
+        return p;
+      });
+      summary = {
+        entity_id:          id,
+        phones_restored:    phonesRestored,
+        entities_restored:  entitiesRestored,
+      };
+      return { ...prev, entities, phones };
     });
-    return _entityToView(snapshot);
-  }, [_entityToView]);
+    return summary;
+  }, []);
 
   const applyAdminPatchPhone = useCallback((id, body) => {
     let snapshot;
@@ -1862,12 +1920,23 @@ export function MockDataProvider({ children }) {
   }, []);
 
   const applySoftDeletePhone = useCallback((id) => {
+    // UAT round-3 — stamp a fresh group_id so applyRestorePhone can
+    // revive any cascade peers (currently always just this one row,
+    // matching the backend's single-phone delete contract).
     let snapshot;
     setDb((prev) => {
       const idx = prev.phones.findIndex((p) => p.id === id);
       if (idx === -1) throw new Error(`Phone ${id} not found`);
       if (prev.phones[idx].deleted_at) throw new Error(`Phone ${id} not found`);
-      const next = { ...prev.phones[idx], deleted_at: new Date().toISOString() };
+      const groupId =
+        (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `del-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const next = {
+        ...prev.phones[idx],
+        deleted_at: new Date().toISOString(),
+        deletion_group_id: groupId,
+      };
       snapshot = next;
       const phones = prev.phones.slice();
       phones[idx] = next;
@@ -1952,15 +2021,30 @@ export function MockDataProvider({ children }) {
   }, []);
 
   const applyRestorePhone = useCallback((id) => {
+    // UAT round-3 — symmetric: if the phone fell as part of a cascade
+    // it shares a deletion_group_id with other rows; revive them too.
     let snapshot;
     setDb((prev) => {
       const idx = prev.phones.findIndex((p) => p.id === id);
       if (idx === -1) throw new Error(`Phone ${id} not found`);
-      const next = { ...prev.phones[idx], deleted_at: null };
+      const target = prev.phones[idx];
+      const groupId = target.deletion_group_id;
+      const next = { ...target, deleted_at: null, deletion_group_id: null };
       snapshot = next;
-      const phones = prev.phones.slice();
-      phones[idx] = next;
-      return { ...prev, phones };
+      const phones = prev.phones.map((p, i) => {
+        if (i === idx) return next;
+        if (groupId && p.deletion_group_id === groupId && p.deleted_at) {
+          return { ...p, deleted_at: null, deletion_group_id: null };
+        }
+        return p;
+      });
+      const entities = prev.entities.map((e) => {
+        if (groupId && e.deletion_group_id === groupId && e.deleted_at) {
+          return { ...e, deleted_at: null, deletion_group_id: null };
+        }
+        return e;
+      });
+      return { ...prev, phones, entities };
     });
     return snapshot;
   }, []);

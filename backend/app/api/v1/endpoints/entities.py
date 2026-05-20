@@ -471,17 +471,23 @@ def soft_delete_entity(
 
 @router.post(
     "/{entity_id}/restore",
-    summary="Restore a soft-deleted entity (admin) — phones not auto-restored",
+    summary="Restore a soft-deleted entity — symmetric cascade revival",
+    description=(
+        "UAT round-3: the service returns a summary of EVERY row revived "
+        "in this action, not just the entity itself. Rows that fell as "
+        "part of the same cascade (same deletion_group_id) come back "
+        "together. Returns: "
+        "{entity_id, phones_restored, entities_restored}."
+    ),
 )
 def restore_entity(
     entity_id: int,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
-        ent = admin.restore_entity(entity_id)
+        return admin.restore_entity(entity_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _entity_to_dict(ent)
 
 
 class _EnvelopeIn(BaseModel):

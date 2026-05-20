@@ -388,8 +388,16 @@ function PhonesAdmin({ includeDeleted }) {
               <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">אין טלפונים.</td></tr>
             ) : (
               rows.map((p) => {
-                const ent = entityById.get(p.entity_id);
-                const clientName = getClientById(ent?.client_id)?.name || `Client ${ent?.client_id ?? '?'}`;
+                // UAT round-3 fix: prefer the client_id projected on
+                // the phone row itself by the GET /phones JOIN — the
+                // owning entity may have been soft-deleted and absent
+                // from `mockDb.entities`, but the phone row keeps the
+                // client_id from the join's snapshot.
+                const ownerClientId = p.client_id
+                  ?? entityById.get(p.entity_id)?.client_id;
+                const clientName = ownerClientId != null
+                  ? (getClientById(ownerClientId)?.name || `Client ${ownerClientId}`)
+                  : 'לא ידוע';
                 const isDeleted = !!p.deleted_at;
                 return (
                   <tr
