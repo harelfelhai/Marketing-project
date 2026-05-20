@@ -918,6 +918,7 @@ export const ENTITY_BULK_GRID_HEADER_FIRST     = 'שם פרטי';
 export const ENTITY_BULK_GRID_HEADER_LAST      = 'שם משפחה';
 export const ENTITY_BULK_GRID_HEADER_RELATION  = 'קרבה';
 export const ENTITY_BULK_GRID_HEADER_TARGET    = 'יעד';
+export const ENTITY_BULK_GRID_HEADER_STRONG_ID = 'מזהה חזק';
 export const ENTITY_BULK_GRID_HEADER_REMOVE    = '';
 export const ENTITY_BULK_GRID_INHERIT          = 'ברירת מחדל';
 export const ENTITY_BULK_GRID_BACK             = 'חזור לעריכת רשימה';

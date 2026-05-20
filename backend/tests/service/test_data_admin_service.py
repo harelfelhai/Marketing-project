@@ -135,12 +135,59 @@ class TestSoftDeleteEntity:
         self, svc, session, associated, phone
     ):
         summary = svc.soft_delete_entity(associated.id)
-        assert summary == {"entity_id": associated.id, "phones_deleted": 1}
+        assert summary == {
+            "entity_id":        associated.id,
+            "phones_deleted":   1,
+            "entities_deleted": 1,
+        }
 
         session.refresh(associated)
         session.refresh(phone)
         assert associated.deleted_at is not None
         assert phone.deleted_at is not None
+
+    def test_root_delete_cascades_through_children_and_their_phones(
+        self, svc, session, primary, associated, phone
+    ):
+        """
+        UAT round-3: deleting a root (client head) must propagate to
+        every associated entity that points to it AND to those
+        associated entities' phones — not just the root's own phones.
+        """
+        from models.phone_number import PhoneNumber
+        # Add a second associated entity + its own phone, to prove the
+        # cascade walks more than one child.
+        bob = Entity(
+            client_id=1,
+            entity_type="friend",
+            target_entity_id=primary.id,
+            extra_data={"first_name": "Bob"},
+        )
+        session.add(bob)
+        session.commit()
+        session.refresh(bob)
+        bob_phone = PhoneNumber(
+            entity_id=bob.id,
+            phone_number="+972502222222",
+            classification_type="type_a",
+            ingestion_source="manual",
+            verification_status="pending",
+        )
+        session.add(bob_phone)
+        session.commit()
+
+        summary = svc.soft_delete_entity(primary.id)
+        # 3 entities deleted: primary + associated (Jane) + bob.
+        # 2 phones deleted: Jane's phone + Bob's phone.
+        assert summary == {
+            "entity_id":        primary.id,
+            "phones_deleted":   2,
+            "entities_deleted": 3,
+        }
+
+        for row in (primary, associated, bob, phone, bob_phone):
+            session.refresh(row)
+            assert row.deleted_at is not None
 
     def test_already_deleted_phones_are_not_re_tombstoned(
         self, svc, session, associated, phone

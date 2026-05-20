@@ -178,28 +178,54 @@ class DataAdminService:
 
     def soft_delete_entity(self, entity_id: int) -> dict:
         """
-        Tombstone an entity AND cascade-tombstone every PhoneNumber
-        whose entity_id matches. Returns a summary dict the endpoint
-        echoes back to the operator:
-            {entity_id, phones_deleted: int}
+        Tombstone an entity AND cascade through the full sub-graph.
+
+        UAT round-3 extension: when the entity being deleted is a
+        ROOT target (target_entity_id IS NULL), the cascade also
+        descends through every ASSOCIATED entity (those whose
+        target_entity_id == entity_id) AND through THEIR phones.
+        Without this, soft-deleting a client root left the circle's
+        family/friend/envelope entities and their phones orphaned
+        but still visible in the Phone Grid and exports.
+
+        Returns the operator-facing summary:
+            {entity_id, phones_deleted, entities_deleted}
         """
         ent = self.get_entity(entity_id, include_deleted=False)
         now = _utc_now()
-        ent.deleted_at = now
 
-        # Cascade — every active phone of this entity.
+        # Build the set of entity_ids to tombstone: the immediate one
+        # plus any active children whose target_entity_id matches.
+        child_entities = list(self.session.exec(
+            select(Entity)
+            .where(Entity.target_entity_id == entity_id)
+            .where(Entity.deleted_at.is_(None))
+        ))
+        entity_ids_to_kill = {entity_id, *(c.id for c in child_entities)}
+
+        # Phones across the whole sub-graph.
         phones = list(self.session.exec(
             select(PhoneNumber)
-            .where(PhoneNumber.entity_id == entity_id)
+            .where(PhoneNumber.entity_id.in_(entity_ids_to_kill))
             .where(PhoneNumber.deleted_at.is_(None))
         ))
         for p in phones:
             p.deleted_at = now
             self.session.add(p)
 
+        # Tombstone the children, then the root itself.
+        for child in child_entities:
+            child.deleted_at = now
+            self.session.add(child)
+        ent.deleted_at = now
         self.session.add(ent)
+
         self.session.commit()
-        return {"entity_id": entity_id, "phones_deleted": len(phones)}
+        return {
+            "entity_id":         entity_id,
+            "phones_deleted":    len(phones),
+            "entities_deleted":  len(child_entities) + 1,
+        }
 
     def restore_entity(self, entity_id: int) -> Entity:
         """

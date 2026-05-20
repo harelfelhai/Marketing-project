@@ -397,6 +397,8 @@ class EntityIngestionService:
                 "last_name": last_trim or None,
                 "relation_type": relation,
                 "target": tgt,
+                # UAT round-3 — per-row opaque blob (strong_identifier, etc.)
+                "extra_data": row.get("extra_data") or {},
             })
 
         # ----------------------------------------------------------------
@@ -417,6 +419,11 @@ class EntityIngestionService:
                         # reports can correlate back to the operator's
                         # grid input on the client side.
                         extra["row_token"] = c["row_token"]
+                    # UAT round-3 — per-row caller blob (strong_identifier,
+                    # etc.). Merge IN after the name/token defaults so the
+                    # caller's keys win on conflict.
+                    if c.get("extra_data"):
+                        extra.update(c["extra_data"])
 
                     ent = Entity(
                         client_id=c["target"].client_id,

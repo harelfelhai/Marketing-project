@@ -17,19 +17,35 @@ import { PAGE_CLIENT_HUB_TITLE, PAGE_CLIENT_HUB_SUB } from '../config/strings.he
 const SKELETON_CARD_COUNT = 4;
 
 export default function ClientHubPage() {
-  const { clients, loading }            = useMockData();
+  const { clients, entities, loading }  = useMockData();
   const { personalizationActive, user } = useAuth();
+
+  // UAT round-3: a client whose root target entity has been soft-
+  // deleted must not show up here — the tile would link to a circle
+  // that no longer exists. A client is "live" iff at least one
+  // active root target carries its client_id.
+  const liveClientIds = useMemo(() => {
+    const set = new Set();
+    for (const e of entities) {
+      if (e.deleted_at) continue;
+      if (e.entity_type !== 'target') continue;
+      if (e.target_entity_id != null) continue;     // only ROOTS count
+      if (e.client_id != null) set.add(String(e.client_id));
+    }
+    return set;
+  }, [entities]);
 
   // Phase AUTH-C — when the global toggle is ON and the operator has
   // managed clients, narrow the hub to those tiles. Admins (no managed
   // clients) see the full list regardless of toggle position.
   const visibleClients = useMemo(() => {
-    if (!personalizationActive) return clients;
+    const liveOnly = clients.filter((c) => liveClientIds.has(String(c.id)));
+    if (!personalizationActive) return liveOnly;
     const allowed = user?.managed_client_ids;
-    if (!allowed?.length) return clients;
+    if (!allowed?.length) return liveOnly;
     const allowedSet = new Set(allowed.map(String));
-    return clients.filter((c) => allowedSet.has(String(c.id)));
-  }, [clients, personalizationActive, user]);
+    return liveOnly.filter((c) => allowedSet.has(String(c.id)));
+  }, [clients, liveClientIds, personalizationActive, user]);
 
   return (
     <section className="space-y-6">

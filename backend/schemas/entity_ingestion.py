@@ -260,6 +260,16 @@ class EntityBulkTextRow(BaseModel):
             "land as per-row failures, NOT a request abort."
         ),
     )
+    extra_data: Optional[dict] = Field(
+        default=None,
+        description=(
+            "UAT round-3 — per-row opaque blob. Carries "
+            "`strong_identifier` from the grid editor (and any future "
+            "per-row metadata). Merged into Entity.extra_data alongside "
+            "the names; key conflicts are resolved server-side in "
+            "favor of the row's blob."
+        ),
+    )
 
 
 class EntityBulkTextIn(BaseModel):
