@@ -1901,35 +1901,44 @@ export function MockDataProvider({ children }) {
   }, []);
 
   const applyQuickAttachPhone = useCallback((body) => {
-    let snapshot;
-    setDb((prev) => {
-      const ent = prev.entities.find((e) => e.id === body.entity_id);
-      if (!ent) throw new Error(`Entity ${body.entity_id} not found`);
-      if (ent.deleted_at) throw new Error(`Entity ${body.entity_id} not found`);
-      const nextId = 1 + (prev.phones.reduce((m, p) => Math.max(m, p.id || 0), 0));
-      const now = new Date().toISOString();
-      const ph = {
-        id: nextId,
-        entity_id: body.entity_id,
-        phone_number: String(body.phone_number || '').trim(),
-        classification_type: null,
-        ingestion_source: 'manual',
-        ingestion_reason: (body.ingestion_reason || '').trim() || null,
-        verification_status: 'pending',
-        priority_score: null,
-        customer_tier: null,
-        ingested_at: now,
-        created_at: now,
-        updated_at: now,
-        deleted_at: null,
-        extra_data: {},
-        client_id: ent.client_id,
-        entity_type: ent.entity_type,
-      };
-      snapshot = ph;
-      return { ...prev, phones: [...prev.phones, ph] };
+    // UAT round-3 fix: return a Promise that resolves AFTER the setDb
+    // updater commits the new phone. Previously the helper returned
+    // whatever `snapshot` was at function-return time — which was
+    // undefined when the updater ran asynchronously, breaking any
+    // caller that looped over multiple phones (the bulk panel hit
+    // exactly this: 1 succeeded by luck, the rest crashed on
+    // `ph.id` of undefined).
+    return new Promise((resolve, reject) => {
+      setDb((prev) => {
+        const ent = prev.entities.find((e) => e.id === body.entity_id);
+        if (!ent || ent.deleted_at) {
+          reject(new Error(`Entity ${body.entity_id} not found`));
+          return prev;
+        }
+        const nextId = 1 + (prev.phones.reduce((m, p) => Math.max(m, p.id || 0), 0));
+        const now = new Date().toISOString();
+        const ph = {
+          id: nextId,
+          entity_id: body.entity_id,
+          phone_number: String(body.phone_number || '').trim(),
+          classification_type: null,
+          ingestion_source: 'manual',
+          ingestion_reason: (body.ingestion_reason || '').trim() || null,
+          verification_status: 'pending',
+          priority_score: null,
+          customer_tier: null,
+          ingested_at: now,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          extra_data: {},
+          client_id: ent.client_id,
+          entity_type: ent.entity_type,
+        };
+        resolve(ph);
+        return { ...prev, phones: [...prev.phones, ph] };
+      });
     });
-    return snapshot;
   }, []);
 
   const applyRestorePhone = useCallback((id) => {

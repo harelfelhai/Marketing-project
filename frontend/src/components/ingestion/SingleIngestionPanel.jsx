@@ -32,7 +32,7 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import { useAuth }     from '../../contexts/MockAuthContext';
 import NotificationOptInPanel from '../notifications/NotificationOptInPanel';
-import { getClientById } from '../../config/clientRegistry';
+import { CLIENT_REGISTRY, getClientById } from '../../config/clientRegistry';
 import {
   INGEST_MODAL_BTN_CANCEL, INGEST_MODAL_BTN_SUBMIT, INGEST_MODAL_BTN_SUBMITTING,
   INGEST_TOAST_SUCCESS, INGEST_TOAST_ERROR,
@@ -164,21 +164,19 @@ export default function SingleIngestionPanel({ active }) {
       }));
   }, [rootTargets]);
 
-  // Distinct clients for the envelope-mode picker.
+  // UAT round-3 fix: envelope picker shows EVERY registered client
+  // from CLIENT_REGISTRY — not just those with existing entities.
+  // Envelopes don't need a pre-existing root target. Personalization
+  // still narrows the list when the toggle is on.
   const clientOptions = useMemo(() => {
-    const seen = new Set();
-    const out = [];
-    for (const e of visibleEntities) {
-      if (e.client_id == null) continue;
-      if (seen.has(e.client_id)) continue;
-      seen.add(e.client_id);
-      out.push({
-        value: String(e.client_id),
-        label: getClientById(e.client_id)?.name || `Client ${e.client_id}`,
-      });
-    }
-    return out.sort((a, b) => a.label.localeCompare(b.label));
-  }, [visibleEntities]);
+    const pool = CLIENT_REGISTRY.filter((c) => {
+      if (!personalizationClientIds) return true;
+      return personalizationClientIds.has(String(c.id));
+    });
+    return pool
+      .map((c) => ({ value: String(c.id), label: c.name || `Client ${c.id}` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [personalizationClientIds]);
 
   const setField = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
