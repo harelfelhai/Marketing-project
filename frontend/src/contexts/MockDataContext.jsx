@@ -384,15 +384,21 @@ export function MockDataProvider({ children }) {
       const mergedExtra = { ...(payload.extra_data || {}), first_name: firstName };
       if (lastName) mergedExtra.last_name = lastName;
 
+      // UAT round-3 — strong_identifier on its own top-level field.
+      const sid = payload.strong_identifier
+        ? String(payload.strong_identifier).trim() || null
+        : null;
+
       const newEntity = {
-        id:               nextId,
-        client_id:        target.client_id,             // inherited
-        relation_type:    'associated',
-        entity_type:      payload.relation_type,
-        target_entity_id: target.id,
-        extra_data:       mergedExtra,
-        created_at:       now,
-        updated_at:       now,
+        id:                nextId,
+        client_id:         target.client_id,             // inherited
+        relation_type:     'associated',
+        entity_type:       payload.relation_type,
+        target_entity_id:  target.id,
+        strong_identifier: sid,
+        extra_data:        mergedExtra,
+        created_at:        now,
+        updated_at:        now,
       };
 
       result = {
@@ -1721,7 +1727,9 @@ export function MockDataProvider({ children }) {
       target_entity_id: e.target_entity_id,
       first_name:       extra.first_name ?? null,
       last_name:        extra.last_name ?? null,
-      strong_identifier: extra.strong_identifier ?? null,
+      // UAT round-3 — first-class column. Legacy rows might still
+      // carry the value inside extra_data; fall back to that.
+      strong_identifier: e.strong_identifier ?? extra.strong_identifier ?? null,
       extra_data:       extra,
       created_at:       e.created_at ?? null,
       updated_at:       e.updated_at ?? null,
@@ -1774,18 +1782,20 @@ export function MockDataProvider({ children }) {
       if (body.last_name !== undefined && body.last_name !== null) {
         nextExtra.last_name = body.last_name.trim() || null;
       }
+      // UAT round-3 — strong_identifier is a top-level Entity field.
+      let nextStrongId = existing.strong_identifier;
       if (body.strong_identifier !== undefined && body.strong_identifier !== null) {
         const sid = String(body.strong_identifier).trim();
-        if (sid) nextExtra.strong_identifier = sid;
-        else delete nextExtra.strong_identifier;
+        nextStrongId = sid || null;
       }
       const next = {
         ...existing,
-        entity_type:      body.relation_type ?? existing.entity_type,
-        target_entity_id: body.target_entity_id ?? existing.target_entity_id,
-        client_id:        body.client_id ?? existing.client_id,
-        extra_data:       nextExtra,
-        updated_at:       new Date().toISOString(),
+        entity_type:       body.relation_type ?? existing.entity_type,
+        target_entity_id:  body.target_entity_id ?? existing.target_entity_id,
+        client_id:         body.client_id ?? existing.client_id,
+        extra_data:        nextExtra,
+        strong_identifier: nextStrongId,
+        updated_at:        new Date().toISOString(),
       };
       snapshot = next;
       const entities = prev.entities.slice();

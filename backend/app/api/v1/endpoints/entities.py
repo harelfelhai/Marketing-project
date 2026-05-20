@@ -170,6 +170,7 @@ def create_single_entity(
             # plain string (the same shape `Entity.entity_type` stores).
             relation_type=payload.relation_type.value,
             target_entity_id=payload.target_entity_id,
+            strong_identifier=payload.strong_identifier,
             extra_data=payload.extra_data,
             created_by_user_id=current_user.id if current_user else None,
         )
@@ -366,7 +367,9 @@ def _entity_to_dict(ent) -> dict:
         "target_entity_id": ent.target_entity_id,
         "first_name":       extra.get("first_name"),
         "last_name":        extra.get("last_name"),
-        "strong_identifier": extra.get("strong_identifier"),
+        # UAT round-3 — first-class column. Fall back to extra_data for
+        # any legacy rows that pre-date the column.
+        "strong_identifier": ent.strong_identifier or extra.get("strong_identifier"),
         "extra_data":       extra,
         "created_at":       ent.created_at,
         "updated_at":       ent.updated_at,

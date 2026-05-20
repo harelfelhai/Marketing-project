@@ -269,7 +269,10 @@ export default function MultiEntityIngestionPanel() {
           relation_type:    r.relationType,   // null = inherit
           target_entity_id: r.targetEntityId, // null = inherit
         };
-        if (sid) row.extra_data = { strong_identifier: sid };
+        // UAT round-3 — strong_identifier as a first-class top-level
+        // row field, matching the single-entry panel + the new
+        // Entity.strong_identifier column.
+        if (sid) row.strong_identifier = sid;
         return row;
       }),
     };

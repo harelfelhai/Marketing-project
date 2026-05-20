@@ -133,21 +133,16 @@ export default function SingleEntityPanel({ active }) {
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    // UAT round-3: optional "strong identifier" — a non-PK external id
-    // (national id, employee number, etc.). Carried in extra_data so the
-    // SQLModel schema doesn't have to know what it represents; production
-    // wiring can promote it to a real column later without changing the
-    // operator UX.
-    const extra = {};
+    // UAT round-3: strong_identifier moved to a first-class column on
+    // Entity. Send as a top-level payload field; empty values get
+    // dropped server-side.
     const sid = form.strongIdentifier.trim();
-    if (sid) extra.strong_identifier = sid;
-
     const payload = {
       first_name:        form.firstName.trim(),
       last_name:         form.lastName.trim() || null,
       relation_type:     form.relation,
       target_entity_id:  Number(form.targetId),
-      ...(Object.keys(extra).length > 0 ? { extra_data: extra } : {}),
+      ...(sid ? { strong_identifier: sid } : {}),
     };
 
     setSubmitting(true);

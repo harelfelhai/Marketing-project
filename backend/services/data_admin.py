@@ -34,6 +34,7 @@ Cascade rule (per UAT spec):
 """
 
 from datetime import datetime, timezone
+import uuid
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -44,6 +45,11 @@ from models.phone_number import PhoneNumber
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _new_deletion_group_id() -> str:
+    """UUID stamped onto every row tombstoned by one cascade action."""
+    return str(uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -154,21 +160,20 @@ class DataAdminService:
         if client_id is not None:
             ent.client_id = client_id
 
-        # extra_data mutations — make a fresh dict so SQLAlchemy sees
-        # the JSON column as dirty (in-place updates on the same dict
-        # reference don't always trip change detection).
-        if any(v is not None for v in (first_name, last_name, strong_identifier)):
+        # UAT round-3 — strong_identifier is a first-class column. An
+        # explicit empty-string write clears it.
+        if strong_identifier is not None:
+            sid = strong_identifier.strip()
+            ent.strong_identifier = sid or None
+
+        # extra_data mutations for name fields only. Fresh dict so
+        # SQLAlchemy sees the JSON column as dirty.
+        if any(v is not None for v in (first_name, last_name)):
             extra = dict(ent.extra_data or {})
             if first_name is not None:
                 extra["first_name"] = first_name.strip()
             if last_name is not None:
                 extra["last_name"] = last_name.strip() or None
-            if strong_identifier is not None:
-                sid = strong_identifier.strip()
-                if sid:
-                    extra["strong_identifier"] = sid
-                else:
-                    extra.pop("strong_identifier", None)
             ent.extra_data = extra
 
         self.session.add(ent)
@@ -180,22 +185,20 @@ class DataAdminService:
         """
         Tombstone an entity AND cascade through the full sub-graph.
 
-        UAT round-3 extension: when the entity being deleted is a
-        ROOT target (target_entity_id IS NULL), the cascade also
-        descends through every ASSOCIATED entity (those whose
-        target_entity_id == entity_id) AND through THEIR phones.
-        Without this, soft-deleting a client root left the circle's
-        family/friend/envelope entities and their phones orphaned
-        but still visible in the Phone Grid and exports.
+        Every row tombstoned by THIS action is stamped with a shared
+        `deletion_group_id` (UUID). restore_entity uses that stamp to
+        revive exactly the rows that fell together — without
+        resurrecting unrelated rows the operator deleted manually
+        before or after.
 
         Returns the operator-facing summary:
-            {entity_id, phones_deleted, entities_deleted}
+            {entity_id, phones_deleted, entities_deleted, deletion_group_id}
         """
         ent = self.get_entity(entity_id, include_deleted=False)
         now = _utc_now()
+        group_id = _new_deletion_group_id()
 
-        # Build the set of entity_ids to tombstone: the immediate one
-        # plus any active children whose target_entity_id matches.
+        # Children (associated entities targeting this entity).
         child_entities = list(self.session.exec(
             select(Entity)
             .where(Entity.target_entity_id == entity_id)
@@ -211,37 +214,89 @@ class DataAdminService:
         ))
         for p in phones:
             p.deleted_at = now
+            p.deletion_group_id = group_id
             self.session.add(p)
 
-        # Tombstone the children, then the root itself.
         for child in child_entities:
             child.deleted_at = now
+            child.deletion_group_id = group_id
             self.session.add(child)
+
         ent.deleted_at = now
+        ent.deletion_group_id = group_id
         self.session.add(ent)
 
         self.session.commit()
         return {
-            "entity_id":         entity_id,
-            "phones_deleted":    len(phones),
-            "entities_deleted":  len(child_entities) + 1,
+            "entity_id":          entity_id,
+            "phones_deleted":     len(phones),
+            "entities_deleted":   len(child_entities) + 1,
+            "deletion_group_id":  group_id,
         }
 
-    def restore_entity(self, entity_id: int) -> Entity:
+    def restore_entity(self, entity_id: int) -> dict:
         """
-        Clear an entity's tombstone. Does NOT cascade-restore its
-        phones — operator decides per-phone.
+        Symmetric counterpart to soft_delete_entity.
+
+        Restores the entity itself, then every OTHER row sharing the
+        same deletion_group_id — so the full cascade reverses. Rows
+        that were deleted in a separate, unrelated action are NOT
+        touched (different group_id, or no group_id at all).
+
+        Returns:
+            {entity_id, phones_restored, entities_restored}
         """
         ent = self.session.get(Entity, entity_id)
         if ent is None:
             raise ValueError(f"Entity {entity_id} not found")
         if ent.deleted_at is None:
-            return ent  # already active — idempotent
+            # Already active — idempotent. No cascade peers to revive.
+            return {
+                "entity_id":          entity_id,
+                "phones_restored":    0,
+                "entities_restored":  0,
+            }
+
+        group_id = ent.deletion_group_id
+
+        # Restore the entity itself first.
         ent.deleted_at = None
+        ent.deletion_group_id = None
         self.session.add(ent)
+        entities_restored = 1
+        phones_restored = 0
+
+        # If we have a group id, restore the rest of the cascade peers.
+        if group_id:
+            sibling_entities = list(self.session.exec(
+                select(Entity)
+                .where(Entity.deletion_group_id == group_id)
+                .where(Entity.id != entity_id)
+                .where(Entity.deleted_at.is_not(None))
+            ))
+            for child in sibling_entities:
+                child.deleted_at = None
+                child.deletion_group_id = None
+                self.session.add(child)
+            entities_restored += len(sibling_entities)
+
+            sibling_phones = list(self.session.exec(
+                select(PhoneNumber)
+                .where(PhoneNumber.deletion_group_id == group_id)
+                .where(PhoneNumber.deleted_at.is_not(None))
+            ))
+            for p in sibling_phones:
+                p.deleted_at = None
+                p.deletion_group_id = None
+                self.session.add(p)
+            phones_restored = len(sibling_phones)
+
         self.session.commit()
-        self.session.refresh(ent)
-        return ent
+        return {
+            "entity_id":          entity_id,
+            "phones_restored":    phones_restored,
+            "entities_restored":  entities_restored,
+        }
 
     # ----------------------------------------------------------------
     # PhoneNumber
@@ -303,21 +358,57 @@ class DataAdminService:
         return ph
 
     def soft_delete_phone(self, phone_id: int) -> PhoneNumber:
+        # Standalone phone delete still stamps a fresh group_id so the
+        # restore path is uniform across single-phone and cascade
+        # tombstones — restore_phone simply revives whatever shares the
+        # group (which, in this case, is just this one phone).
         ph = self.get_phone(phone_id, include_deleted=False)
         ph.deleted_at = _utc_now()
+        ph.deletion_group_id = _new_deletion_group_id()
         self.session.add(ph)
         self.session.commit()
         self.session.refresh(ph)
         return ph
 
     def restore_phone(self, phone_id: int) -> PhoneNumber:
+        """
+        Restore a soft-deleted phone. If the phone fell as part of a
+        cascade (deletion_group_id != null), every other row sharing
+        the same group_id is revived too — symmetric with the
+        soft_delete_entity → restore_entity behavior.
+        """
         ph = self.session.get(PhoneNumber, phone_id)
         if ph is None:
             raise ValueError(f"Phone {phone_id} not found")
         if ph.deleted_at is None:
             return ph
+
+        group_id = ph.deletion_group_id
         ph.deleted_at = None
+        ph.deletion_group_id = None
         self.session.add(ph)
+
+        if group_id:
+            sibling_entities = list(self.session.exec(
+                select(Entity)
+                .where(Entity.deletion_group_id == group_id)
+                .where(Entity.deleted_at.is_not(None))
+            ))
+            for child in sibling_entities:
+                child.deleted_at = None
+                child.deletion_group_id = None
+                self.session.add(child)
+            sibling_phones = list(self.session.exec(
+                select(PhoneNumber)
+                .where(PhoneNumber.deletion_group_id == group_id)
+                .where(PhoneNumber.id != phone_id)
+                .where(PhoneNumber.deleted_at.is_not(None))
+            ))
+            for sp in sibling_phones:
+                sp.deleted_at = None
+                sp.deletion_group_id = None
+                self.session.add(sp)
+
         self.session.commit()
         self.session.refresh(ph)
         return ph

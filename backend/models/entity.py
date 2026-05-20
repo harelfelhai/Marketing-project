@@ -195,6 +195,20 @@ class Entity(SQLModel, table=True):
         ),
     )
 
+    deletion_group_id: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        max_length=40,
+        description=(
+            "UAT round-3 — shared UUID stamped on every row tombstoned "
+            "by the SAME cascading delete action. Lets restore_entity "
+            "bring back exactly the rows that vanished together, "
+            "without resurrecting unrelated rows the operator deleted "
+            "manually before or after."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Audit attribution (Phase AUTH)
     # ------------------------------------------------------------------
@@ -210,6 +224,25 @@ class Entity(SQLModel, table=True):
             "the entity-ingestion endpoints when a logged-in user is "
             "present on the request. The personalization filter joins "
             "on this column to surface 'my entities' to operators."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # UAT round-3 — strong identifier (national id / employee number /
+    # any external first-class id). Optional. Stored as its own column
+    # rather than inside extra_data so it can be indexed, joined, and
+    # exported as a first-class field.
+    # ------------------------------------------------------------------
+
+    strong_identifier: Optional[str] = Field(
+        default=None,
+        max_length=80,
+        index=True,
+        description=(
+            "Operator-supplied external identifier (e.g. national id, "
+            "employee number). Optional. Distinct from the internal "
+            "primary-key `id`. Indexed so lookups by this value stay "
+            "cheap even at scale."
         ),
     )
 

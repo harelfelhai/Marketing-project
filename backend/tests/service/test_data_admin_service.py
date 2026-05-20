@@ -110,10 +110,12 @@ class TestPatchEntity:
         assert out.client_id == 2
 
     def test_strong_identifier_is_added_and_can_be_cleared(self, svc, associated):
+        # UAT round-3: strong_identifier moved from extra_data to a
+        # first-class indexed column.
         out = svc.patch_entity(associated.id, strong_identifier="X-7842")
-        assert out.extra_data["strong_identifier"] == "X-7842"
+        assert out.strong_identifier == "X-7842"
         out2 = svc.patch_entity(associated.id, strong_identifier="")
-        assert "strong_identifier" not in out2.extra_data
+        assert out2.strong_identifier is None
 
     def test_patch_on_missing_entity_raises(self, svc):
         with pytest.raises(ValueError):
@@ -135,16 +137,19 @@ class TestSoftDeleteEntity:
         self, svc, session, associated, phone
     ):
         summary = svc.soft_delete_entity(associated.id)
-        assert summary == {
-            "entity_id":        associated.id,
-            "phones_deleted":   1,
-            "entities_deleted": 1,
-        }
+        assert summary["entity_id"]       == associated.id
+        assert summary["phones_deleted"]   == 1
+        assert summary["entities_deleted"] == 1
+        # UAT round-3 — every cascaded row shares the same group id.
+        assert summary["deletion_group_id"]
+        gid = summary["deletion_group_id"]
 
         session.refresh(associated)
         session.refresh(phone)
         assert associated.deleted_at is not None
         assert phone.deleted_at is not None
+        assert associated.deletion_group_id == gid
+        assert phone.deletion_group_id == gid
 
     def test_root_delete_cascades_through_children_and_their_phones(
         self, svc, session, primary, associated, phone
@@ -179,15 +184,16 @@ class TestSoftDeleteEntity:
         summary = svc.soft_delete_entity(primary.id)
         # 3 entities deleted: primary + associated (Jane) + bob.
         # 2 phones deleted: Jane's phone + Bob's phone.
-        assert summary == {
-            "entity_id":        primary.id,
-            "phones_deleted":   2,
-            "entities_deleted": 3,
-        }
+        assert summary["entity_id"]         == primary.id
+        assert summary["phones_deleted"]    == 2
+        assert summary["entities_deleted"]  == 3
+        assert summary["deletion_group_id"]
 
+        gid = summary["deletion_group_id"]
         for row in (primary, associated, bob, phone, bob_phone):
             session.refresh(row)
             assert row.deleted_at is not None
+            assert row.deletion_group_id == gid
 
     def test_already_deleted_phones_are_not_re_tombstoned(
         self, svc, session, associated, phone
@@ -214,18 +220,66 @@ class TestSoftDeleteEntity:
 
 
 class TestRestoreEntity:
-    def test_clears_entity_tombstone_only(self, svc, session, associated, phone):
+    def test_restore_reverses_the_cascade_via_group_id(
+        self, svc, session, associated, phone
+    ):
+        # UAT round-3: restore is symmetric with delete. Every row
+        # stamped with the same deletion_group_id comes back.
         svc.soft_delete_entity(associated.id)
-        svc.restore_entity(associated.id)
+        summary = svc.restore_entity(associated.id)
+        assert summary == {
+            "entity_id":         associated.id,
+            "phones_restored":   1,
+            "entities_restored": 1,
+        }
         session.refresh(associated)
         session.refresh(phone)
         assert associated.deleted_at is None
-        # Phone is intentionally NOT auto-restored.
-        assert phone.deleted_at is not None
+        assert associated.deletion_group_id is None
+        assert phone.deleted_at is None
+        assert phone.deletion_group_id is None
+
+    def test_restore_does_not_resurrect_unrelated_deletes(
+        self, svc, session, primary, associated, phone,
+    ):
+        # Deliberately delete the associated entity first (separate
+        # group_id). Then delete the root (another group_id).
+        # Restoring the root must bring back ONLY the rows from the
+        # root's group — not the associated, which was wiped earlier
+        # by a different operator action.
+        svc.soft_delete_entity(associated.id)
+        # Add a second associated to test the partial restore.
+        from models.entity import Entity
+        bob = Entity(
+            client_id=1, entity_type="friend",
+            target_entity_id=primary.id, extra_data={"first_name": "Bob"},
+        )
+        session.add(bob); session.commit(); session.refresh(bob)
+
+        # Root delete cascades through bob (associated was already
+        # tombstoned and stays out of the new cascade's scope).
+        root_delete_summary = svc.soft_delete_entity(primary.id)
+        # bob was alive at root-delete time → it joins the cascade.
+        assert root_delete_summary["entities_deleted"] == 2  # primary + bob
+
+        # Restore the root. Bob comes back. Associated stays deleted.
+        restore_summary = svc.restore_entity(primary.id)
+        assert restore_summary["entities_restored"] == 2  # primary + bob
+
+        session.refresh(primary)
+        session.refresh(associated)
+        session.refresh(bob)
+        assert primary.deleted_at is None
+        assert bob.deleted_at is None
+        assert associated.deleted_at is not None  # unrelated, stays deleted
 
     def test_restore_is_idempotent_on_active_row(self, svc, associated):
         out = svc.restore_entity(associated.id)
-        assert out.deleted_at is None
+        assert out == {
+            "entity_id":         associated.id,
+            "phones_restored":   0,
+            "entities_restored": 0,
+        }
 
     def test_restore_missing_raises(self, svc):
         with pytest.raises(ValueError):

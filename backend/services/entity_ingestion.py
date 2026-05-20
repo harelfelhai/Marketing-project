@@ -96,6 +96,7 @@ class EntityIngestionService:
         relation_type: str,
         target_entity_id: int,
         last_name: Optional[str] = None,
+        strong_identifier: Optional[str] = None,
         extra_data: Optional[dict] = None,
         created_by_user_id: Optional[int] = None,
     ) -> Entity:
@@ -188,12 +189,18 @@ class EntityIngestionService:
             if trimmed_last:
                 merged_extra["last_name"] = trimmed_last
 
+        # UAT round-3 — strong_identifier is its own column. Empty
+        # strings collapse to None so the DB only stores meaningful
+        # values.
+        sid = (strong_identifier or "").strip() or None
+
         new_entity = Entity(
             client_id=target.client_id,
             relation_type="associated",
             entity_type=relation_type,
             target_entity_id=target.id,
             extra_data=merged_extra,
+            strong_identifier=sid,
             created_by_user_id=created_by_user_id,     # Phase AUTH-B
         )
 
@@ -397,7 +404,10 @@ class EntityIngestionService:
                 "last_name": last_trim or None,
                 "relation_type": relation,
                 "target": tgt,
-                # UAT round-3 — per-row opaque blob (strong_identifier, etc.)
+                # UAT round-3 — strong_identifier is now a first-class
+                # Entity column. extra_data still carries any other
+                # caller-supplied opaque metadata.
+                "strong_identifier": (row.get("strong_identifier") or "").strip() or None,
                 "extra_data": row.get("extra_data") or {},
             })
 
@@ -431,6 +441,7 @@ class EntityIngestionService:
                         entity_type=c["relation_type"],
                         target_entity_id=c["target"].id,
                         extra_data=extra,
+                        strong_identifier=c.get("strong_identifier"),
                         created_by_user_id=created_by_user_id,     # Phase AUTH-B
                     )
                     self.session.add(ent)
@@ -616,6 +627,7 @@ class EntityIngestionService:
                         entity_type=c["relation_type"],
                         target_entity_id=c["target"].id,
                         extra_data=extra,
+                        strong_identifier=c.get("strong_identifier"),
                         created_by_user_id=created_by_user_id,     # Phase AUTH-B
                     )
                     self.session.add(ent)

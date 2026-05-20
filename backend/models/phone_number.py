@@ -317,6 +317,17 @@ class PhoneNumber(SQLModel, table=True):
         ),
     )
 
+    deletion_group_id: Optional[str] = Field(
+        default=None,
+        max_length=40,
+        index=True,
+        description=(
+            "UAT round-3 — shared UUID across every row tombstoned in "
+            "one cascade. Used by restore_entity / restore_phone to "
+            "revive exactly the rows that fell together."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Audit attribution (Phase AUTH)
     # ------------------------------------------------------------------

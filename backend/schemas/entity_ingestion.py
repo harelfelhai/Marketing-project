@@ -102,6 +102,15 @@ class EntitySingleCreateIn(BaseModel):
             "Pointing at a non-root entity is rejected with 422."
         ),
     )
+    strong_identifier: Optional[str] = Field(
+        default=None,
+        max_length=80,
+        description=(
+            "UAT round-3 — optional external identifier (national id, "
+            "employee number, etc.). Stored in Entity.strong_identifier "
+            "as a first-class indexed column."
+        ),
+    )
     extra_data: Optional[dict] = Field(
         default=None,
         description=(
@@ -260,14 +269,21 @@ class EntityBulkTextRow(BaseModel):
             "land as per-row failures, NOT a request abort."
         ),
     )
+    strong_identifier: Optional[str] = Field(
+        default=None,
+        max_length=80,
+        description=(
+            "UAT round-3 — optional per-row external identifier "
+            "(national id / employee number). Stored in "
+            "Entity.strong_identifier as a first-class indexed column."
+        ),
+    )
     extra_data: Optional[dict] = Field(
         default=None,
         description=(
-            "UAT round-3 — per-row opaque blob. Carries "
-            "`strong_identifier` from the grid editor (and any future "
-            "per-row metadata). Merged into Entity.extra_data alongside "
-            "the names; key conflicts are resolved server-side in "
-            "favor of the row's blob."
+            "Per-row opaque blob. Merged into Entity.extra_data "
+            "alongside the names. Used for any per-row metadata that "
+            "isn't a first-class column."
         ),
     )
 
