@@ -2964,3 +2964,67 @@ class TestSystemSettingsEndpoint:
         assert tc.get("/api/v1/system/settings").status_code == 403
         r = tc.put("/api/v1/system/settings", json={"storage_backend": "sql"})
         assert r.status_code == 403
+
+
+# ===========================================================================
+# Unified client read-model endpoint — GET /api/v1/clients
+# ===========================================================================
+
+
+class TestClientsEndpoint:
+    """GET /clients returns the unified person+phones aggregates."""
+
+    def _seed(self, tc):
+        # Create a root target + one family member, each with a phone, via
+        # the entity + ingestion endpoints so the rows exist in the test DB.
+        # Simplest path: use the data-admin / entities endpoints already wired.
+        # Here we go straight through the entities bulk-text is overkill; use
+        # the single entity create + quick-attach is also indirect. Instead we
+        # seed via the test session through the storage seam.
+        from repositories.storage import SqlStorage as _S
+        from models.entity import Entity as _E
+        from models.phone_number import PhoneNumber as _P
+        # Reach the overridden session via the app dependency.
+        from database import get_session as _gs
+        gen = app.dependency_overrides[_gs]
+        session = gen()
+        st = _S(session)
+        root = st.entities.add(_E(entity_type="target", target_entity_id=None,
+                                  extra_data={"first_name": "Alpha", "customer_tier": 2}))
+        st.phones.add(_P(entity_id=root.id, phone_number="+15550000001",
+                         ingestion_source="manual", verification_status="pending"))
+        mem = st.entities.add(_E(entity_type="family", target_entity_id=root.id,
+                                 extra_data={"first_name": "Jane"}))
+        st.phones.add(_P(entity_id=mem.id, phone_number="+15550000002",
+                         ingestion_source="manual", verification_status="verified_good"))
+        return root.id
+
+    def test_list_returns_unified_aggregate(self, client):
+        tc, _ = client
+        client_id = self._seed(tc)
+        r = tc.get("/api/v1/clients")
+        assert r.status_code == 200
+        body = r.json()
+        mine = [c for c in body if c["client_id"] == client_id]
+        assert len(mine) == 1
+        agg = mine[0]
+        assert len(agg["phones"]) == 2
+        assert agg["metrics"]["total"] == 2
+        assert agg["metrics"]["pending"] == 1
+        assert agg["metrics"]["good"] == 1
+
+    def test_get_single_client(self, client):
+        tc, _ = client
+        client_id = self._seed(tc)
+        r = tc.get(f"/api/v1/clients/{client_id}")
+        assert r.status_code == 200
+        assert r.json()["client_id"] == client_id
+
+    def test_get_unknown_client_404(self, client):
+        tc, _ = client
+        assert tc.get("/api/v1/clients/ent-nope").status_code == 404
+
+    def test_anonymous_401(self, client):
+        tc, _ = client
+        _logout(tc)
+        assert tc.get("/api/v1/clients").status_code == 401

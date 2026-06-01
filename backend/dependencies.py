@@ -458,6 +458,18 @@ def get_storage(
     return SqlStorage(session)
 
 
+def get_client_read_model_service(
+    storage=Depends(get_storage),
+):
+    """
+    Per-request `ClientReadModelService` — the unified "person + their phones"
+    read projection used by the Client Hub. Read-only; flows through the same
+    Storage seam (and, once enabled, the read-cache) as everything else.
+    """
+    from services.read_models import ClientReadModelService
+    return ClientReadModelService(storage=storage)
+
+
 def get_data_admin_service(
     storage=Depends(get_storage),
 ):

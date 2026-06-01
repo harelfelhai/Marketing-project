@@ -20,6 +20,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     actions,
     auth,
+    clients,
     dashboard,
     entities,
     ingestion,
@@ -47,6 +48,7 @@ router.include_router(verification.router, prefix="/verification", tags=["Verifi
 # Domain D — Queries, Monitoring & System Controls
 router.include_router(system.router, prefix="/system", tags=["System"])
 router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+router.include_router(clients.router, prefix="/clients", tags=["Clients"])
 
 # Domain E — Operations Task Queue (Phase DX)
 router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])

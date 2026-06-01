@@ -811,6 +811,37 @@ class SystemSettingsUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Unified client read-model ("person + their phones")
+# ---------------------------------------------------------------------------
+
+
+class ClientMetrics(BaseModel):
+    """Per-client phone roll-up rendered on the Client Hub card."""
+    total: int
+    pending: int
+    good: int
+    bad: int
+
+
+class ClientAggregateResponse(BaseModel):
+    """
+    One unified client view: the root entity, its member entities, every
+    phone across the circle, and the metric roll-up — assembled server-side
+    so the UI fetches one easy shape instead of stitching joins.
+
+    `root` / `members` / `phones` are loose dicts (the read projection),
+    intentionally not re-modelled field-by-field here so the projection can
+    evolve without a contract migration. Names are NOT included — they live
+    in the frontend config layer (Secrets-Free Mandate).
+    """
+    client_id: str
+    root: Optional[dict] = None
+    members: list[dict] = Field(default_factory=list)
+    phones: list[dict] = Field(default_factory=list)
+    metrics: ClientMetrics
+
+
+# ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 
