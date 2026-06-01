@@ -419,20 +419,42 @@ def get_entity_ingestion_service(
     return EntityIngestionService(storage=SqlStorage(session))
 
 
+# Process-wide cache of the active backend. Read ONCE from the System
+# Settings file and reused for the lifetime of the process, so a toggle in
+# the UI takes effect on the next restart (the documented contract) rather
+# than mid-process. `None` means "not yet resolved".
+_active_storage_backend: Optional[str] = None
+
+
+def _resolve_storage_backend() -> str:
+    """Return (and cache) the storage backend selected in System Settings."""
+    global _active_storage_backend
+    if _active_storage_backend is None:
+        from services.system_settings import SystemSettingsService
+        _active_storage_backend = SystemSettingsService(
+            path=settings.system_settings_path
+        ).get()["storage_backend"]
+    return _active_storage_backend
+
+
 def get_storage(
     session: Session = Depends(get_session),
 ):
     """
-    Per-request `Storage` bundle — one Repository per aggregate, all wired
-    to the currently active storage backend. Services that have been
-    migrated to the repository seam depend on this rather than on the raw
-    Session, so the SQL→Mongo switch flows through here.
+    Per-request `Storage` bundle — one Repository per aggregate, wired to the
+    currently active storage backend. Every migrated service depends on this
+    rather than on the raw Session, so the SQL↔Mongo switch flows through here.
 
-    Today the SQL backend is the only available one (System Settings tab
-    surfaces 'mongo' as a known-but-unavailable option). The Mongo branch
-    is added once its connection / index management lands.
+    The backend is resolved once per process (see `_resolve_storage_backend`):
+    flipping the selector in the System Settings tab takes effect on the next
+    restart. The injected SQL `session` is used only by the SQL backend; the
+    Mongo backend ignores it and binds to the configured Mongo database.
     """
-    from repositories.storage import SqlStorage
+    from repositories.storage import MongoStorage, SqlStorage
+
+    if _resolve_storage_backend() == "mongo":
+        from repositories.mongo_connection import get_mongo_database
+        return MongoStorage(get_mongo_database())
     return SqlStorage(session)
 
 

@@ -63,6 +63,18 @@ class Settings(BaseSettings):
     reconnect / restart.
     """
 
+    mongo_url: str = "mongodb://localhost:27017"
+    """
+    MongoDB connection string, used only when the System Settings storage
+    backend is set to 'mongo'. The credentials (if the deployment's Mongo
+    requires auth) belong in this URL, which is supplied via the environment
+    / secret store on the server — never typed into the frontend (the tab
+    selects the backend TYPE, not the connection string). Secrets-Free Mandate.
+    """
+
+    mongo_db_name: str = "marketing"
+    """Database name used inside the MongoDB server when storage_backend='mongo'."""
+
     # ------------------------------------------------------------------
     # Injectable Module Paths
     # ------------------------------------------------------------------

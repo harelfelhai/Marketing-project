@@ -10,13 +10,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { screen, within, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { renderApp } from './renderApp';
-import { SYSSET_BACKEND_UNAVAILABLE } from '../../src/config/strings.he';
 
 
 describe('System Settings — admin surface', () => {
-  it('renders the storage-backend selector with sql active and mongo disabled', async () => {
+  it('renders the storage-backend selector with sql active and mongo selectable', async () => {
     renderApp({ route: '/system', as: 'admin' });
 
     const page = await screen.findByTestId('system-settings-page');
@@ -29,17 +29,34 @@ describe('System Settings — admin surface', () => {
     expect(sqlRadio).toBeChecked();
     expect(sqlRadio).not.toBeDisabled();
 
-    // mongo is a known-but-not-yet-available option → disabled + flagged.
+    // mongo is now a wired, selectable option (no longer disabled).
     const mongoRadio = within(mongo).getByRole('radio');
-    expect(mongoRadio).toBeDisabled();
-    expect(within(mongo).getByText(SYSSET_BACKEND_UNAVAILABLE)).toBeInTheDocument();
+    expect(mongoRadio).not.toBeDisabled();
+    expect(mongoRadio).not.toBeChecked();
   });
 
-  it('save is disabled until a different (available) backend is chosen', async () => {
+  it('save is disabled until a different backend is chosen', async () => {
     renderApp({ route: '/system', as: 'admin' });
     await screen.findByTestId('system-settings-page');
     // Default selection equals the persisted value → nothing to save.
     expect(screen.getByTestId('system-settings-save')).toBeDisabled();
+  });
+
+  it('selecting mongo then saving persists the new backend', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/system', as: 'admin' });
+    const page = await screen.findByTestId('system-settings-page');
+
+    const mongoRadio = within(within(page).getByTestId('backend-option-mongo')).getByRole('radio');
+    await user.click(mongoRadio);
+
+    const save = screen.getByTestId('system-settings-save');
+    expect(save).not.toBeDisabled();   // now dirty
+    await user.click(save);
+
+    // After saving, mongo is the persisted selection and save goes idle again.
+    await waitFor(() => expect(screen.getByTestId('system-settings-save')).toBeDisabled());
+    expect(mongoRadio).toBeChecked();
   });
 
   it('exposes the separated gear entry for admins', async () => {

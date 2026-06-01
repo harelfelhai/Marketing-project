@@ -1077,8 +1077,8 @@ export function buildInitialDb() {
 export const SEED_SYSTEM_SETTINGS = {
   storage_backend: 'sql',
   backends: [
-    { id: 'sql',   available: true  },
-    { id: 'mongo', available: false },
+    { id: 'sql',   available: true },
+    { id: 'mongo', available: true },
   ],
   applies_on_restart: true,
 };

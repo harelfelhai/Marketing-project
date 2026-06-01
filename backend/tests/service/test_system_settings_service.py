@@ -35,7 +35,7 @@ class TestRead:
         by_id = {b["id"]: b["available"] for b in svc.get()["backends"]}
         assert set(by_id) == set(KNOWN_BACKENDS)
         assert by_id["sql"] is True
-        assert by_id["mongo"] is False  # not wired yet
+        assert by_id["mongo"] is True   # provider wired (needs MONGO_URL at deploy)
 
     def test_malformed_file_degrades_to_default(self, tmp_path):
         p = tmp_path / "system_settings.json"
@@ -62,8 +62,18 @@ class TestWrite:
         with pytest.raises(ValueError, match="[Uu]nknown"):
             svc.set_storage_backend("redis")
 
-    def test_set_known_but_unavailable_backend_raises(self, svc):
+    def test_set_mongo_backend_is_accepted(self, svc):
+        # Both SQL and Mongo providers are wired now.
         assert "mongo" in KNOWN_BACKENDS
-        assert "mongo" not in AVAILABLE_BACKENDS
+        assert "mongo" in AVAILABLE_BACKENDS
+        out = svc.set_storage_backend("mongo")
+        assert out["storage_backend"] == "mongo"
+
+    def test_set_truly_unavailable_backend_raises(self, svc, monkeypatch):
+        # A known-but-unavailable backend (simulated) is rejected with a
+        # clear message so the contract never lies about what works.
+        import services.system_settings as mod
+        monkeypatch.setattr(mod, "KNOWN_BACKENDS", ("sql", "mongo", "redis"))
+        monkeypatch.setattr(mod, "AVAILABLE_BACKENDS", ("sql", "mongo"))
         with pytest.raises(ValueError, match="not available"):
-            svc.set_storage_backend("mongo")
+            svc.set_storage_backend("redis")

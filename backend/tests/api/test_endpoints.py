@@ -2929,7 +2929,7 @@ class TestSystemSettingsEndpoint:
         assert body["storage_backend"] == "sql"
         assert body["applies_on_restart"] is True
         by_id = {b["id"]: b["available"] for b in body["backends"]}
-        assert by_id == {"sql": True, "mongo": False}
+        assert by_id == {"sql": True, "mongo": True}
 
     def test_put_sql_persists_and_is_reflected_on_get(self, client):
         tc, _ = client
@@ -2939,11 +2939,13 @@ class TestSystemSettingsEndpoint:
         # Read-back through a fresh GET.
         assert tc.get("/api/v1/system/settings").json()["storage_backend"] == "sql"
 
-    def test_put_mongo_returns_422_not_available_yet(self, client):
+    def test_put_mongo_is_accepted(self, client):
+        # Both providers are wired; selecting mongo persists (it takes
+        # effect on restart, when the deployment's MONGO_URL is used).
         tc, _ = client
         r = tc.put("/api/v1/system/settings", json={"storage_backend": "mongo"})
-        assert r.status_code == 422
-        assert "not available" in r.json()["detail"].lower()
+        assert r.status_code == 200
+        assert r.json()["storage_backend"] == "mongo"
 
     def test_put_unknown_backend_returns_422(self, client):
         tc, _ = client

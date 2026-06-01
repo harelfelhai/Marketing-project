@@ -32,9 +32,12 @@ from pathlib import Path
 # Every storage backend the UI may surface as an option.
 KNOWN_BACKENDS: tuple[str, ...] = ("sql", "mongo")
 
-# Backends that are actually wired and selectable right now. The MongoDB
-# provider is added here once its repository implementation lands.
-AVAILABLE_BACKENDS: tuple[str, ...] = ("sql",)
+# Backends that are actually wired and selectable right now. Both the SQL
+# and MongoDB repository providers are implemented and proven at parity by
+# the dual-backend test suite. Selecting 'mongo' requires the deployment to
+# have configured `MONGO_URL` (and a reachable mongod); the switch takes
+# effect on the next reconnect / restart.
+AVAILABLE_BACKENDS: tuple[str, ...] = ("sql", "mongo")
 
 DEFAULT_BACKEND = "sql"
 
