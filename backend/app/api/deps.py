@@ -84,7 +84,7 @@ def get_user_action_service(
     Returns:
         UserActionService: Ready to handle one operator trigger request.
     """
-    return UserActionService(session=session, dispatcher=dispatcher)
+    return UserActionService(storage=SqlStorage(session), dispatcher=dispatcher)
 
 
 def get_action_data_trigger_service(
@@ -102,7 +102,7 @@ def get_action_data_trigger_service(
         activate re-dispatch. For example, if a data fix to `classification_type`
         is the only correction that should trigger a retry:
             return ActionDataTriggerService(
-                session=session,
+                storage=SqlStorage(session),
                 dispatcher=dispatcher,
                 trigger_fields={"classification_type"},
             )
@@ -119,7 +119,7 @@ def get_action_data_trigger_service(
     """
     # HOOK FOR INTERNAL ENGINEERS: Replace None with your trigger_fields set.
     return ActionDataTriggerService(
-        session=session,
+        storage=SqlStorage(session),
         dispatcher=dispatcher,
         trigger_fields=None,
     )
@@ -144,7 +144,7 @@ def get_retry_engine(
     Returns:
         RetryEngine: Ready to run one `process_scheduled_retries()` tick.
     """
-    return RetryEngine(session=session, dispatcher=dispatcher)
+    return RetryEngine(storage=SqlStorage(session), dispatcher=dispatcher)
 
 
 # ===========================================================================

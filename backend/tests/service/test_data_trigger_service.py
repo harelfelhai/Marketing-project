@@ -8,17 +8,18 @@ from models.action_log import ActionLog
 from services.dispatcher import ActionDispatcher, ActionDataTriggerService
 
 from tests.conftest import RecordingHandler
+from repositories.storage import SqlStorage
 
 
 def _make_trigger_service(session, trigger_fields=None):
     dispatcher = ActionDispatcher(
-        session=session,
+        storage=SqlStorage(session),
         handlers={},
         default_handler=RecordingHandler(),
         max_retry_count=3,
     )
     return ActionDataTriggerService(
-        session=session, dispatcher=dispatcher, trigger_fields=trigger_fields,
+        storage=SqlStorage(session), dispatcher=dispatcher, trigger_fields=trigger_fields,
     )
 
 

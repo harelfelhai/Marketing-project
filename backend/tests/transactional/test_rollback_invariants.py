@@ -25,7 +25,7 @@ from tests.conftest import RecordingHandler, RoutingEngineReturning
 def _build_service(session, routing=None):
     from repositories.storage import SqlStorage
     dispatcher = ActionDispatcher(
-        session=session, handlers={}, default_handler=RecordingHandler(),
+        storage=SqlStorage(session), handlers={}, default_handler=RecordingHandler(),
     )
     return IngestionService(
         storage=SqlStorage(session),
@@ -90,9 +90,8 @@ class TestPostCommitDispatchFailureSemantics:
         # Routing returns a token but the dispatcher has no handler at all.
         # The dispatcher will raise ValueError after persisting the failed log.
         dispatcher = ActionDispatcher(
-            session=session, handlers={}, default_handler=None,
+            storage=SqlStorage(session), handlers={}, default_handler=None,
         )
-        from repositories.storage import SqlStorage
         svc = IngestionService(
             storage=SqlStorage(session),
             routing_engine=RoutingEngineReturning(action_token="adv_a"),

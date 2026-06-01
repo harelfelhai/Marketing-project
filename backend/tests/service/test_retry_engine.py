@@ -10,17 +10,18 @@ from models.action_log import ActionLog
 from services.dispatcher import ActionDispatcher, RetryEngine
 
 from tests.conftest import FailingHandler, RecordingHandler
+from repositories.storage import SqlStorage
 
 
 def _make_dispatcher_and_retry_engine(session, handler):
     dispatcher = ActionDispatcher(
-        session=session,
+        storage=SqlStorage(session),
         handlers={},
         default_handler=handler,
         max_retry_count=5,
         retry_backoff_seconds=60,
     )
-    engine = RetryEngine(session=session, dispatcher=dispatcher)
+    engine = RetryEngine(storage=SqlStorage(session), dispatcher=dispatcher)
     return dispatcher, engine
 
 

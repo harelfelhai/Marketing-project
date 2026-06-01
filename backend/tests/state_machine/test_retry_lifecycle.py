@@ -20,6 +20,7 @@ from exceptions import ActionExecutionError
 from interfaces.dispatcher import BaseActionHandler
 from models.action_log import ActionLog
 from services.dispatcher import ActionDispatcher, RetryEngine
+from repositories.storage import SqlStorage
 
 
 class FlakyHandler(BaseActionHandler):
@@ -41,10 +42,10 @@ class FlakyHandler(BaseActionHandler):
 def test_full_retry_lifecycle(session, seeded_target):
     handler = FlakyHandler(fail_count=2)
     dispatcher = ActionDispatcher(
-        session=session, handlers={}, default_handler=handler,
+        storage=SqlStorage(session), handlers={}, default_handler=handler,
         max_retry_count=5, retry_backoff_seconds=60,
     )
-    retry_engine = RetryEngine(session=session, dispatcher=dispatcher)
+    retry_engine = RetryEngine(storage=SqlStorage(session), dispatcher=dispatcher)
 
     # T=0: initial dispatch fails retryable.
     with freeze_time("2026-01-01 00:00:00"):
@@ -89,10 +90,10 @@ def test_retry_ceiling_terminates_loop(session, seeded_target):
     from tests.conftest import FailingHandler
     handler = FailingHandler(retryable=True, detail="forever failing")
     dispatcher = ActionDispatcher(
-        session=session, handlers={}, default_handler=handler,
+        storage=SqlStorage(session), handlers={}, default_handler=handler,
         max_retry_count=2, retry_backoff_seconds=10,
     )
-    retry_engine = RetryEngine(session=session, dispatcher=dispatcher)
+    retry_engine = RetryEngine(storage=SqlStorage(session), dispatcher=dispatcher)
 
     with freeze_time("2026-01-01 00:00:00"):
         log = dispatcher.dispatch(seeded_target.id, "test")

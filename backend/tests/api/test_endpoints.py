@@ -111,7 +111,7 @@ def client():
 
     handler = _MockHandler()
     dispatcher = ActionDispatcher(
-        session=test_session,
+        storage=SqlStorage(test_session),
         handlers={},
         default_handler=handler,
         max_retry_count=3,
@@ -131,10 +131,10 @@ def client():
         dispatcher=dispatcher,
         scoring_service=scoring_svc,
     )
-    user_action_svc = UserActionService(session=test_session, dispatcher=dispatcher)
-    trigger_svc = ActionDataTriggerService(session=test_session, dispatcher=dispatcher)
+    user_action_svc = UserActionService(storage=SqlStorage(test_session), dispatcher=dispatcher)
+    trigger_svc = ActionDataTriggerService(storage=SqlStorage(test_session), dispatcher=dispatcher)
     verification_svc = VerificationService(storage=SqlStorage(test_session), scoring_service=scoring_svc)
-    retry_eng = RetryEngine(session=test_session, dispatcher=dispatcher)
+    retry_eng = RetryEngine(storage=SqlStorage(test_session), dispatcher=dispatcher)
     strategy = _MockVerificationStrategy()
     verification_eng = VerificationEngine(
         storage=SqlStorage(test_session),

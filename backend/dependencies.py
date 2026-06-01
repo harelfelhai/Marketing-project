@@ -207,7 +207,7 @@ def get_action_dispatcher(
     handlers: dict[str, BaseActionHandler] = {}
 
     return ActionDispatcher(
-        session=session,
+        storage=SqlStorage(session),
         handlers=handlers,
         default_handler=default_handler,
         max_retry_count=settings.max_retry_count,

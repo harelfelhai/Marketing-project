@@ -12,17 +12,17 @@ from services.dispatcher import ActionDispatcher
 from services.ingestion import IngestionService
 
 from tests.conftest import RecordingHandler
+from repositories.storage import SqlStorage
 
 
 def _build_service(session, routing_engine, handler=None):
     dispatcher = ActionDispatcher(
-        session=session,
+        storage=SqlStorage(session),
         handlers={},
         default_handler=handler or RecordingHandler(),
         max_retry_count=3,
         retry_backoff_seconds=60,
     )
-    from repositories.storage import SqlStorage
     return IngestionService(
         storage=SqlStorage(session), routing_engine=routing_engine, dispatcher=dispatcher,
     )

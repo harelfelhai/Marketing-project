@@ -9,12 +9,13 @@ from models.action_log import ActionLog
 from services.dispatcher import ActionDispatcher
 
 from tests.conftest import FailingHandler, RecordingHandler
+from repositories.storage import SqlStorage
 
 
 def _make_dispatcher(session, default_handler=None, handlers=None,
                     max_retry=3, backoff=60):
     return ActionDispatcher(
-        session=session,
+        storage=SqlStorage(session),
         handlers=handlers or {},
         default_handler=default_handler,
         max_retry_count=max_retry,
