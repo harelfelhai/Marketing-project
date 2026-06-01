@@ -21,6 +21,7 @@ import pytest
 from exceptions import TargetNotFoundError
 from models.entity import Entity
 from services.entity_ingestion import EntityIngestionService
+from repositories.storage import SqlStorage
 
 
 # ===========================================================================
@@ -30,7 +31,7 @@ from services.entity_ingestion import EntityIngestionService
 
 @pytest.fixture()
 def svc(session):
-    return EntityIngestionService(session=session)
+    return EntityIngestionService(storage=SqlStorage(session))
 
 
 @pytest.fixture()

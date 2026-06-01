@@ -164,7 +164,7 @@ def client():
 
     # Phase E2 — entity-centric ingestion service. No scoring hook
     # because the path creates no phones; just a session-bound writer.
-    entity_svc = EntityIngestionService(session=test_session)
+    entity_svc = EntityIngestionService(storage=SqlStorage(test_session))
     app.dependency_overrides[get_entity_ingestion_service] = lambda: entity_svc
 
     # System Settings — back the service with a throwaway temp file so the

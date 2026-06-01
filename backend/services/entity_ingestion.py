@@ -34,7 +34,6 @@ from typing import Any, Optional
 import openpyxl
 from openpyxl import Workbook
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
 
 from exceptions import TargetNotFoundError
 from interfaces.relation_types import ASSOCIATED_RELATIONS, RelationType
@@ -79,15 +78,14 @@ class EntityIngestionService:
     reference; the caller is responsible for the session's lifecycle.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, storage) -> None:
         """
         Args:
-            session (Session): Active SQLModel DB session. Owned by the
-                caller (typically the FastAPI per-request session). The
-                service writes through this session and commits at the
-                end of `create_single`; it does NOT close the session.
+            storage (Storage): Per-request repository bundle. Writes flow
+                through the entities repo so the service runs identically
+                on SQL and MongoDB.
         """
-        self.session = session
+        self.entities = storage.entities
 
     def create_single(
         self,
@@ -156,7 +154,7 @@ class EntityIngestionService:
         # ----------------------------------------------------------------
         # a) TARGET VALIDATION
         # ----------------------------------------------------------------
-        target = self.session.get(Entity, target_entity_id)
+        target = self.entities.get(target_entity_id)
         if target is None:
             # Same exception class the bulk-text endpoint already maps to
             # 422 — keeps error translation consistent across E1/E2.
@@ -206,12 +204,9 @@ class EntityIngestionService:
         )
 
         # ----------------------------------------------------------------
-        # d) COMMIT — single-row insert, single transaction.
+        # d) PERSIST — single-row insert.
         # ----------------------------------------------------------------
-        self.session.add(new_entity)
-        self.session.commit()
-        self.session.refresh(new_entity)
-        return new_entity
+        return self.entities.add(new_entity)
 
     # ----------------------------------------------------------------
     # UAT round-3 — synthetic social envelope (no name)
@@ -243,8 +238,7 @@ class EntityIngestionService:
         Raises ValueError if the named client root does not exist or is
         not itself a root (so envelopes can't dangle off a member).
         """
-        from models.entity import Entity
-        root = self.session.get(Entity, client_id)
+        root = self.entities.get(client_id)
         if root is None:
             raise TargetNotFoundError(target_phone_number=f"client_id={client_id}")
         if root.target_entity_id is not None:
@@ -259,10 +253,7 @@ class EntityIngestionService:
             extra_data={},
             created_by_user_id=created_by_user_id,
         )
-        self.session.add(ent)
-        self.session.commit()
-        self.session.refresh(ent)
-        return ent
+        return self.entities.add(ent)
 
     # ----------------------------------------------------------------
     # Public — bulk-text entry point (Phase E2-B)
@@ -324,7 +315,7 @@ class EntityIngestionService:
         # ----------------------------------------------------------------
         # Pre-flight — validate the request-level default target.
         # ----------------------------------------------------------------
-        default_target = self.session.get(Entity, default_target_entity_id)
+        default_target = self.entities.get(default_target_entity_id)
         if default_target is None:
             raise TargetNotFoundError(
                 target_phone_number=f"entity_id={default_target_entity_id}"
@@ -351,9 +342,7 @@ class EntityIngestionService:
         }
         target_lookup: dict[str, Entity] = {default_target.id: default_target}
         if override_ids:
-            for ent in self.session.exec(
-                select(Entity).where(Entity.id.in_(override_ids))
-            ).all():
+            for ent in self.entities.list({"id": {"in": list(override_ids)}}):
                 target_lookup[ent.id] = ent
 
         # ----------------------------------------------------------------
@@ -427,39 +416,40 @@ class EntityIngestionService:
             })
 
         # ----------------------------------------------------------------
-        # Pass 2 — per-row inserts under SAVEPOINTs.
+        # Pass 2 — per-row inserts. Each add is independent; a per-row DB
+        # error is recorded without aborting the batch (the resilience
+        # contract). The repo seam commits each write, so there is no
+        # nested-transaction savepoint to manage — the per-row try/except
+        # is the backend-agnostic equivalent.
         # ----------------------------------------------------------------
-        entity_ids: list[int] = []
+        entity_ids: list[str] = []
         for c in candidates:
             try:
-                with self.session.begin_nested():
-                    extra: dict[str, Any] = {
-                        "first_name": c["first_name"],
-                        "bulk_submission_id": submission_id,
-                    }
-                    if c["last_name"]:
-                        extra["last_name"] = c["last_name"]
-                    if c["row_token"]:
-                        # Round-trip the original token so failed-row
-                        # reports can correlate back to the operator's
-                        # grid input on the client side.
-                        extra["row_token"] = c["row_token"]
-                    # UAT round-3 — per-row caller blob (strong_identifier,
-                    # etc.). Merge IN after the name/token defaults so the
-                    # caller's keys win on conflict.
-                    if c.get("extra_data"):
-                        extra.update(c["extra_data"])
+                extra: dict[str, Any] = {
+                    "first_name": c["first_name"],
+                    "bulk_submission_id": submission_id,
+                }
+                if c["last_name"]:
+                    extra["last_name"] = c["last_name"]
+                if c["row_token"]:
+                    # Round-trip the original token so failed-row reports
+                    # can correlate back to the operator's grid input.
+                    extra["row_token"] = c["row_token"]
+                # UAT round-3 — per-row caller blob (strong_identifier,
+                # etc.). Merge IN after the name/token defaults so the
+                # caller's keys win on conflict.
+                if c.get("extra_data"):
+                    extra.update(c["extra_data"])
 
-                    ent = Entity(
-                        relation_type="associated",
-                        entity_type=c["relation_type"],
-                        target_entity_id=c["target"].id,
-                        extra_data=extra,
-                        strong_identifier=c.get("strong_identifier"),
-                        created_by_user_id=created_by_user_id,     # Phase AUTH-B
-                    )
-                    self.session.add(ent)
-                    self.session.flush()
+                ent = Entity(
+                    relation_type="associated",
+                    entity_type=c["relation_type"],
+                    target_entity_id=c["target"].id,
+                    extra_data=extra,
+                    strong_identifier=c.get("strong_identifier"),
+                    created_by_user_id=created_by_user_id,     # Phase AUTH-B
+                )
+                self.entities.add(ent)
                 entity_ids.append(ent.id)
             except IntegrityError as exc:
                 detail = str(exc.orig) if exc.orig else "Database constraint violation"
@@ -470,7 +460,6 @@ class EntityIngestionService:
                 })
 
         failed_rows.sort(key=lambda r: r["row"])
-        self.session.commit()
         return {
             "success_count":      len(entity_ids),
             "failed_count":       len(failed_rows),
@@ -539,9 +528,7 @@ class EntityIngestionService:
                 candidate_target_ids.add(str(tgt).strip())
         target_lookup: dict[str, Entity] = {}
         if candidate_target_ids:
-            for ent in self.session.exec(
-                select(Entity).where(Entity.id.in_(candidate_target_ids))
-            ).all():
+            for ent in self.entities.list({"id": {"in": list(candidate_target_ids)}}):
                 target_lookup[ent.id] = ent
 
         # ----------------------------------------------------------------
@@ -611,28 +598,27 @@ class EntityIngestionService:
             }))
 
         # ----------------------------------------------------------------
-        # Pass 2 — per-row insert under SAVEPOINT.
+        # Pass 2 — per-row insert. Each add commits independently; a
+        # per-row DB error is recorded without aborting the batch.
         # ----------------------------------------------------------------
-        entity_ids: list[int] = []
+        entity_ids: list[str] = []
         for row_idx, c in candidates:
             try:
-                with self.session.begin_nested():
-                    extra: dict[str, Any] = {
-                        "first_name":         c["first_name"],
-                        "bulk_submission_id": submission_id,
-                    }
-                    if c["last_name"]:
-                        extra["last_name"] = c["last_name"]
-                    ent = Entity(
-                        relation_type="associated",
-                        entity_type=c["relation_type"],
-                        target_entity_id=c["target"].id,
-                        extra_data=extra,
-                        strong_identifier=c.get("strong_identifier"),
-                        created_by_user_id=created_by_user_id,     # Phase AUTH-B
-                    )
-                    self.session.add(ent)
-                    self.session.flush()
+                extra: dict[str, Any] = {
+                    "first_name":         c["first_name"],
+                    "bulk_submission_id": submission_id,
+                }
+                if c["last_name"]:
+                    extra["last_name"] = c["last_name"]
+                ent = Entity(
+                    relation_type="associated",
+                    entity_type=c["relation_type"],
+                    target_entity_id=c["target"].id,
+                    extra_data=extra,
+                    strong_identifier=c.get("strong_identifier"),
+                    created_by_user_id=created_by_user_id,     # Phase AUTH-B
+                )
+                self.entities.add(ent)
                 entity_ids.append(ent.id)
             except IntegrityError as exc:
                 detail = str(exc.orig) if exc.orig else "Database constraint violation"
@@ -648,7 +634,6 @@ class EntityIngestionService:
                 })
 
         failed_rows.sort(key=lambda r: r["row"])
-        self.session.commit()
         return {
             "success_count":      len(entity_ids),
             "failed_count":       len(failed_rows),
@@ -784,12 +769,12 @@ class EntityIngestionService:
         # Reference sheet — live snapshot of every root target.
         ref = wb.create_sheet(title="valid_targets")
         ref.append(["target_entity_id", "client_id"])
-        targets = self.session.exec(
-            select(Entity)
-            .where(Entity.target_entity_id.is_(None))
-            .where(Entity.entity_type == RelationType.TARGET.value)
-            .order_by(Entity.client_id, Entity.id)
-        ).all()
+        targets = self.entities.list({
+            "target_entity_id": None,
+            "entity_type": RelationType.TARGET.value,
+        })
+        # Deterministic order (client_id then id) — stable template output.
+        targets.sort(key=lambda t: (t.client_id, t.id))
         for t in targets:
             ref.append([t.id, t.client_id])
 

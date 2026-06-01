@@ -19,6 +19,7 @@ import pytest
 from openpyxl import Workbook
 
 from models.entity import Entity
+from repositories.storage import SqlStorage
 from services.entity_ingestion import (
     BULK_ENTITY_ALL_COLUMNS,
     BULK_ENTITY_REQUIRED_COLUMNS,
@@ -33,7 +34,7 @@ from services.entity_ingestion import (
 
 @pytest.fixture()
 def svc(session):
-    return EntityIngestionService(session=session)
+    return EntityIngestionService(storage=SqlStorage(session))
 
 
 @pytest.fixture()

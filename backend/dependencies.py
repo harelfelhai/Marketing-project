@@ -416,7 +416,7 @@ def get_entity_ingestion_service(
     Returns:
         EntityIngestionService: Ready to mint one Entity row.
     """
-    return EntityIngestionService(session=session)
+    return EntityIngestionService(storage=SqlStorage(session))
 
 
 def get_storage(
