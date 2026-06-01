@@ -21,7 +21,7 @@ from repositories.storage import SqlStorage
 @pytest.fixture()
 def verification(session):
     scoring = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
-    return VerificationService(session=session, scoring_service=scoring)
+    return VerificationService(storage=SqlStorage(session), scoring_service=scoring)
 
 
 def _seed_envelope(session, client_id=1, confidence=50.0, verification_status="pending"):

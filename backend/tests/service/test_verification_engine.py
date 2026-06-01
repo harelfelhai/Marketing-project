@@ -8,6 +8,7 @@ from interfaces.verification import BaseVerificationStrategy
 from models.action_log import ActionLog
 from schemas.verification import VerificationVerdict
 from services.verification import VerificationEngine, VerificationService
+from repositories.storage import SqlStorage
 
 from tests.conftest import StrategyReturning
 
@@ -27,11 +28,11 @@ def _seed_phone_with_sent_action(session, target, sent_at):
 
 def _make_engine(session, strategy=None, window_days=7):
     return VerificationEngine(
-        session=session,
+        storage=SqlStorage(session),
         strategy=strategy or StrategyReturning(
             VerificationVerdict(status="verified_good", reason="ok"),
         ),
-        verification_service=VerificationService(session=session),
+        verification_service=VerificationService(storage=SqlStorage(session)),
         verification_window_days=window_days,
     )
 

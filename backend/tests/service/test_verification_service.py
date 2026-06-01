@@ -4,11 +4,12 @@ import pytest
 
 from exceptions import PhoneNumberNotFoundError
 from services.verification import VerificationService
+from repositories.storage import SqlStorage
 
 
 class TestUpdateVerdict:
     def test_writes_all_phase3_fields(self, session, seeded_target):
-        svc = VerificationService(session=session)
+        svc = VerificationService(storage=SqlStorage(session))
         updated = svc.update_verification_verdict(
             phone_id=seeded_target.id,
             status="verified_good",
@@ -26,7 +27,7 @@ class TestUpdateVerdict:
         session.add(seeded_target)
         session.commit()
 
-        svc = VerificationService(session=session)
+        svc = VerificationService(storage=SqlStorage(session))
         updated = svc.update_verification_verdict(
             phone_id=seeded_target.id,
             status="verified_good",
@@ -43,7 +44,7 @@ class TestUpdateVerdict:
         session.add(seeded_target)
         session.commit()
 
-        svc = VerificationService(session=session)
+        svc = VerificationService(storage=SqlStorage(session))
         updated = svc.update_verification_verdict(
             phone_id=seeded_target.id,
             status="verified_good",
@@ -54,7 +55,7 @@ class TestUpdateVerdict:
         assert updated.extra_data == {"untouched": True}
 
     def test_missing_phone_raises(self, session):
-        svc = VerificationService(session=session)
+        svc = VerificationService(storage=SqlStorage(session))
         with pytest.raises(PhoneNumberNotFoundError):
             svc.update_verification_verdict(
                 phone_id=99999,

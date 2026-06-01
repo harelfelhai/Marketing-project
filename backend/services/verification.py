@@ -12,17 +12,15 @@ injected `BaseVerificationStrategy` implementation (see `interfaces/verification
 This module only manages WHEN to evaluate and HOW to persist the result.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta, timezone
 from typing import Optional, TYPE_CHECKING
-
-from sqlmodel import Session, col, func, select
 
 from exceptions import PhoneNumberNotFoundError
 from interfaces.verification import BaseVerificationStrategy
-from models.action_log import ActionLog
 from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.types import utc_now
+from repositories.storage import Storage
 
 # Forward-only typing import. The ScoringService is optional at the
 # VerificationService construction boundary (tests + legacy call sites
@@ -55,20 +53,19 @@ class VerificationService:
 
     def __init__(
         self,
-        session: Session,
+        storage: Storage,
         scoring_service: Optional["ScoringService"] = None,
     ) -> None:
         """
         Args:
-            session         (Session):                  Active DB session.
+            storage         (Storage):                  Repository bundle.
             scoring_service (Optional[ScoringService]): Phase DY scoring
-                hook. When provided, every successful verdict triggers
-                a priority recalculation INSIDE the same transaction
-                so verdict + priority land atomically. When None,
-                scoring is skipped (used by legacy tests and any caller
-                that wants to defer scoring).
+                hook. When provided, every successful verdict triggers a
+                priority recalculation right after the verdict write.
+                When None, scoring is skipped.
         """
-        self.session = session
+        self.phones = storage.phones
+        self.entities = storage.entities
         self.scoring_service = scoring_service
 
     def update_verification_verdict(
@@ -116,7 +113,7 @@ class VerificationService:
         Raises:
             PhoneNumberNotFoundError: If `phone_id` does not exist in the DB.
         """
-        phone = self.session.get(PhoneNumber, phone_id)
+        phone = self.phones.get(phone_id)
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
@@ -133,16 +130,12 @@ class VerificationService:
             merged.update(extra_metadata)
             phone.extra_data = merged
 
-        self.session.add(phone)
+        phone = self.phones.update(phone)
 
-        # Phase DY scoring hook — recalc priority IN THE SAME TRANSACTION
-        # so the verdict and the resulting priority change land
-        # atomically (no race between two separate commits).
+        # Phase DY scoring hook — recalc priority right after the verdict.
         if self.scoring_service is not None:
-            self.scoring_service.recalculate_for_phone(phone_id, commit=False)
-
-        self.session.commit()
-        self.session.refresh(phone)
+            self.scoring_service.recalculate_for_phone(phone_id)
+            phone = self.phones.get(phone_id)
         return phone
 
     # ======================================================================
@@ -226,7 +219,7 @@ class VerificationService:
                 "phone_axis, relation_axis, identification."
             )
 
-        phone = self.session.get(PhoneNumber, phone_id)
+        phone = self.phones.get(phone_id)
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
@@ -235,10 +228,11 @@ class VerificationService:
         # `is_envelope_at_start` captures the state BEFORE this submission
         # mutates entity_type, so phone_axis propagation triggers correctly
         # even when the same submission also identifies the owner.
-        entity = self.session.get(Entity, phone.entity_id)
+        entity = self.entities.get(phone.entity_id)
         is_envelope_at_start = (
             entity is not None and entity.entity_type == "social_envelope"
         )
+        entity_dirty = False
 
         now = utc_now()
 
@@ -268,7 +262,7 @@ class VerificationService:
                 phone.verified_at = now
                 if entity is not None:
                     entity.target_entity_id = None
-                    self.session.add(entity)
+                    entity_dirty = True
 
         # ---- Relation axis (Vector A only; UI hides this for envelopes) ----
         if relation_axis == "confirm":
@@ -283,7 +277,7 @@ class VerificationService:
             phone.verified_at = now
             if entity is not None:
                 entity.target_entity_id = None
-                self.session.add(entity)
+                entity_dirty = True
 
         # ---- Identification (envelope → named / identified_envelope) ----
         if identification and is_envelope_at_start and entity is not None:
@@ -339,7 +333,7 @@ class VerificationService:
             if identification.get("last_name"):
                 merged["last_name"] = identification["last_name"]
             entity.extra_data = merged
-            self.session.add(entity)
+            entity_dirty = True
 
         # ---- extra_metadata merge into phone.extra_data ----
         if extra_metadata:
@@ -347,15 +341,16 @@ class VerificationService:
             merged_phone.update(extra_metadata)
             phone.extra_data = merged_phone
 
-        self.session.add(phone)
+        # Persist the entity first (if touched), then the phone.
+        if entity_dirty and entity is not None:
+            self.entities.update(entity)
+        phone = self.phones.update(phone)
 
-        # Recalculate priority inside the same transaction so confidence
-        # and entity_type changes propagate atomically.
+        # Recalculate priority after the writes so confidence and
+        # entity_type changes propagate into the score.
         if self.scoring_service is not None:
-            self.scoring_service.recalculate_for_phone(phone_id, commit=False)
-
-        self.session.commit()
-        self.session.refresh(phone)
+            self.scoring_service.recalculate_for_phone(phone_id)
+            phone = self.phones.get(phone_id)
         return phone
 
 
@@ -387,68 +382,66 @@ class VerificationEngine:
 
     def __init__(
         self,
-        session: Session,
+        storage: Storage,
         strategy: BaseVerificationStrategy,
         verification_service: VerificationService,
         verification_window_days: int = 7,
     ) -> None:
         """
         Args:
-            session                  (Session):                    Active DB session.
+            storage                  (Storage):                    Repository bundle.
             strategy                 (BaseVerificationStrategy):   The injected quality
                                                                     evaluation algorithm.
-            verification_service     (VerificationService):        The DB writer for verdicts.
+            verification_service     (VerificationService):        The verdict writer.
             verification_window_days (int):                        Minimum number of days since
                                                                     the last "sent" ActionLog
                                                                     before a number is eligible.
-                                                                    Default: 7.
         """
-        self.session = session
+        self.phones = storage.phones
+        self.action_logs = storage.action_logs
         self.strategy = strategy
         self.verification_service = verification_service
         self.verification_window_days = verification_window_days
 
-    def _fetch_eligible_phone_ids(self) -> list[int]:
+    def _fetch_eligible_phone_ids(self) -> list[str]:
         """
-        Query for PhoneNumber IDs that meet the verification eligibility criteria.
-
-        Eligibility conditions:
-            1. `PhoneNumber.verification_status == "pending"`
+        PhoneNumber IDs meeting the verification eligibility criteria:
+            1. `verification_status == "pending"`
             2. At least one `ActionLog` with `status == "sent"` for this phone.
             3. The most recent "sent" `ActionLog.executed_at` is older than
-               `self.verification_window_days` days ago.
+               `verification_window_days` days ago.
 
-        Returns:
-            list[int]: Ordered list of eligible `PhoneNumber.id` values.
-                       Empty list if no numbers are eligible.
+        Resolved application-side (the storage seam has no GROUP BY): the
+        per-phone last-sent timestamp is reduced from the 'sent' action logs
+        in Python, then pending phones are filtered against the cutoff. The
+        volume is bounded by the active queue, so the cost is negligible.
         """
-        cutoff = datetime.utcnow() - timedelta(days=self.verification_window_days)
+        cutoff = utc_now() - timedelta(days=self.verification_window_days)
 
-        # Subquery: for each phone_id, find the max executed_at of "sent" logs.
-        last_sent_subq = (
-            select(
-                ActionLog.phone_id,
-                func.max(ActionLog.executed_at).label("last_sent_at"),
-            )
-            .where(ActionLog.status == "sent")
-            .group_by(ActionLog.phone_id)
-            .subquery()
-        )
+        def _aware(dt):
+            # Mongo returns tz-aware datetimes; a naive value (e.g. a test
+            # fixture or a legacy row) is treated as UTC so the comparison
+            # below never mixes naive and aware operands.
+            if dt is not None and dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
 
-        # Main query: join PhoneNumber against the subquery, filter by window.
-        results = self.session.exec(
-            select(PhoneNumber.id)
-            .join(
-                last_sent_subq,
-                PhoneNumber.id == last_sent_subq.c.phone_id,
-            )
-            .where(
-                PhoneNumber.verification_status == "pending",
-                col(last_sent_subq.c.last_sent_at) <= cutoff,
-            )
-        ).all()
+        # Reduce: per-phone max executed_at over 'sent' logs.
+        last_sent: dict[str, object] = {}
+        for log in self.action_logs.list({"status": "sent"}):
+            ts = _aware(log.executed_at)
+            if ts is None:
+                continue
+            prev = last_sent.get(log.phone_id)
+            if prev is None or ts > prev:
+                last_sent[log.phone_id] = ts
 
-        return list(results)
+        eligible: list[str] = []
+        for phone in self.phones.list({"verification_status": "pending"}):
+            ts = last_sent.get(phone.id)
+            if ts is not None and ts <= cutoff:
+                eligible.append(phone.id)
+        return eligible
 
     def process_eligible_numbers(self) -> int:
         """

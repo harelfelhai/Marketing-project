@@ -176,7 +176,7 @@ def get_verification_service(
         VerificationService: Ready to write one verification verdict +
         recompute priority atomically.
     """
-    return VerificationService(session=session, scoring_service=scoring_service)
+    return VerificationService(storage=SqlStorage(session), scoring_service=scoring_service)
 
 
 # ===========================================================================

@@ -259,9 +259,9 @@ def get_verification_engine(
     # here yet — scoring on engine batches is a Phase DY-2 add). For the
     # synchronous manual-verdict path that uses `get_verification_service`,
     # scoring IS wired in `app/api/deps.py`.
-    verification_service = VerificationService(session=session)
+    verification_service = VerificationService(storage=SqlStorage(session))
     return VerificationEngine(
-        session=session,
+        storage=SqlStorage(session),
         strategy=strategy,
         verification_service=verification_service,
         verification_window_days=settings.verification_window_days,

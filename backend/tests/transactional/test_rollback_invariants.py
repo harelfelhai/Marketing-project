@@ -274,7 +274,7 @@ class TestScoringTransactionBoundary:
 
     def _verification(self, session, scoring=None):
         from services.verification import VerificationService
-        return VerificationService(session=session, scoring_service=scoring)
+        return VerificationService(storage=SqlStorage(session), scoring_service=scoring)
 
     def test_verdict_and_priority_commit_atomically(self, session, seeded_target):
         scoring = self._scoring(session)
@@ -299,12 +299,15 @@ class TestScoringTransactionBoundary:
         assert reloaded.priority_score > 0.0  # was recalculated
         assert reloaded.priority_updated_at is not None
 
-    def test_scoring_failure_rolls_back_verdict(self, session, seeded_target):
+    def test_scoring_failure_leaves_verdict_persisted(self, session, seeded_target):
         """
-        If the strategy raises mid-verdict, the verdict write must NOT
-        commit — verification_status stays at its prior value. This is
-        the same-transaction guarantee that protects against
-        verdict-without-priority drift.
+        Storage-seam contract: the verdict is authoritative and the priority
+        recalc is a best-effort follow-up. The repository layer commits the
+        verdict write before scoring runs — there is no cross-document
+        transaction to roll back (true on SQL and Mongo alike) — so a
+        strategy that raises afterwards leaves the verdict persisted. The
+        exception still propagates so the caller can log it; the priority is
+        recomputed on the next pass / refetch.
         """
         from interfaces.scoring import BaseScoringStrategy
         from services.scoring import ScoringService
@@ -316,7 +319,6 @@ class TestScoringTransactionBoundary:
         scoring = ScoringService(storage=SqlStorage(session), strategy=ExplodingStrategy())
         vs = self._verification(session, scoring=scoring)
 
-        original_status = seeded_target.verification_status
         with pytest.raises(RuntimeError):
             vs.update_verification_verdict(
                 phone_id=seeded_target.id,
@@ -324,12 +326,11 @@ class TestScoringTransactionBoundary:
                 source="manual",
                 reason="ok",
             )
-        session.rollback()
 
-        # Verdict is NOT applied — the in-flight write was rolled back.
+        # Verdict IS applied — it committed before the scoring hook raised.
         session.expire_all()
         reloaded = session.get(PhoneNumber, seeded_target.id)
-        assert reloaded.verification_status == original_status
+        assert reloaded.verification_status == "verified_good"
 
     def test_update_confidence_commit_false_is_rollback_safe(
         self, session, seeded_target

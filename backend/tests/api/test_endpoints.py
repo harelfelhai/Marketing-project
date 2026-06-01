@@ -133,11 +133,11 @@ def client():
     )
     user_action_svc = UserActionService(session=test_session, dispatcher=dispatcher)
     trigger_svc = ActionDataTriggerService(session=test_session, dispatcher=dispatcher)
-    verification_svc = VerificationService(session=test_session, scoring_service=scoring_svc)
+    verification_svc = VerificationService(storage=SqlStorage(test_session), scoring_service=scoring_svc)
     retry_eng = RetryEngine(session=test_session, dispatcher=dispatcher)
     strategy = _MockVerificationStrategy()
     verification_eng = VerificationEngine(
-        session=test_session,
+        storage=SqlStorage(test_session),
         strategy=strategy,
         verification_service=verification_svc,
         verification_window_days=7,
