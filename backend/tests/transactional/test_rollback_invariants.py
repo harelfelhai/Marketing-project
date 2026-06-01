@@ -22,11 +22,12 @@ from tests.conftest import RecordingHandler, RoutingEngineReturning
 
 
 def _build_service(session, routing=None):
+    from repositories.storage import SqlStorage
     dispatcher = ActionDispatcher(
         session=session, handlers={}, default_handler=RecordingHandler(),
     )
     return IngestionService(
-        session=session,
+        storage=SqlStorage(session),
         routing_engine=routing or RoutingEngineReturning(action_token=None),
         dispatcher=dispatcher,
     )
@@ -90,8 +91,9 @@ class TestPostCommitDispatchFailureSemantics:
         dispatcher = ActionDispatcher(
             session=session, handlers={}, default_handler=None,
         )
+        from repositories.storage import SqlStorage
         svc = IngestionService(
-            session=session,
+            storage=SqlStorage(session),
             routing_engine=RoutingEngineReturning(action_token="adv_a"),
             dispatcher=dispatcher,
         )

@@ -22,8 +22,9 @@ def _build_service(session, routing_engine, handler=None):
         max_retry_count=3,
         retry_backoff_seconds=60,
     )
+    from repositories.storage import SqlStorage
     return IngestionService(
-        session=session, routing_engine=routing_engine, dispatcher=dispatcher
+        storage=SqlStorage(session), routing_engine=routing_engine, dispatcher=dispatcher,
     )
 
 

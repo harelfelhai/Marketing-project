@@ -13,13 +13,14 @@ dispatcher at the right moment.
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlmodel import Session, select
+from sqlalchemy.exc import IntegrityError
 
 from exceptions import TargetNotFoundError
 from interfaces.ingestion import BaseIngestionRoutingEngine
 from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.types import utc_now
+from repositories.storage import Storage
 from schemas.ingestion import IngestionPayload
 
 # TYPE_CHECKING guard avoids a circular import at runtime while still
@@ -55,32 +56,26 @@ class IngestionService:
 
     def __init__(
         self,
-        session: Session,
+        storage: Storage,
         routing_engine: BaseIngestionRoutingEngine,
         dispatcher: "ActionDispatcher",
         scoring_service: Optional["ScoringService"] = None,
     ) -> None:
         """
-        Initialise the service with its required dependencies.
-
         Args:
-            session         (Session):                     Active SQLModel DB session.
-                                                            Shared with the caller; do NOT
-                                                            close it inside this class.
-            routing_engine  (BaseIngestionRoutingEngine):  The injected routing engine.
-                                                            Determines post-ingestion action.
-            dispatcher      (ActionDispatcher):            The Phase 2 dispatcher, used only
-                                                            if the routing engine returns an
-                                                            action token.
+            storage         (Storage):                     Per-request repository bundle.
+            routing_engine  (BaseIngestionRoutingEngine):  Determines post-ingestion action.
+            dispatcher      (ActionDispatcher):            Phase 2 dispatcher, used only when
+                                                            the routing engine returns a
+                                                            non-None action token.
             scoring_service (Optional[ScoringService]):    Phase DY scoring hook. When
                                                             provided, every newly-inserted
                                                             PhoneNumber gets an initial
-                                                            priority_score computed BEFORE
-                                                            the routing engine fires. When
-                                                            None, scoring is skipped (used
-                                                            by legacy tests).
+                                                            priority_score computed before
+                                                            the routing engine fires.
         """
-        self.session = session
+        self.entities = storage.entities
+        self.phones = storage.phones
         self.routing_engine = routing_engine
         self.dispatcher = dispatcher
         self.scoring_service = scoring_service
@@ -144,36 +139,49 @@ class IngestionService:
         # Entity.id. External callers are blind to DB IDs; this is the
         # single translation point.
         # ----------------------------------------------------------------
-        target_phone_row = self.session.exec(
-            select(PhoneNumber).where(
-                PhoneNumber.phone_number == payload.target_phone_number
-            )
-        ).first()
-
-        if target_phone_row is None:
+        target_phones = self.phones.list(
+            {"phone_number": payload.target_phone_number},
+            limit=1,
+        )
+        if not target_phones:
             # Abort with a domain exception — the router translates this to 404.
             raise TargetNotFoundError(
                 target_phone_number=payload.target_phone_number
             )
-
-        # The target's Entity.id is the FK we need for the new circle member.
-        target_entity_id: str = target_phone_row.entity_id
+        target_entity_id: str = target_phones[0].entity_id
 
         # ----------------------------------------------------------------
-        # b) ATOMIC CREATE — Entity + PhoneNumber under one transaction.
-        # If either INSERT fails (e.g. UNIQUE violation), SQLModel rolls
-        # back both, leaving the DB in a consistent state.
+        # Pre-check: the phone_number column is UNIQUE. Without this check
+        # the entity insert would land first and then the phone insert
+        # would fail — leaking an orphan entity, because the storage
+        # layer can't wrap the two writes in one transaction (Mongo has
+        # no cross-document atomicity at all, and the SQL repo commits
+        # on each write to keep the abstraction uniform).
+        # The check is racy under concurrent writers, but the UNIQUE
+        # index in SQL and the unique index we install on Mongo provide
+        # the actual enforcement; this guard handles the common-case
+        # operator submission cleanly.
+        # ----------------------------------------------------------------
+        if self.phones.list({"phone_number": payload.phone_number}, limit=1):
+            raise IntegrityError(
+                statement=None, params=None,
+                orig=Exception(
+                    f"phone_number={payload.phone_number!r} already exists"
+                ),
+            )
+
+        # ----------------------------------------------------------------
+        # b) CREATE — Entity then PhoneNumber. Ids are uuid-defaulted by
+        # the model so the FK on the phone can reference the entity
+        # without needing a flush.
         # ----------------------------------------------------------------
         new_entity = Entity(
             entity_type=payload.entity_type,
             target_entity_id=target_entity_id,
-            # Pass through the opaque proprietary blob — do not inspect.
             extra_data=payload.entity_extra,
-            # Phase AUTH-B audit attribution.
             created_by_user_id=uploaded_by_user_id,
         )
-        self.session.add(new_entity)
-        self.session.flush()  # assigns new_entity.id without committing
+        self.entities.add(new_entity)
 
         new_phone = PhoneNumber(
             entity_id=new_entity.id,
@@ -181,24 +189,16 @@ class IngestionService:
             ingestion_source=payload.ingestion_source,
             ingestion_reason=payload.ingestion_reason,
             ingested_at=utc_now(),
-            # Pass through the opaque proprietary blob — do not inspect.
             extra_data=payload.phone_extra,
-            # Phase AUTH-B audit attribution.
             uploaded_by_user_id=uploaded_by_user_id,
         )
-        self.session.add(new_phone)
-        self.session.flush()  # assign new_phone.id without committing
+        self.phones.add(new_phone)
 
-        # Phase DY — compute initial priority for the new phone INSIDE
-        # the same transaction so the row is inserted with a meaningful
+        # Phase DY — compute the initial priority for the new phone now
+        # that it is persisted, so the row carries a meaningful
         # priority_score rather than the column default of 0.0.
-        # confidence_score is already its configured baseline (column
-        # default in models/phone_number.py).
         if self.scoring_service is not None:
-            self.scoring_service.recalculate_for_phone(new_phone.id, commit=False)
-
-        self.session.commit()
-        self.session.refresh(new_phone)
+            self.scoring_service.recalculate_for_phone(new_phone.id, commit=True)
 
         # ----------------------------------------------------------------
         # c) ROUTING DECISION + OPTIONAL IMMEDIATE DISPATCH
@@ -257,8 +257,7 @@ class IngestionService:
         No scoring / routing side-effects — keep this minimal. Scoring
         is recomputed by the regular boot path / `refetchPhones`.
         """
-        from models.entity import Entity
-        ent = self.session.get(Entity, entity_id)
+        ent = self.entities.get(entity_id)
         if ent is None or ent.deleted_at is not None:
             raise TargetNotFoundError(target_phone_number=f"entity_id={entity_id}")
 
@@ -271,7 +270,4 @@ class IngestionService:
             extra_data={},
             uploaded_by_user_id=uploaded_by_user_id,
         )
-        self.session.add(new_phone)
-        self.session.commit()
-        self.session.refresh(new_phone)
-        return new_phone
+        return self.phones.add(new_phone)

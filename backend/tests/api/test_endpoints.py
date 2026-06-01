@@ -123,8 +123,9 @@ def client():
     from modules.mock_scoring import ScoringStrategy as MockScoringStrategy
     scoring_svc = ScoringService(session=test_session, strategy=MockScoringStrategy())
 
+    from repositories.storage import SqlStorage as _SqlStorage
     ingestion_svc = IngestionService(
-        session=test_session,
+        storage=_SqlStorage(test_session),
         routing_engine=routing_engine,
         dispatcher=dispatcher,
         scoring_service=scoring_svc,

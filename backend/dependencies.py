@@ -137,10 +137,11 @@ def get_ingestion_service(
         IngestionService: A fully initialised ingestion service ready to handle
                           one ingestion request.
     """
+    from repositories.storage import SqlStorage
     dispatcher = get_action_dispatcher(session)
     scoring_service = get_scoring_service(session)
     return IngestionService(
-        session=session,
+        storage=SqlStorage(session),
         routing_engine=routing_engine,
         dispatcher=dispatcher,
         scoring_service=scoring_service,
