@@ -22,3 +22,12 @@ pytest==8.2.0
 pytest-asyncio==0.23.6
 freezegun==1.5.1
 hypothesis==6.100.0
+
+# ---------------------------------------------------------------------------
+# Pluggable storage backend (System Settings → DB engine selector).
+# The MongoDB provider codes against the pymongo client surface; tests run
+# it against an in-memory mongomock client (no mongod needed). pymongo is the
+# production driver; mongomock is dev/test-only.
+# ---------------------------------------------------------------------------
+pymongo==4.10.1
+mongomock==4.3.0
