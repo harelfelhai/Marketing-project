@@ -159,7 +159,7 @@ def client():
 
     # Phase E1 — bulk ingestion service (shares the same scoring service
     # so the Phase DY hook works inside the test transaction too).
-    bulk_svc = BulkIngestionService(session=test_session, scoring_service=scoring_svc)
+    bulk_svc = BulkIngestionService(storage=SqlStorage(test_session), scoring_service=scoring_svc)
     app.dependency_overrides[get_bulk_ingestion_service] = lambda: bulk_svc
 
     # Phase E2 — entity-centric ingestion service. No scoring hook

@@ -50,7 +50,6 @@ from typing import Optional, TYPE_CHECKING
 import openpyxl
 from openpyxl import Workbook
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
 
 from exceptions import TargetNotFoundError
 from models.entity import Entity
@@ -164,19 +163,19 @@ class BulkIngestionService:
 
     def __init__(
         self,
-        session: Session,
+        storage,
         scoring_service: Optional["ScoringService"] = None,
     ) -> None:
         """
         Args:
-            session         (Session):          Active DB session.
+            storage         (Storage):          Per-request repository bundle.
             scoring_service (ScoringService):   Phase DY hook. When provided,
-                every successfully-inserted phone gets a priority recalc
-                INSIDE its savepoint so the new row carries a meaningful
-                priority_score immediately (not the column default 0.0).
-                When None, scoring is skipped (used by some tests).
+                every successfully-inserted phone gets a priority recalc so
+                the new row carries a meaningful priority_score immediately
+                (not the column default 0.0). When None, scoring is skipped.
         """
-        self.session = session
+        self.entities = storage.entities
+        self.phones = storage.phones
         self.scoring_service = scoring_service
 
     # ----------------------------------------------------------------
@@ -215,7 +214,7 @@ class BulkIngestionService:
         # failures only apply to row-shape problems, not envelope errors.
         # ----------------------------------------------------------------
         if target_entity_id is not None:
-            target = self.session.get(Entity, target_entity_id)
+            target = self.entities.get(target_entity_id)
             if target is None:
                 raise TargetNotFoundError(
                     target_phone_number=f"entity_id={target_entity_id}"
@@ -286,40 +285,39 @@ class BulkIngestionService:
             extra_data=entity_extra_merged,
             created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
         )
-        self.session.add(new_entity)
-        self.session.flush()  # populate new_entity.id without committing
+        self.entities.add(new_entity)
 
         phone_extra_with_audit = dict(phone_extra_shared or {})
         phone_extra_with_audit["bulk_submission_id"] = submission_id
 
-        phone_ids: list[int] = []
+        phone_ids: list[str] = []
         for row, raw, normalized in candidates:
+            # phone_number is UNIQUE. The repo seam commits each insert
+            # independently (no savepoint), so we pre-check existence to
+            # catch a collision against an already-persisted row — the
+            # backend-agnostic equivalent of catching the DB UNIQUE error.
+            if self.phones.list({"phone_number": normalized}, limit=1):
+                failed_rows.append({
+                    "row": row,
+                    "input": raw[:_FAILURE_INPUT_CAP],
+                    "error": "Already exists in the system",
+                })
+                continue
             try:
-                # Nested transaction = SQLite SAVEPOINT. On IntegrityError
-                # (UNIQUE / FK), the savepoint rolls back automatically
-                # via the context manager's __exit__ path.
-                with self.session.begin_nested():
-                    phone = PhoneNumber(
-                        entity_id=new_entity.id,
-                        phone_number=normalized,
-                        ingestion_source=ingestion_source,
-                        ingestion_reason=ingestion_reason,
-                        extra_data=dict(phone_extra_with_audit),
-                        uploaded_by_user_id=uploaded_by_user_id,  # Phase AUTH-B
-                    )
-                    self.session.add(phone)
-                    self.session.flush()
-                    # Phase DY hook — run scoring inside the same savepoint
-                    # so a scoring failure rolls back the phone insert too.
-                    if self.scoring_service is not None:
-                        self.scoring_service.recalculate_for_phone(
-                            phone.id, commit=False
-                        )
+                phone = PhoneNumber(
+                    entity_id=new_entity.id,
+                    phone_number=normalized,
+                    ingestion_source=ingestion_source,
+                    ingestion_reason=ingestion_reason,
+                    extra_data=dict(phone_extra_with_audit),
+                    uploaded_by_user_id=uploaded_by_user_id,  # Phase AUTH-B
+                )
+                self.phones.add(phone)
                 phone_ids.append(phone.id)
+                # Phase DY hook — priority recalc for the new row.
+                if self.scoring_service is not None:
+                    self.scoring_service.recalculate_for_phone(phone.id)
             except IntegrityError as exc:
-                # Most common case: UNIQUE constraint on phone_number.
-                # Detail comes from the DB driver — we trim it for the
-                # operator-facing message.
                 detail = str(exc.orig) if exc.orig else "Database constraint violation"
                 failed_rows.append({
                     "row": row,
@@ -335,7 +333,6 @@ class BulkIngestionService:
         # matching the operator's input (pass-1 + pass-2 failures merge).
         failed_rows.sort(key=lambda r: r["row"])
 
-        self.session.commit()
         return {
             "success_count":      len(phone_ids),
             "failed_count":       len(failed_rows),
@@ -467,61 +464,56 @@ class BulkIngestionService:
         # own Entity (the bulk-upload mental model is "every row is its
         # own ingestion context").
         # ----------------------------------------------------------------
-        phone_ids: list[int] = []
-        entity_ids: list[int] = []
+        phone_ids: list[str] = []
+        entity_ids: list[str] = []
 
         for row_idx, row in candidates:
             try:
-                with self.session.begin_nested():
-                    # Validate target_entity_id existence per-row. A bad
-                    # FK here lands as a per-row failure, NOT a
-                    # request-level abort (different from bulk-text).
-                    target_id = row.get("target_entity_id")
-                    if target_id is not None:
-                        if self.session.get(Entity, target_id) is None:
-                            raise ValueError(
-                                f"target_entity_id={target_id} not found"
-                            )
+                # Validate target_entity_id existence per-row. A bad FK
+                # here lands as a per-row failure, NOT a request-level
+                # abort (different from bulk-text).
+                target_id = row.get("target_entity_id")
+                if target_id is not None and self.entities.get(target_id) is None:
+                    raise ValueError(f"target_entity_id={target_id} not found")
 
-                    entity_extra = {"bulk_submission_id": submission_id}
-                    # Two-level model: membership derives from
-                    # target_entity_id. For a member with no explicit
-                    # target, the row's client_id names the root to
-                    # attach under; a 'target' row is its own root.
-                    _is_target = row["entity_type"] == "target"
-                    new_entity = Entity(
-                        relation_type=("associated" if not _is_target else "primary"),
-                        entity_type=row["entity_type"],
-                        target_entity_id=(
-                            target_id if target_id is not None
-                            else (None if _is_target else row.get("client_id"))
-                        ),
-                        extra_data=entity_extra,
-                        created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
-                    )
-                    self.session.add(new_entity)
-                    self.session.flush()
+                # phone_number is UNIQUE — pre-check BEFORE creating the
+                # entity so a duplicate never leaves an orphan entity
+                # behind (the repo seam commits each write independently).
+                if self.phones.list({"phone_number": row["_normalized_phone"]}, limit=1):
+                    raise IntegrityError(statement=None, params=None,
+                                         orig=Exception("UNIQUE phone_number"))
 
-                    phone = PhoneNumber(
-                        entity_id=new_entity.id,
-                        phone_number=row["_normalized_phone"],
-                        ingestion_source=row["ingestion_source"],
-                        ingestion_reason=row.get("ingestion_reason"),
-                        extra_data={"bulk_submission_id": submission_id},
-                        uploaded_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
-                    )
-                    self.session.add(phone)
-                    self.session.flush()
-                    if self.scoring_service is not None:
-                        self.scoring_service.recalculate_for_phone(
-                            phone.id, commit=False
-                        )
+                entity_extra = {"bulk_submission_id": submission_id}
+                # Two-level model: membership derives from target_entity_id.
+                # For a member with no explicit target, the row's client_id
+                # names the root to attach under; a 'target' row is its own root.
+                _is_target = row["entity_type"] == "target"
+                new_entity = Entity(
+                    relation_type=("associated" if not _is_target else "primary"),
+                    entity_type=row["entity_type"],
+                    target_entity_id=(
+                        target_id if target_id is not None
+                        else (None if _is_target else row.get("client_id"))
+                    ),
+                    extra_data=entity_extra,
+                    created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
+                )
+                self.entities.add(new_entity)
+
+                phone = PhoneNumber(
+                    entity_id=new_entity.id,
+                    phone_number=row["_normalized_phone"],
+                    ingestion_source=row["ingestion_source"],
+                    ingestion_reason=row.get("ingestion_reason"),
+                    extra_data={"bulk_submission_id": submission_id},
+                    uploaded_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
+                )
+                self.phones.add(phone)
+                if self.scoring_service is not None:
+                    self.scoring_service.recalculate_for_phone(phone.id)
                 phone_ids.append(phone.id)
                 entity_ids.append(new_entity.id)
             except (IntegrityError, ValueError) as exc:
-                # Both kinds of error land here — IntegrityError from
-                # SQLAlchemy (UNIQUE violation, FK violation) and ValueError
-                # from our own checks inside the savepoint.
                 if isinstance(exc, IntegrityError):
                     detail = str(exc.orig) if exc.orig else "Database constraint violation"
                     msg = (
@@ -538,7 +530,6 @@ class BulkIngestionService:
                 })
 
         failed_rows.sort(key=lambda r: r["row"])
-        self.session.commit()
         return {
             "success_count":      len(phone_ids),
             "failed_count":       len(failed_rows),

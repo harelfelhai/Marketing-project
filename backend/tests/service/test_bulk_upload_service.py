@@ -41,7 +41,7 @@ from repositories.storage import SqlStorage
 def bulk(session):
     """Service wired with the open-source mock scoring strategy."""
     scoring = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
-    return BulkIngestionService(session=session, scoring_service=scoring)
+    return BulkIngestionService(storage=SqlStorage(session), scoring_service=scoring)
 
 
 def _csv_bytes(rows: list[list]) -> bytes:

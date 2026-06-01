@@ -472,7 +472,7 @@ def get_bulk_ingestion_service(
     """
     scoring_service = get_scoring_service(session)
     return BulkIngestionService(
-        session=session,
+        storage=SqlStorage(session),
         scoring_service=scoring_service,
     )
 
