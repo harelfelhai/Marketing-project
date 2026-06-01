@@ -1644,25 +1644,25 @@ class TestCreateSingleEntity:
         })
         assert r.status_code == 422
 
-    def test_client_id_not_accepted_on_request_inherited_from_target(self, client):
+    def test_client_id_not_accepted_on_request_derived_from_root(self, client):
         """
-        The wire contract does NOT expose client_id as a writable field.
-        Even if a caller submits one, it is ignored — the response shows
-        the inherited value, not the submitted one. This guards against
-        partition-drift bugs.
+        Two-level model: client_id is DERIVED (the root this entity
+        points at), never written. Even if a caller submits one it is
+        ignored — the response shows the derived value (the target root
+        id), not the submitted one.
         """
         tc, session = client
-        target = _seed_root_target_entity(session, client_id=3)
+        target = _seed_root_target_entity(session)
         r = tc.post("/api/v1/entities", json={
             "first_name": "Jane",
             "relation_type": "family",
             "target_entity_id": target.id,
-            "client_id": 999,    # bogus — Pydantic silently ignores
+            "client_id": 999,    # bogus — ignored; client_id is derived
         })
         assert r.status_code == 201
         body = r.json()
-        # The response reflects the inherited value, NOT the submitted 999.
-        assert body["client_id"] == 3
+        # The new member's client_id == the root it points at.
+        assert body["client_id"] == target.id
 
 
 # ===========================================================================

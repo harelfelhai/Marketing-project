@@ -31,7 +31,8 @@ INTERNAL HOOK POINTS
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, func
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlmodel import Field, SQLModel
 
 
@@ -39,18 +40,37 @@ class Entity(SQLModel, table=True):
     """
     A person tracked by the marketing automation pipeline.
 
-    Each Entity is either:
-        * A "target" — the prospect the pipeline is actively working on.
-          `target_entity_id` is NULL for these rows.
-        * A member of a target's circle of trust (family, friend, etc.).
-          `target_entity_id` points to the primary target's `id`.
+    TWO-LEVEL CLIENT MODEL (post-refactor)
+    --------------------------------------
+    There is no separate `client_id` column and no `Client` table. A
+    "client" IS a root entity — an entity whose `target_entity_id` is
+    NULL. Every other entity (family / friend / social envelope) points
+    at its client via `target_entity_id`. So the model has exactly two
+    levels:
+
+        * Root entity (= the client / campaign target):
+              target_entity_id IS NULL
+        * Member entity (circle of trust around that client):
+              target_entity_id = <root entity id>
+
+    "Which client does this row belong to?" is therefore derived, not
+    stored: it is `target_entity_id` for members, or `id` for roots.
+    The `client_id` hybrid property below exposes exactly that value —
+    `COALESCE(target_entity_id, id)` — so existing code that reads or
+    filters on `Entity.client_id` keeps working unchanged. The value is
+    NOT a persisted column; it is computed in both Python and SQL.
 
     Attributes are intentionally minimal at the schema level. The
     `extra_data` JSON column is the canonical place to store any
-    proprietary personal information.
+    proprietary personal information (including the client's display
+    name, which now lives on the root entity).
     """
 
     __tablename__ = "entity"
+
+    # `hybrid_property` is a SQLAlchemy construct, not a pydantic field;
+    # tell pydantic to ignore it so model construction doesn't choke.
+    model_config = {"ignored_types": (hybrid_property,)}
 
     # ------------------------------------------------------------------
     # Identity
@@ -64,28 +84,25 @@ class Entity(SQLModel, table=True):
     """Surrogate primary key. Auto-assigned by the database on insert."""
 
     # ------------------------------------------------------------------
-    # Client Partition
+    # Client Membership (DERIVED — no stored column)
     # ------------------------------------------------------------------
+    # `client_id` is the id of this row's ROOT entity (the client):
+    #   * a root entity (target_entity_id IS NULL) is its own client → id
+    #   * a member entity → its target_entity_id (the root it points at)
+    #
+    # Exposed as a hybrid_property so `Entity.client_id == X`,
+    # `Entity.client_id.in_([...])`, and `instance.client_id` all work
+    # exactly as before, in Python and in SQL. It is computed, never
+    # written — assigning to it raises.
 
-    client_id: Optional[int] = Field(
-        default=None,
-        index=True,
-        description=(
-            "Integer identifier of the owning client partition (e.g. 1, 2, 3). "
-            "Human-readable names are mapped exclusively in the frontend config; "
-            "the backend stores only the opaque integer."
-        ),
-    )
-    """
-    First-class indexed FK to the logical client partition.
+    @hybrid_property
+    def client_id(self):  # type: ignore[override]
+        return self.target_entity_id if self.target_entity_id is not None else self.id
 
-    The integer is structural — it enables fast per-client filtering in SQL
-    without exposing any proprietary client name in the open-source schema.
-    The frontend `clientRegistry.js` maps integers to display names.
-
-    NULL means the entity has not yet been assigned to a client partition
-    (e.g. seeded before client assignment was implemented).
-    """
+    @client_id.inplace.expression
+    @classmethod
+    def _client_id_expr(cls):
+        return func.coalesce(cls.target_entity_id, cls.id)
 
     # ------------------------------------------------------------------
     # Relation Classification

@@ -87,15 +87,17 @@ class TestHappyPath:
         assert new.relation_type == "associated"
         assert new.entity_type == "family"
 
-    def test_client_id_inherited_from_target(self, svc, root_target):
+    def test_client_id_derived_from_target_root(self, svc, root_target):
         new = svc.create_single(
             first_name="Jane",
             relation_type="friend",
             target_entity_id=root_target.id,
         )
-        # client_id is NOT accepted on the request — service inherits
-        # it from the target to prevent partition drift.
-        assert new.client_id == root_target.client_id == 7
+        # Two-level model: client_id is derived — the new member points
+        # at the root, so its client_id == the root's id (== the root's
+        # own derived client_id).
+        assert new.client_id == root_target.id
+        assert new.client_id == root_target.client_id
 
     def test_names_stored_inside_extra_data(self, svc, root_target):
         new = svc.create_single(

@@ -273,11 +273,16 @@ class BulkIngestionService:
         # extra_data alongside whatever the caller supplied.
         entity_extra_merged = dict(entity_extra or {})
         entity_extra_merged["bulk_submission_id"] = submission_id
+        # Two-level model: membership derives from target_entity_id; a
+        # root (target_entity_id IS NULL) is its own client. The
+        # `client_id` argument, when given for a member, names the root
+        # to attach under.
         new_entity = Entity(
-            client_id=client_id,
             relation_type="associated" if entity_type != "target" else "primary",
             entity_type=entity_type,
-            target_entity_id=target_entity_id,
+            target_entity_id=target_entity_id if target_entity_id is not None else (
+                client_id if entity_type != "target" else None
+            ),
             extra_data=entity_extra_merged,
             created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
         )
@@ -495,14 +500,18 @@ class BulkIngestionService:
                             )
 
                     entity_extra = {"bulk_submission_id": submission_id}
+                    # Two-level model: membership derives from
+                    # target_entity_id. For a member with no explicit
+                    # target, the row's client_id names the root to
+                    # attach under; a 'target' row is its own root.
+                    _is_target = row["entity_type"] == "target"
                     new_entity = Entity(
-                        client_id=row["client_id"],
-                        relation_type=(
-                            "associated" if row["entity_type"] != "target"
-                            else "primary"
-                        ),
+                        relation_type=("associated" if not _is_target else "primary"),
                         entity_type=row["entity_type"],
-                        target_entity_id=target_id,
+                        target_entity_id=(
+                            target_id if target_id is not None
+                            else (None if _is_target else row.get("client_id"))
+                        ),
                         extra_data=entity_extra,
                         created_by_user_id=uploaded_by_user_id,    # Phase AUTH-B
                     )

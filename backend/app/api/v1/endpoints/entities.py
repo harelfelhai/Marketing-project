@@ -378,12 +378,16 @@ def _entity_to_dict(ent) -> dict:
 
 
 class EntityPatchIn(BaseModel):
-    """Partial update body. Only non-None fields are applied."""
+    """Partial update body. Only non-None fields are applied.
+
+    Two-level model: no `client_id` field — moving an entity to a
+    different client is done by changing `target_entity_id` (the root
+    it points at).
+    """
     first_name:        Optional[str] = Field(default=None, max_length=80)
     last_name:         Optional[str] = Field(default=None, max_length=80)
     relation_type:     Optional[str] = Field(default=None, max_length=40)
     target_entity_id:  Optional[int] = None
-    client_id:         Optional[int] = None
     strong_identifier: Optional[str] = Field(default=None, max_length=80)
 
 
@@ -447,7 +451,6 @@ def patch_entity(
             last_name=body.last_name,
             relation_type=body.relation_type,
             target_entity_id=body.target_entity_id,
-            client_id=body.client_id,
             strong_identifier=body.strong_identifier,
         )
     except ValueError as exc:

@@ -194,8 +194,9 @@ class EntityIngestionService:
         # values.
         sid = (strong_identifier or "").strip() or None
 
+        # Client membership is derived: pointing target_entity_id at the
+        # root IS the client assignment. No separate client_id to set.
         new_entity = Entity(
-            client_id=target.client_id,
             relation_type="associated",
             entity_type=relation_type,
             target_entity_id=target.id,
@@ -223,24 +224,38 @@ class EntityIngestionService:
         created_by_user_id: Optional[int] = None,
     ):
         """
-        Mint an anonymous social-envelope entity for a client.
+        Mint an anonymous social-envelope entity under a client.
 
-        Used by the new simplified phone-ingestion form when the
-        operator picks the "general envelope" option — there's no
-        named owner, just a known client and an unknown person near
-        them. The envelope keeps the schema invariant that every
-        PhoneNumber has an entity_id while still distinguishing
-        unattached numbers from named ones.
+        Used by the simplified phone-ingestion form when the operator
+        picks the "general envelope" option — there's no named owner,
+        just a known client and an unknown person near them.
+
+        Two-level model: the envelope is a MEMBER of the client, so it
+        points at the client's root entity via `target_entity_id`. Its
+        derived `client_id` therefore equals `client_id` (the root).
+        `client_id` here names the ROOT/client entity id to attach to —
+        NOT a separate partition integer.
 
         entity_type      = 'social_envelope'
-        target_entity_id = NULL (envelopes have no parent target)
+        target_entity_id = client_id (the root entity)
         extra_data       = empty dict (no first/last name)
+
+        Raises ValueError if the named client root does not exist or is
+        not itself a root (so envelopes can't dangle off a member).
         """
         from models.entity import Entity
+        root = self.session.get(Entity, client_id)
+        if root is None:
+            raise TargetNotFoundError(target_phone_number=f"client_id={client_id}")
+        if root.target_entity_id is not None:
+            # The attach point must be a root (a client), not a member.
+            raise TargetNotFoundError(
+                target_phone_number=f"client_id={client_id} is not a root client"
+            )
         ent = Entity(
-            client_id=client_id,
             entity_type=RelationType.SOCIAL_ENVELOPE.value,
-            target_entity_id=None,
+            relation_type="associated",
+            target_entity_id=client_id,
             extra_data={},
             created_by_user_id=created_by_user_id,
         )
@@ -436,7 +451,6 @@ class EntityIngestionService:
                         extra.update(c["extra_data"])
 
                     ent = Entity(
-                        client_id=c["target"].client_id,
                         relation_type="associated",
                         entity_type=c["relation_type"],
                         target_entity_id=c["target"].id,
@@ -622,7 +636,6 @@ class EntityIngestionService:
                     if c["last_name"]:
                         extra["last_name"] = c["last_name"]
                     ent = Entity(
-                        client_id=c["target"].client_id,
                         relation_type="associated",
                         entity_type=c["relation_type"],
                         target_entity_id=c["target"].id,

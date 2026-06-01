@@ -102,12 +102,22 @@ class TestPatchEntity:
         # untouched
         assert out.extra_data["last_name"] == "Doe"
 
-    def test_updates_relation_and_client(self, svc, associated):
+    def test_updates_relation_and_moves_to_new_client_root(self, svc, session, associated):
+        # Two-level model: "changing the client" = repointing
+        # target_entity_id at a different root. client_id derives.
+        other_root = Entity(
+            entity_type="target", target_entity_id=None,
+            extra_data={"first_name": "Other Root"},
+        )
+        session.add(other_root)
+        session.commit()
+        session.refresh(other_root)
         out = svc.patch_entity(
-            associated.id, relation_type="colleague", client_id=2
+            associated.id, relation_type="colleague",
+            target_entity_id=other_root.id,
         )
         assert out.entity_type == "colleague"
-        assert out.client_id == 2
+        assert out.client_id == other_root.id
 
     def test_strong_identifier_is_added_and_can_be_cleared(self, svc, associated):
         # UAT round-3: strong_identifier moved from extra_data to a

@@ -191,7 +191,8 @@ class TestExportPhonesHappyPath:
         session.commit()
 
         xlsx_bytes, _ = svc.export_phones(
-            filters={"client_id": 7},
+            # Two-level model: client_id == the root entity's id.
+            filters={"client_id": root.id},
             columns=[
                 _col("phone_number"),
                 _col("extra_data.first_name", label="שם"),

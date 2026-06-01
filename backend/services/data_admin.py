@@ -140,13 +140,17 @@ class DataAdminService:
         last_name: Optional[str] = None,
         relation_type: Optional[str] = None,
         target_entity_id: Optional[int] = None,
-        client_id: Optional[int] = None,
         strong_identifier: Optional[str] = None,
     ) -> Entity:
         """
         Edit an existing entity. Only non-None args are applied —
         callers send a partial body. Names + strong_identifier live in
         extra_data; the others are schema columns.
+
+        Two-level model: there is no separate `client_id` to edit. To
+        move an entity to a different client, change its
+        `target_entity_id` (the root it points at) — `client_id` then
+        derives automatically.
 
         Raises ValueError on missing entity or deleted entity (you
         must restore before editing).
@@ -157,8 +161,6 @@ class DataAdminService:
             ent.entity_type = relation_type
         if target_entity_id is not None:
             ent.target_entity_id = target_entity_id
-        if client_id is not None:
-            ent.client_id = client_id
 
         # UAT round-3 — strong_identifier is a first-class column. An
         # explicit empty-string write clears it.

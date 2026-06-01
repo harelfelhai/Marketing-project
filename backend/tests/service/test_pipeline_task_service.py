@@ -220,8 +220,9 @@ class TestListAndGet:
         assert phone_number == seeded_target.phone_number
         assert entity_id == seeded_target.entity_id
         assert entity_type == "target"
-        # seeded_target Entity has no client_id assigned.
-        assert client_id is None
+        # Two-level model: the owning entity is a root (target), so its
+        # derived client_id == its own id (== entity_id here).
+        assert client_id == entity_id
 
     def test_get_unknown_id_raises(self, session):
         svc = PipelineTaskService(session=session)
