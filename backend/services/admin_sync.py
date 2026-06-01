@@ -51,34 +51,47 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlmodel import Session as DbSession, delete
+from sqlmodel import Session as DbSession
 
 from config import settings
-from models.user import Session as SessionRow
+from repositories.storage import Storage, SqlStorage
 from services.user import UserService
 
 
 _LOG = logging.getLogger(__name__)
 
 
-def sync_admins(session: DbSession, config_path: Optional[Path] = None) -> dict:
+def sync_admins(
+    session: Optional[DbSession] = None,
+    config_path: Optional[Path] = None,
+    *,
+    storage: Optional[Storage] = None,
+) -> dict:
     """
-    Reconcile `admins.json` into the `user` table.
+    Reconcile `admins.json` into the `user` aggregate.
 
     Args:
-        session (DbSession): Active DB session. The caller owns its
-            lifecycle (it's the same session the startup hook gets
-            via `next(get_session())`).
+        session (DbSession): Optional active DB session. Either this OR
+            `storage` must be supplied. When only `session` is given, a
+            fresh SqlStorage is built from it so the legacy startup
+            call-site (`sync_admins(session=db)`) keeps working.
         config_path (Optional[Path]): Override the file location. The
             production path is `settings.admin_config_path`; tests
             pass a temp file via this parameter.
+        storage (Optional[Storage]): The repository bundle to write
+            through. When supplied, takes precedence over `session`.
 
     Returns:
-        dict: Summary of changes — keys 'created', 'updated',
-              'deactivated', 'unchanged' map to int counts. Useful
+        dict: Summary of changes — keys 'created', 'synced',
+              'deactivated', 'errors' map to counts / a list. Useful
               for the startup log line so deployers can confirm the
               sync did what they expected.
     """
+    if storage is None:
+        if session is None:
+            raise ValueError("sync_admins requires either session or storage")
+        storage = SqlStorage(session)
+
     path = config_path or Path(settings.admin_config_path)
 
     summary = {
@@ -115,7 +128,7 @@ def sync_admins(session: DbSession, config_path: Optional[Path] = None) -> dict:
         summary["errors"].append(msg)
         return summary
 
-    svc = UserService(session=session)
+    svc = UserService(storage=storage)
 
     # Track usernames present in the file so we can deactivate any
     # admin in the DB that DOESN'T appear (the removed-from-file case).
@@ -138,10 +151,8 @@ def sync_admins(session: DbSession, config_path: Optional[Path] = None) -> dict:
             summary["deactivated"] += 1
             # Also blow away any open sessions so an ex-admin's
             # cookie stops working immediately on the next request.
-            session.execute(
-                delete(SessionRow).where(SessionRow.user_id == admin.id)
-            )
-            session.commit()
+            for sess in storage.sessions.list({"user_id": admin.id}):
+                storage.sessions.delete(sess.token)
 
     _LOG.info(
         "sync_admins: created=%d synced=%d deactivated=%d errors=%d",

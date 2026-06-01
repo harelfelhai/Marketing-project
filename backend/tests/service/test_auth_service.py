@@ -17,6 +17,7 @@ import pytest
 
 from exceptions import InvalidCredentialsError
 from models.user import Session, User
+from repositories.storage import SqlStorage
 from services.auth import (
     AuthService,
     hash_password,
@@ -62,7 +63,7 @@ class TestPasswordHashing:
 
 @pytest.fixture()
 def auth_svc(session):
-    return AuthService(session=session)
+    return AuthService(storage=SqlStorage(session))
 
 
 @pytest.fixture()

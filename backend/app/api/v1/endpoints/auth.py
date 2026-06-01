@@ -128,17 +128,8 @@ def register(
 
     # Issue a session for the freshly registered user — no separate
     # login call needed. We can't go through AuthService.login()
-    # because that re-verifies the password; just mint the session
-    # row directly.
-    import secrets as _secrets
-    from models.user import Session as SessionRow
-    sess = SessionRow(
-        token=_secrets.token_urlsafe(AuthService._TOKEN_BYTES),
-        user_id=user.id,
-    )
-    auth.session.add(sess)
-    auth.session.commit()
-    auth.session.refresh(sess)
+    # because that re-verifies the password; mint_session skips that.
+    sess = auth.mint_session(user)
     _set_session_cookie(response, sess.token)
 
     return _user_to_response(user)

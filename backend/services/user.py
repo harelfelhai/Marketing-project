@@ -1,13 +1,13 @@
 """
 services/user.py — Phase AUTH user-account CRUD.
 
-Sole writer to the `user` table. Two creation paths:
+Sole writer to the `user` aggregate. Two creation paths:
 
     1. Self-serve registration (POST /api/v1/auth/register)
        — operator chooses username + password + managed_client_ids.
 
     2. Admin sync (startup hook reading `admins.json`)
-       — reconciles file entries into the table on every boot.
+       — reconciles file entries into the aggregate on every boot.
 
 Both paths go through the same INSERT / UPDATE primitives here so
 the controlled-vocabulary role check and password-hashing happen in
@@ -21,28 +21,33 @@ managed_client_ids — live inside `extra_data`. Same Secrets-Free
 pattern as the rest of the codebase. Reading them is a JSON-dict
 access; writing them goes through `update_extra` to keep the merge
 semantics in one helper.
+
+Storage seam
+------------
+Reads and writes flow through repositories (see `repositories/`) so the
+service runs identically on SQL and MongoDB. The two backends are kept
+in sync by the dual-backend tests under tests/repositories/.
 """
 
 from typing import List, Optional
 
-from sqlmodel import Session as DbSession, select
-
 from exceptions import UserAlreadyExistsError
 from models.user import User, is_allowed_role
+from repositories.storage import Storage
 from services.auth import hash_password
 
 
 class UserService:
     """
-    Per-request user-table writer + reader.
+    Per-request user-aggregate writer + reader.
 
     The endpoint layer calls into this; the admin-sync startup hook
-    also calls into this (it gets a fresh DB session at boot time
-    via the same factory the request path uses).
+    also calls into this (it gets a fresh Storage at boot time via the
+    same factory the request path uses).
     """
 
-    def __init__(self, session: DbSession) -> None:
-        self.session = session
+    def __init__(self, storage: Storage) -> None:
+        self.users = storage.users
 
     # ----------------------------------------------------------------
     # Writers
@@ -76,12 +81,7 @@ class UserService:
             UserAlreadyExistsError: A row with this username already
                 exists. The endpoint maps to 409.
         """
-        # UAT round-3: managed_client_ids may be empty at registration.
-        # The operator can add clients later from the profile editor.
-        existing = self.session.exec(
-            select(User).where(User.username == username)
-        ).first()
-        if existing is not None:
+        if self.get_by_username(username) is not None:
             raise UserAlreadyExistsError(username=username)
 
         extra = {"managed_client_ids": list(managed_client_ids)}
@@ -95,10 +95,7 @@ class UserService:
             active=True,
             extra_data=extra,
         )
-        self.session.add(user)
-        self.session.commit()
-        self.session.refresh(user)
-        return user
+        return self.users.add(user)
 
     def upsert_admin(
         self,
@@ -108,7 +105,7 @@ class UserService:
         display_name: Optional[str] = None,
     ) -> User:
         """
-        Reconcile one entry from `admins.json` into the `user` table.
+        Reconcile one entry from `admins.json` into the user aggregate.
 
         Three branches:
             - User missing      → INSERT with role='admin', active=True.
@@ -121,18 +118,8 @@ class UserService:
         This method is called ONLY by the admin-sync startup hook —
         never from a request handler. There is no API endpoint for
         admin creation per the requirement.
-
-        Args:
-            username (str): Admin login id.
-            password (str): Plaintext from the config file; hashed here.
-            display_name (Optional[str]): Optional friendly label.
-
-        Returns:
-            User: The reconciled row.
         """
-        user = self.session.exec(
-            select(User).where(User.username == username)
-        ).first()
+        user = self.get_by_username(username)
 
         new_hash = hash_password(password)
 
@@ -150,10 +137,7 @@ class UserService:
                 active=True,
                 extra_data=extra or None,
             )
-            self.session.add(user)
-            self.session.commit()
-            self.session.refresh(user)
-            return user
+            return self.users.add(user)
 
         # Existing row — reconcile fields. We only rewrite
         # password_hash when the plaintext genuinely changed; bcrypt
@@ -182,9 +166,7 @@ class UserService:
                 dirty = True
 
         if dirty:
-            self.session.add(user)
-            self.session.commit()
-            self.session.refresh(user)
+            return self.users.update(user)
         return user
 
     def deactivate_admin(self, username: str) -> Optional[User]:
@@ -194,18 +176,13 @@ class UserService:
         columns (PipelineTask.resolved_by etc.) still reference the
         username as a free-form string.
 
-        Returns None when the username isn't in the table (no-op).
+        Returns None when the username isn't in the aggregate (no-op).
         """
-        user = self.session.exec(
-            select(User).where(User.username == username)
-        ).first()
+        user = self.get_by_username(username)
         if user is None or not user.active:
             return user
         user.active = False
-        self.session.add(user)
-        self.session.commit()
-        self.session.refresh(user)
-        return user
+        return self.users.update(user)
 
     def update_managed_client_ids(
         self,
@@ -219,48 +196,39 @@ class UserService:
         opt out of personalization by clearing their managed-client
         list entirely. The toggle simply has no narrowing effect.
         """
-        user = self.session.get(User, user_id)
+        user = self.users.get(user_id)
         if user is None:
             raise ValueError(f"User id={user_id} not found.")
         extra = dict(user.extra_data or {})
         extra["managed_client_ids"] = list(client_ids)
         user.extra_data = extra
-        self.session.add(user)
-        self.session.commit()
-        self.session.refresh(user)
-        return user
+        return self.users.update(user)
 
     def update_display_name(self, user_id: str, display_name: str) -> User:
         """Patch `extra_data.display_name`. Operator-mutable UI field."""
-        user = self.session.get(User, user_id)
+        user = self.users.get(user_id)
         if user is None:
             raise ValueError(f"User id={user_id} not found.")
         extra = dict(user.extra_data or {})
         extra["display_name"] = display_name
         user.extra_data = extra
-        self.session.add(user)
-        self.session.commit()
-        self.session.refresh(user)
-        return user
+        return self.users.update(user)
 
     # ----------------------------------------------------------------
     # Readers (used by tests + by the admin-sync hook)
     # ----------------------------------------------------------------
 
     def get(self, user_id: str) -> Optional[User]:
-        return self.session.get(User, user_id)
+        return self.users.get(user_id)
 
     def get_by_username(self, username: str) -> Optional[User]:
-        return self.session.exec(
-            select(User).where(User.username == username)
-        ).first()
+        rows = self.users.list({"username": username}, limit=1)
+        return rows[0] if rows else None
 
     def list_admins(self) -> List[User]:
         """All admin rows, active OR inactive — used by the startup
         sync to find ex-admins to deactivate."""
-        return list(self.session.exec(
-            select(User).where(User.role == "admin")
-        ).all())
+        return list(self.users.list({"role": "admin"}))
 
 
 # ===========================================================================

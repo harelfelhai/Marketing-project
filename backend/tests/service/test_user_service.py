@@ -16,6 +16,7 @@ import pytest
 
 from exceptions import UserAlreadyExistsError
 from models.user import User
+from repositories.storage import SqlStorage
 from services.auth import verify_password
 from services.user import (
     UserService,
@@ -26,7 +27,7 @@ from services.user import (
 
 @pytest.fixture()
 def svc(session):
-    return UserService(session=session)
+    return UserService(storage=SqlStorage(session))
 
 
 # ---------------------------------------------------------------------------

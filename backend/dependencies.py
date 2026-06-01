@@ -491,24 +491,25 @@ def get_bulk_ingestion_service(
 
 
 def get_auth_service(
-    session: Session = Depends(get_session),
+    storage=Depends(get_storage),
 ) -> AuthService:
     """
     Compose an `AuthService` for the current request. Used by the
     login / logout endpoints AND internally by the get_current_user
-    dep below.
+    dep below. Wired through the Storage seam so it runs on either
+    backend.
     """
-    return AuthService(session=session)
+    return AuthService(storage=storage)
 
 
 def get_user_service(
-    session: Session = Depends(get_session),
+    storage=Depends(get_storage),
 ) -> UserService:
     """
-    Compose a `UserService` for CRUD over the user table. Used by
+    Compose a `UserService` for CRUD over the user aggregate. Used by
     the registration + /auth/me PATCH endpoints.
     """
-    return UserService(session=session)
+    return UserService(storage=storage)
 
 
 def get_system_settings_service() -> SystemSettingsService:

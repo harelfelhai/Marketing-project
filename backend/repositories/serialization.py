@@ -6,8 +6,10 @@ SQLModel domain instance and the document shape, in both directions.
 
 Conventions
 -----------
-- The domain `id` (a uuid string) is stored as the Mongo `_id`, so there is
-  exactly one identity field and no duplication.
+- Each model's primary-key field is stored as the Mongo `_id`, so identity
+  is single-sourced. The PK field name is discovered from the SQLAlchemy
+  table metadata, so models that name their PK something other than `id`
+  (e.g. Session.token) round-trip correctly without per-model code here.
 - Derived attributes that are NOT stored model fields (e.g. Entity.client_id,
   a hybrid property) are denormalised onto the document at write time so the
   filter DSL can match them. They are stripped on read (the model recomputes
@@ -16,6 +18,7 @@ Conventions
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Type, TypeVar
 
 T = TypeVar("T")
@@ -25,21 +28,34 @@ T = TypeVar("T")
 _DERIVED_FIELDS = ("client_id",)
 
 
+@lru_cache(maxsize=None)
+def pk_field(model) -> str:
+    """Return the model's single-column PK field name (e.g. 'id' or 'token')."""
+    pk_cols = list(model.__table__.primary_key.columns)
+    if len(pk_cols) != 1:
+        raise ValueError(
+            f"{model.__name__} must have a single-column primary key; "
+            f"got {[c.name for c in pk_cols]}"
+        )
+    return pk_cols[0].name
+
+
 def to_document(obj) -> dict:
     """
     Serialise a domain model instance to a Mongo document.
 
-    Uses `model_dump()` for the stored fields, maps `id` → `_id`, and
+    Uses `model_dump()` for the stored fields, maps the PK field → `_id`, and
     denormalises any derived attribute the model exposes (so filtering on it
     works on Mongo too).
     """
+    pk = pk_field(type(obj))
     doc = obj.model_dump()
     for name in _DERIVED_FIELDS:
         if name not in doc:
             value = getattr(obj, name, None)
             if value is not None:
                 doc[name] = value
-    doc["_id"] = doc.pop("id")
+    doc["_id"] = doc.pop(pk)
     return doc
 
 
@@ -47,13 +63,14 @@ def from_document(doc: dict, model: Type[T]) -> T:
     """
     Reconstruct a domain model instance from a Mongo document.
 
-    Maps `_id` → `id` and drops denormalised derived fields so the model
-    recomputes them from the authoritative columns.
+    Maps `_id` → the model's PK field name and drops denormalised derived
+    fields so the model recomputes them from the authoritative columns.
     """
     data = dict(doc)
     _id = data.pop("_id", None)
+    pk = pk_field(model)
     if _id is not None:
-        data["id"] = _id
+        data[pk] = _id
     for name in _DERIVED_FIELDS:
         data.pop(name, None)
     return model(**data)

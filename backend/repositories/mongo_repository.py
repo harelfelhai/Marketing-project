@@ -24,7 +24,7 @@ import re
 from typing import Optional, Type, TypeVar
 
 from repositories.base import Repository, normalise_clause
-from repositories.serialization import from_document, to_document
+from repositories.serialization import from_document, pk_field, to_document
 
 T = TypeVar("T")
 
@@ -64,11 +64,12 @@ class MongoRepository(Repository[T]):
     def _query(self, where: Optional[dict]) -> dict:
         if not where:
             return {}
+        pk = pk_field(self.model)
         query: dict = {}
         for field, raw in where.items():
             op, operand = normalise_clause(raw)
-            # `id` maps to the Mongo `_id` identity field.
-            key = "_id" if field == "id" else field
+            # The model's PK field maps to the Mongo `_id`.
+            key = "_id" if field == pk else field
             query[key] = self._clause(op, operand)
         return query
 
@@ -90,7 +91,7 @@ class MongoRepository(Repository[T]):
     ) -> list[T]:
         cursor = self.collection.find(self._query(where))
         if order_by is not None:
-            key = "_id" if order_by == "id" else order_by
+            key = "_id" if order_by == pk_field(self.model) else order_by
             cursor = cursor.sort(key, -1 if descending else 1)
         if limit is not None:
             cursor = cursor.limit(limit)
