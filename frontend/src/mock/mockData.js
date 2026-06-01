@@ -11,29 +11,35 @@
 
 // ---------------------------------------------------------------------------
 // Clients  (generic names — // HOOK FOR ENTERPRISE LABELS)
+//
+// Two-level model: a client IS a root entity (target_entity_id IS NULL).
+// There is no separate client_id field — client_id is DERIVED as
+// `target_entity_id ?? id`. The ids below are therefore the ids of the root
+// entities that head each client's family/social envelope (see SEED_ENTITIES).
 // ---------------------------------------------------------------------------
 
 export const SEED_CLIENTS = [
-  { id: 'alpha',   name: 'Client Alpha',   sla_hours: 6,  sla_threshold_pct: 85 },
-  { id: 'beta',    name: 'Client Beta',    sla_hours: 8,  sla_threshold_pct: 90 },
-  { id: 'gamma',   name: 'Client Gamma',   sla_hours: 4,  sla_threshold_pct: 80 },
-  { id: 'delta',   name: 'Client Delta',   sla_hours: 12, sla_threshold_pct: 75 },
-  { id: 'epsilon', name: 'Client Epsilon', sla_hours: 6,  sla_threshold_pct: 88 },
+  { id: 1,  name: 'Client Alpha',   sla_hours: 6,  sla_threshold_pct: 85 },
+  { id: 9,  name: 'Client Beta',    sla_hours: 8,  sla_threshold_pct: 90 },
+  { id: 17, name: 'Client Gamma',   sla_hours: 4,  sla_threshold_pct: 80 },
+  { id: 24, name: 'Client Delta',   sla_hours: 12, sla_threshold_pct: 75 },
+  { id: 33, name: 'Client Epsilon', sla_hours: 6,  sla_threshold_pct: 88 },
 ];
 
 // ---------------------------------------------------------------------------
 // Phase DY — customer_tier mapping (mock parity with backend seed_db.py).
-// Lives here rather than in clientRegistry because mock-mode tests need it
-// without touching the registry seam. In real mode, customer_tier is read
-// from the backend response (server-side JOIN); this map is mock-only.
+// Keyed by the derived client_id (= the heading root entity's id). Lives here
+// rather than in clientRegistry because mock-mode tests need it without
+// touching the registry seam. In real mode, customer_tier is read from the
+// backend response (server-side JOIN); this map is mock-only.
 // ---------------------------------------------------------------------------
 
 export const CLIENT_TIER_MAP = {
-  alpha:   1,
-  beta:    2,
-  gamma:   1,
-  delta:   3,
-  epsilon: 2,
+  1:  1,   // Alpha
+  9:  2,   // Beta
+  17: 1,   // Gamma
+  24: 3,   // Delta
+  33: 2,   // Epsilon
 };
 
 // ---------------------------------------------------------------------------
@@ -48,67 +54,78 @@ export const CLASSIFICATION_TYPES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Entities — one Entity per target individual, linked to a client via extra_data
+// Entities — two-level model.
+//
+//   * A ROOT entity (target_entity_id == null, entity_type 'target') IS a
+//     client. Its derived client_id == its own id. Its display name lives in
+//     extra_data.first_name (parity with backend seed_db.py).
+//   * A MEMBER entity points at its root via target_entity_id; its derived
+//     client_id == that root id. Members are the campaign target's family /
+//     social envelope (family / friend / colleague / spouse / social_envelope).
+//
+// There is no stored client_id column — buildInitialDb() materialises the
+// derived value (target_entity_id ?? id) onto each entity and phone so the
+// rest of the app keeps reading an integer client_id unchanged.
 // ---------------------------------------------------------------------------
 
 const _now = new Date('2026-05-17T10:00:00Z');
 const _daysAgo = (d) => new Date(_now - d * 86400000).toISOString();
 
 export const SEED_ENTITIES = [
-  // Alpha — 8 entities (ids 1-8)
-  { id: 1,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'north' } },
-  { id: 2,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'north' } },
-  { id: 3,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'south' } },
-  { id: 4,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'east'  } },
-  { id: 5,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'west'  } },
-  { id: 6,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'north' } },
-  { id: 7,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'south' } },
-  { id: 8,  entity_type: 'target', client_id: 'alpha',   extra_data: { region: 'east'  } },
-  // Beta — 8 entities (ids 9-16)
-  { id: 9,  entity_type: 'target', client_id: 'beta',    extra_data: { region: 'west'  } },
-  { id: 10, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'north' } },
-  { id: 11, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'east'  } },
-  { id: 12, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'south' } },
-  { id: 13, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'north' } },
-  { id: 14, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'west'  } },
-  { id: 15, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'east'  } },
-  { id: 16, entity_type: 'target', client_id: 'beta',    extra_data: { region: 'south' } },
-  // Gamma — 7 entities (ids 17-23)
-  { id: 17, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'north' } },
-  { id: 18, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'east'  } },
-  { id: 19, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'west'  } },
-  { id: 20, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'south' } },
-  { id: 21, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'north' } },
-  { id: 22, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'east'  } },
-  { id: 23, entity_type: 'target', client_id: 'gamma',   extra_data: { region: 'west'  } },
-  // Delta — 9 entities (ids 24-32)
-  { id: 24, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'south' } },
-  { id: 25, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'north' } },
-  { id: 26, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'east'  } },
-  { id: 27, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'west'  } },
-  { id: 28, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'south' } },
-  { id: 29, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'north' } },
-  { id: 30, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'east'  } },
-  { id: 31, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'west'  } },
-  { id: 32, entity_type: 'target', client_id: 'delta',   extra_data: { region: 'south' } },
-  // Epsilon — 8 entities (ids 33-40)
-  { id: 33, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'north' } },
-  { id: 34, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'east'  } },
-  { id: 35, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'west'  } },
-  { id: 36, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'south' } },
-  { id: 37, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'north' } },
-  { id: 38, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'east'  } },
-  { id: 39, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'west'  } },
-  { id: 40, entity_type: 'target', client_id: 'epsilon', extra_data: { region: 'south' } },
+  // ===== Client Alpha — root id 1 + envelope (ids 1-8, 88) =====
+  { id: 1,  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Alpha',  region: 'north' } },
+  { id: 2,  entity_type: 'family',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 1', region: 'north' } },
+  { id: 3,  entity_type: 'friend',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 2', region: 'south' } },
+  { id: 4,  entity_type: 'colleague',       target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 3', region: 'east'  } },
+  { id: 5,  entity_type: 'spouse',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 4', region: 'west'  } },
+  { id: 6,  entity_type: 'family',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 5', region: 'north' } },
+  { id: 7,  entity_type: 'friend',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 6', region: 'south' } },
+  { id: 8,  entity_type: 'colleague',       target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 7', region: 'east'  } },
+  // ===== Client Beta — root id 9 + envelope (ids 9-16, 91) =====
+  { id: 9,  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Beta',   region: 'west'  } },
+  { id: 10, entity_type: 'family',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 1',  region: 'north' } },
+  { id: 11, entity_type: 'friend',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 2',  region: 'east'  } },
+  { id: 12, entity_type: 'colleague',       target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 3',  region: 'south' } },
+  { id: 13, entity_type: 'spouse',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 4',  region: 'north' } },
+  { id: 14, entity_type: 'family',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 5',  region: 'west'  } },
+  { id: 15, entity_type: 'friend',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 6',  region: 'east'  } },
+  { id: 16, entity_type: 'colleague',       target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 7',  region: 'south' } },
+  // ===== Client Gamma — root id 17 (ids 17-23) =====
+  { id: 17, entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Gamma',  region: 'north' } },
+  { id: 18, entity_type: 'family',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 1', region: 'east'  } },
+  { id: 19, entity_type: 'friend',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 2', region: 'west'  } },
+  { id: 20, entity_type: 'colleague',       target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 3', region: 'south' } },
+  { id: 21, entity_type: 'spouse',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 4', region: 'north' } },
+  { id: 22, entity_type: 'family',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 5', region: 'east'  } },
+  { id: 23, entity_type: 'friend',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 6', region: 'west'  } },
+  // ===== Client Delta — root id 24 (ids 24-32) =====
+  { id: 24, entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Delta',  region: 'south' } },
+  { id: 25, entity_type: 'family',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 1', region: 'north' } },
+  { id: 26, entity_type: 'friend',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 2', region: 'east'  } },
+  { id: 27, entity_type: 'colleague',       target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 3', region: 'west'  } },
+  { id: 28, entity_type: 'spouse',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 4', region: 'south' } },
+  { id: 29, entity_type: 'family',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 5', region: 'north' } },
+  { id: 30, entity_type: 'friend',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 6', region: 'east'  } },
+  { id: 31, entity_type: 'colleague',       target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 7', region: 'west'  } },
+  { id: 32, entity_type: 'spouse',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 8', region: 'south' } },
+  // ===== Client Epsilon — root id 33 (ids 33-40) =====
+  { id: 33, entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Epsilon', region: 'north' } },
+  { id: 34, entity_type: 'family',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 1', region: 'east'  } },
+  { id: 35, entity_type: 'friend',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 2', region: 'west'  } },
+  { id: 36, entity_type: 'colleague',       target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 3', region: 'south' } },
+  { id: 37, entity_type: 'spouse',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 4', region: 'north' } },
+  { id: 38, entity_type: 'family',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 5', region: 'east'  } },
+  { id: 39, entity_type: 'friend',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 6', region: 'west'  } },
+  { id: 40, entity_type: 'colleague',       target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 7', region: 'south' } },
 
   // Phase DY-4 — social_envelope entities (Vector B). target_entity_id
-  // points at the owning primary so the row sits inside that client's
+  // points at the owning root so the row sits inside that client's
   // queue. Identity unknown at ingest; the operator's audit either
   // confirms placement, identifies the owner, or refutes the surfacing.
-  { id: 88, entity_type: 'social_envelope', client_id: 'alpha',
+  { id: 88, entity_type: 'social_envelope',
     target_entity_id: 1,
     extra_data: { envelope_id: 'EP-088', scrape_source: 'social_cluster_alpha' } },
-  { id: 91, entity_type: 'social_envelope', client_id: 'beta',
+  { id: 91, entity_type: 'social_envelope',
     target_entity_id: 9,
     extra_data: { envelope_id: 'EP-091', scrape_source: 'co_occurrence_beta' } },
 ];
@@ -762,7 +779,8 @@ export const SEED_FORM_SCHEMA = {
       label: 'Client',       // HOOK FOR ENTERPRISE LABELS
       type: 'select',
       required: true,
-      options: ['alpha', 'beta', 'gamma', 'delta', 'epsilon'],
+      // Derived client_id == heading root entity id (see SEED_CLIENTS).
+      options: [1, 9, 17, 24, 33],
       help_text: 'Associate this contact with a client account.',
     },
     {
@@ -810,8 +828,8 @@ export const SEED_TASKS = [
     // JOIN convenience fields (inlined to match real-mode payload).
     phone_number: '+14155550102',
     entity_id:    2,
-    entity_type:  'target',
-    client_id:    'alpha',
+    entity_type:  'family',
+    client_id:    1,
   },
   {
     id: 2,
@@ -831,7 +849,7 @@ export const SEED_TASKS = [
     phone_number: '+14155550109',
     entity_id:    9,
     entity_type:  'target',
-    client_id:    'beta',
+    client_id:    9,
   },
   {
     id: 3,
@@ -851,7 +869,7 @@ export const SEED_TASKS = [
     phone_number: '+14155550117',
     entity_id:    17,
     entity_type:  'target',
-    client_id:    'gamma',
+    client_id:    17,
   },
   {
     id: 4,
@@ -872,8 +890,8 @@ export const SEED_TASKS = [
     },
     phone_number: '+14155550125',
     entity_id:    25,
-    entity_type:  'target',
-    client_id:    'delta',
+    entity_type:  'family',
+    client_id:    24,
   },
   {
     id: 5,
@@ -896,7 +914,7 @@ export const SEED_TASKS = [
     phone_number: '+14155550133',
     entity_id:    33,
     entity_type:  'target',
-    client_id:    'epsilon',
+    client_id:    33,
   },
 ];
 
@@ -933,9 +951,12 @@ export function deriveClientMetrics(
   const clientPhones = phones.filter((p) => {
     // Real-API mode: client_id is embedded directly on the phone (from the JOIN).
     if (p.client_id != null) return String(p.client_id) === String(clientId);
-    // Mock mode: resolve via entity lookup.
+    // Mock mode: resolve via entity lookup. client_id is derived
+    // (target_entity_id ?? id) in case raw SEED_ENTITIES are passed.
     const entity = entities.find((e) => e.id === p.entity_id);
-    return entity?.client_id === clientId;
+    if (!entity) return false;
+    const eClientId = entity.client_id ?? entity.target_entity_id ?? entity.id;
+    return String(eClientId) === String(clientId);
   });
 
   const total     = clientPhones.length;
@@ -972,13 +993,20 @@ export function buildInitialDb() {
   // Done at build time rather than embedded in each SEED_ENTITIES entry
   // so the table above stays scannable and the tier mapping is the
   // single source of truth (CLIENT_TIER_MAP).
-  const entities = structuredClone(SEED_ENTITIES).map((e) => ({
-    ...e,
-    extra_data: {
-      ...(e.extra_data || {}),
-      customer_tier: CLIENT_TIER_MAP[e.client_id] ?? null,
-    },
-  }));
+  const entities = structuredClone(SEED_ENTITIES).map((e) => {
+    // Two-level model: client_id is DERIVED. A root (target_entity_id null)
+    // is its own client; a member's client_id is the root it points at.
+    const clientId = e.target_entity_id != null ? e.target_entity_id : e.id;
+    return {
+      ...e,
+      client_id: clientId,
+      extra_data: {
+        ...(e.extra_data || {}),
+        // Tier keyed by the heading root's id — members inherit it.
+        customer_tier: CLIENT_TIER_MAP[clientId] ?? null,
+      },
+    };
+  });
 
   // Phase DY — inject scoring fields into every phone. Real mode receives
   // these from the backend response (column defaults + scoring service).

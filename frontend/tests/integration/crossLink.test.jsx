@@ -32,13 +32,13 @@ import { renderApp } from './renderApp';
 
 describe('Bug 1 regression — ClientCard badge cross-link respects open-only', () => {
   it('renders only pending+assigned tasks when arriving with ?open=true', async () => {
-    renderApp({ route: '/operations?client_id=alpha&open=true' });
+    renderApp({ route: '/operations?client_id=1&open=true' });
 
-    // SEED_TASKS for client 'alpha':
-    //   #1 pending  client_id='alpha'   phone +14155550102   ✓ shown
-    //   #2 assigned client_id='beta'    phone +14155550109   ✗ wrong client
-    //   #4 resolved client_id='delta'   phone +14155550125   ✗ wrong client
-    //   #5 rejected client_id='epsilon' phone +14155550133   ✗ wrong client
+    // SEED_TASKS for client 1 (root "Client Alpha"):
+    //   #1 pending  client_id=1   phone +14155550102   ✓ shown
+    //   #2 assigned client_id=9   phone +14155550109   ✗ wrong client
+    //   #4 resolved client_id=24  phone +14155550125   ✗ wrong client
+    //   #5 rejected client_id=33  phone +14155550133   ✗ wrong client
     // Only task #1 should render.
     expect(await screen.findByText('+14155550102')).toBeInTheDocument();
 
@@ -58,7 +58,7 @@ describe('Bug 1 regression — ClientCard badge cross-link respects open-only', 
     // "Show resolved" on for them to appear — but the underlying
     // client_id filter must still let the rejected task through.
     const user = userEvent.setup();
-    renderApp({ route: '/operations?client_id=epsilon' });
+    renderApp({ route: '/operations?client_id=33' });
 
     // Default-hide is on → terminal rows hidden even with client filter.
     expect(screen.queryByText('+14155550133')).not.toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('Bug 1 regression — ClientCard badge cross-link respects open-only', 
     // Flip the toggle on.
     await user.click(screen.getByLabelText(/הצג משימות שטופלו/));
 
-    // SEED_TASKS[4] is task #5, rejected, client_id='epsilon', phone +14155550133.
+    // SEED_TASKS[4] is task #5, rejected, client_id=33 (root "Epsilon"), phone +14155550133.
     expect(await screen.findByText('+14155550133')).toBeInTheDocument();
     // Emerald chip NOT visible (open=true was never set).
     expect(screen.queryByText(/משימות פתוחות בלבד/)).not.toBeInTheDocument();

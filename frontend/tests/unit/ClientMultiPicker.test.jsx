@@ -40,14 +40,14 @@ describe('ClientMultiPicker — basic add/remove', () => {
 
   it('removes a chip when the X is clicked', async () => {
     const user = userEvent.setup();
-    render(<Harness initial={new Set([1, 2])} />);
+    render(<Harness initial={new Set([1, 9])} />);
 
     expect(screen.getByTestId('client-chip-1')).toBeInTheDocument();
-    expect(screen.getByTestId('client-chip-2')).toBeInTheDocument();
+    expect(screen.getByTestId('client-chip-9')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('client-chip-1-remove'));
     expect(screen.queryByTestId('client-chip-1')).not.toBeInTheDocument();
-    expect(screen.getByTestId('client-chip-2')).toBeInTheDocument();
+    expect(screen.getByTestId('client-chip-9')).toBeInTheDocument();
   });
 });
 
@@ -61,10 +61,10 @@ describe('ClientMultiPicker — search filtering', () => {
     await user.click(input);
     await user.type(input, 'gamma');
 
-    // Only Gamma (id=3) survives.
-    expect(screen.getByTestId('client-option-3')).toBeInTheDocument();
+    // Only Gamma (id=17) survives.
+    expect(screen.getByTestId('client-option-17')).toBeInTheDocument();
     expect(screen.queryByTestId('client-option-1')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('client-option-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('client-option-9')).not.toBeInTheDocument();
   });
 
   it('search is case-insensitive', async () => {
@@ -100,20 +100,20 @@ describe('ClientMultiPicker — keyboard', () => {
     await user.click(input);
     await user.type(input, 'beta{Enter}');
 
-    expect(screen.getByTestId('client-chip-2')).toBeInTheDocument();
+    expect(screen.getByTestId('client-chip-9')).toBeInTheDocument();
     expect(input.value).toBe('');
   });
 
   it('Backspace on empty input removes the last chip', async () => {
     const user = userEvent.setup();
-    render(<Harness initial={new Set([1, 2])} />);
+    render(<Harness initial={new Set([1, 9])} />);
 
     const input = screen.getByTestId('client-multi-picker-input');
     await user.click(input);
     await user.keyboard('{Backspace}');
 
-    // Last chip (id=2) is gone; first chip remains.
-    expect(screen.queryByTestId('client-chip-2')).not.toBeInTheDocument();
+    // Last chip (id=9) is gone; first chip remains.
+    expect(screen.queryByTestId('client-chip-9')).not.toBeInTheDocument();
     expect(screen.getByTestId('client-chip-1')).toBeInTheDocument();
   });
 });

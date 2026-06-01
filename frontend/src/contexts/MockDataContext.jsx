@@ -1953,9 +1953,12 @@ export function MockDataProvider({ children }) {
       const now = new Date().toISOString();
       const ent = {
         id: nextId,
+        // Two-level model: an envelope is a MEMBER of the client root, so it
+        // points at the root via target_entity_id. client_id is derived
+        // (== clientId) and materialised here for consumers that read it.
         client_id: clientId,
         entity_type: 'social_envelope',
-        target_entity_id: null,
+        target_entity_id: clientId,
         extra_data: {},
         created_at: now,
         updated_at: now,
@@ -1968,7 +1971,7 @@ export function MockDataProvider({ children }) {
       id: snapshot.id,
       client_id: snapshot.client_id,
       entity_type: snapshot.entity_type,
-      target_entity_id: null,
+      target_entity_id: snapshot.target_entity_id,
       first_name: null,
       last_name: null,
       strong_identifier: null,
