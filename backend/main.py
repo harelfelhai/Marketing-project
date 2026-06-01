@@ -82,6 +82,18 @@ def on_startup() -> None:
     db = next(get_session())
     try:
         sync_admins(session=db)
+
+        # Warm the read cache once at boot so the first Client Hub load is
+        # already served from memory (the "load the DB at startup" request).
+        # Best-effort: a warm failure must never block startup.
+        from config import settings as _settings
+        if _settings.read_cache_enabled:
+            try:
+                from dependencies import get_storage
+                from services.read_models import ClientReadModelService
+                ClientReadModelService(storage=get_storage(session=db)).list_clients()
+            except Exception:  # noqa: BLE001 — warming is optional
+                pass
     finally:
         db.close()
 

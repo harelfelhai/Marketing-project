@@ -34,6 +34,20 @@ from schemas.verification import VerificationVerdict
 # Database fixtures
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _reset_read_cache():
+    """
+    The read cache (repositories/cache.py) is a process-wide singleton keyed
+    by query, invalidated by a global data-version counter. Reset it around
+    every test so a cached projection from one test's database can never be
+    served to another test (which gets a fresh DB but shares the cache).
+    """
+    from repositories import cache
+    cache.reset()
+    yield
+    cache.reset()
+
+
 @pytest.fixture()
 def engine():
     """

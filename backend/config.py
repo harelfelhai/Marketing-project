@@ -75,6 +75,15 @@ class Settings(BaseSettings):
     mongo_db_name: str = "marketing"
     """Database name used inside the MongoDB server when storage_backend='mongo'."""
 
+    read_cache_enabled: bool = True
+    """
+    Enable the process-wide, version-invalidated read cache (repositories/cache.py)
+    that backs the unified read-model. Reads are served from memory until a write
+    advances the data version, so repeated hub/list loads cost zero DB round-trips.
+    Set False to bypass (always recompute) — useful when running multiple worker
+    processes that don't share an invalidation signal.
+    """
+
     # ------------------------------------------------------------------
     # Injectable Module Paths
     # ------------------------------------------------------------------

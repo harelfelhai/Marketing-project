@@ -24,6 +24,7 @@ import re
 from typing import Optional, Type, TypeVar
 
 from repositories.base import Repository, normalise_clause
+from repositories.cache import bump_data_version
 from repositories.serialization import from_document, pk_field, to_document
 
 T = TypeVar("T")
@@ -102,6 +103,7 @@ class MongoRepository(Repository[T]):
 
     def add(self, obj: T) -> T:
         self.collection.insert_one(to_document(obj))
+        bump_data_version()
         return obj
 
     def update(self, obj: T, *, commit: bool = True) -> T:
@@ -109,7 +111,9 @@ class MongoRepository(Repository[T]):
         # each write is atomic, so the flag is accepted but ignored.
         doc = to_document(obj)
         self.collection.replace_one({"_id": doc["_id"]}, doc, upsert=True)
+        bump_data_version()
         return obj
 
     def delete(self, id: str) -> None:
         self.collection.delete_one({"_id": id})
+        bump_data_version()

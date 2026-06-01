@@ -16,6 +16,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from repositories.base import Repository, normalise_clause
+from repositories.cache import bump_data_version
 
 T = TypeVar("T")
 
@@ -95,6 +96,7 @@ class SqlRepository(Repository[T]):
         self.session.add(obj)
         self.session.commit()
         self.session.refresh(obj)
+        bump_data_version()
         return obj
 
     def update(self, obj: T, *, commit: bool = True) -> T:
@@ -102,6 +104,7 @@ class SqlRepository(Repository[T]):
         if commit:
             self.session.commit()
             self.session.refresh(obj)
+            bump_data_version()
         # commit=False: leave the row staged in the unit-of-work so the
         # caller's outer transaction (or savepoint) owns the flush + commit.
         return obj
@@ -111,3 +114,4 @@ class SqlRepository(Repository[T]):
         if obj is not None:
             self.session.delete(obj)
             self.session.commit()
+            bump_data_version()

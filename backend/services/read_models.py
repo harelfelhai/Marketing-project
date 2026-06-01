@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from config import settings
+from repositories import cache
 from repositories.storage import Storage
 
 
@@ -98,7 +100,23 @@ class ClientReadModelService:
 
         Two repository reads total (all entities + all phones), grouped in
         memory — the whole hub in O(entities + phones), no per-client query.
+        Served from the version-invalidated read cache when enabled, so
+        repeated loads with no intervening write cost zero DB round-trips.
         """
+        if settings.read_cache_enabled:
+            ids_key = ",".join(sorted(client_ids)) if client_ids else "*"
+            key = f"clients:{ids_key}:{include_deleted}"
+            return cache.cached(
+                key,
+                lambda: self._compute_clients(client_ids, include_deleted),
+            )
+        return self._compute_clients(client_ids, include_deleted)
+
+    def _compute_clients(
+        self,
+        client_ids: Optional[list[str]],
+        include_deleted: bool,
+    ) -> list[dict]:
         ent_where: dict = {} if include_deleted else {"deleted_at": None}
         entities = self.entities.list(ent_where)
 
