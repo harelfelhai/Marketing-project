@@ -62,6 +62,10 @@ const EMPTY_DB = {
   // through this layer.
   users:               [],
   currentMockUserId:   null,
+  // System Settings tab — admin-only infra controls. buildInitialDb()
+  // overwrites this with the seeded default; in real mode the
+  // System Settings page fetches from GET /system/settings.
+  systemSettings:      null,
 };
 
 export function MockDataProvider({ children }) {
@@ -2070,6 +2074,36 @@ export function MockDataProvider({ children }) {
     [phones, entities, clients]
   );
 
+  // -------------------------------------------------------------------------
+  // System Settings — mock parity for GET/PUT /system/settings.
+  // -------------------------------------------------------------------------
+  const applyGetSystemSettings = useCallback(
+    () => structuredClone(db.systemSettings),
+    [db.systemSettings],
+  );
+
+  const applyUpdateSystemSettings = useCallback((payload) => {
+    const backend = payload?.storage_backend;
+    const current = db.systemSettings;
+    const known   = current.backends.find((b) => b.id === backend);
+    // Mirror the backend's 422 contract: unknown / not-yet-available
+    // backends are rejected with a thrown Error (the api layer maps it
+    // to a toast, exactly like a real 422).
+    if (!known) {
+      throw new Error(`Unknown storage backend '${backend}'.`);
+    }
+    if (!known.available) {
+      throw new Error(`Storage backend '${backend}' is not available yet.`);
+    }
+    let snapshot;
+    setDb((prev) => {
+      const next = { ...prev.systemSettings, storage_backend: backend };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   const value = {
     // State slices
     clients,
@@ -2119,6 +2153,9 @@ export function MockDataProvider({ children }) {
     applyRestorePhone,
     applyCreateEnvelope,
     applyQuickAttachPhone,
+    // System Settings tab
+    applyGetSystemSettings,
+    applyUpdateSystemSettings,
     // Phase NOTIF
     listNotificationSubscriptions,
     applyCreateNotificationSubscription,

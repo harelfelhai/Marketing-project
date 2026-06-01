@@ -13,17 +13,18 @@
  * inline-end edge in both LTR and RTL layouts.
  */
 
-import { Activity, Filter, Globe, LogOut } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Activity, Filter, Globe, LogOut, SlidersHorizontal } from 'lucide-react';
+import { Link as RouterLink, NavLink } from 'react-router-dom';
 
 import NavTabs       from './NavTabs';
 import HeaderActions from './HeaderActions';
+import RequireRole   from '../primitives/RequireRole';
 import { useAuth }   from '../../contexts/MockAuthContext';
 import { useUI }     from '../../contexts/UIContext';
 import {
   APP_NAME, ROLE_TITLE,
   AUTH_HEADER_GUEST_BADGE, AUTH_HEADER_LOGOUT,
-  AUTH_TOAST_LOGOUT,
+  AUTH_TOAST_LOGOUT, NAV_SYSTEM_SETTINGS,
 } from '../../config/strings.he';
 
 
@@ -50,6 +51,27 @@ export default function AppShell({ children }) {
           {/* End cluster — ms-auto pushes to the inline-end edge. */}
           <div className="ms-auto flex items-center gap-3">
             <HeaderActions />
+
+            {/* System Settings — admin-only, deliberately separated from the
+                primary NavTabs (it's infrastructure config, not part of the
+                normal operator workflow). */}
+            <RequireRole role="admin">
+              <NavLink
+                to="/system"
+                data-testid="nav-system-settings"
+                title={NAV_SYSTEM_SETTINGS}
+                aria-label={NAV_SYSTEM_SETTINGS}
+                className={({ isActive }) =>
+                  `inline-flex items-center justify-center w-9 h-9 rounded-md border transition-colors ${
+                    isActive
+                      ? 'border-slate-900 text-slate-900 bg-slate-50'
+                      : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-300'
+                  }`
+                }
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </NavLink>
+            </RequireRole>
 
             {/* Phase AUTH-C — personalization toggle. Visible only to
                 authenticated operators with at least one managed

@@ -29,9 +29,20 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import get_retry_engine, get_verification_engine
-from app.schemas.api_contracts import WorkerRunResponse
+from app.api.deps import (
+    get_retry_engine,
+    get_system_settings_service,
+    get_verification_engine,
+    require_admin,
+)
+from app.schemas.api_contracts import (
+    SystemSettingsResponse,
+    SystemSettingsUpdate,
+    WorkerRunResponse,
+)
+from models.user import User
 from services.dispatcher import RetryEngine
+from services.system_settings import SystemSettingsService
 from services.verification import VerificationEngine
 
 router = APIRouter()
@@ -116,3 +127,50 @@ def run_worker(
         started_at=started_at,
         completed_at=completed_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# System Settings — admin-only infrastructure controls
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/settings",
+    response_model=SystemSettingsResponse,
+    summary="Read the operator-editable system settings",
+    description=(
+        "Returns the active storage backend plus the catalog of known "
+        "backends (each flagged `available`). Admin-only — this surface is "
+        "the System Settings tab, separate from normal operator workflows."
+    ),
+)
+def get_system_settings(
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    return SystemSettingsResponse(**svc.get())
+
+
+@router.put(
+    "/settings",
+    response_model=SystemSettingsResponse,
+    summary="Update the system settings (e.g. switch storage backend)",
+    description=(
+        "Persists a new storage backend selection. The change is saved to "
+        "the on-disk settings file and takes effect on the next reconnect / "
+        "restart (`applies_on_restart=true`). Selecting an unknown or "
+        "not-yet-available backend returns 422. Admin-only."
+    ),
+)
+def update_system_settings(
+    body: SystemSettingsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_storage_backend(body.storage_backend))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )

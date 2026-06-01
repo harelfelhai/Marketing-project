@@ -959,3 +959,27 @@ export const ENTITY_FILE_ERR_SIZE           = (got, max) =>
 export const ENTITY_FILE_TOAST_TEMPLATE_OK  = 'התבנית הורדה.';
 export const ENTITY_FILE_TOAST_TEMPLATE_ERR = (msg) => `הורדת התבנית נכשלה: ${msg}`;
 export const ENTITY_FILE_TOAST_UPLOAD_ERR   = (msg) => `העלאת הקובץ נכשלה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// System Settings tab (admin-only infrastructure controls)
+// ---------------------------------------------------------------------------
+export const NAV_SYSTEM_SETTINGS            = 'הגדרות מערכת';
+export const SYSSET_TITLE                   = 'הגדרות מערכת';
+export const SYSSET_SUB                     =
+  'בקרות תשתית למנהל מערכת. אפשרויות אלו אינן חלק מהשימוש היומיומי בתוכנה.';
+export const SYSSET_LOADING                 = 'טוען הגדרות…';
+export const SYSSET_DB_TITLE                = 'מסד נתונים';
+export const SYSSET_DB_DESC                 =
+  'בחירת מנוע מסד הנתונים שהמערכת קוראת וכותבת אליו. השינוי נשמר וייכנס לתוקף בהפעלה מחדש.';
+export const SYSSET_APPLIES_ON_RESTART      = 'השינוי ייכנס לתוקף בהפעלה מחדש של השרת.';
+export const SYSSET_BACKEND_UNAVAILABLE     = 'עדיין לא זמין';
+export const SYSSET_BTN_SAVE                = 'שמור';
+export const SYSSET_BTN_SAVING              = 'שומר…';
+export const SYSSET_BTN_BACK                = 'חזרה';
+export const SYSSET_TOAST_SAVED             = 'ההגדרות נשמרו.';
+export const SYSSET_TOAST_ERROR             = (msg) => `שמירת ההגדרות נכשלה: ${msg}`;
+// Display labels for the opaque backend ids the API returns.
+export const SYSSET_BACKEND_LABELS          = {
+  sql:   'SQL (PostgreSQL / SQLite)',
+  mongo: 'MongoDB',
+};

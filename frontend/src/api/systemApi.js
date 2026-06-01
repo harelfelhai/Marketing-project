@@ -52,3 +52,45 @@ export async function runWorker(engineName, mockDb) {
     completed_at:    completedAt,
   };
 }
+
+
+// ---------------------------------------------------------------------------
+// System Settings tab (admin-only infrastructure controls)
+// ---------------------------------------------------------------------------
+
+/**
+ * getSystemSettings — read the active storage backend + the catalog of
+ * known backends (each flagged `available`).
+ *
+ * MOCK_MODE = false → GET /system/settings.
+ * MOCK_MODE = true  → MockDataContext.applyGetSystemSettings().
+ *
+ * @param {object} mockDb  MockDataContext instance for parity in mock mode.
+ * @returns {Promise<object>} { storage_backend, backends:[{id,available}], applies_on_restart }
+ */
+export async function getSystemSettings(mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.get('/system/settings');
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyGetSystemSettings();
+}
+
+/**
+ * updateSystemSettings — persist a new storage backend selection. Rejects
+ * (throws) for unknown / not-yet-available backends, mirroring the
+ * backend's 422 contract.
+ *
+ * @param {object} payload  { storage_backend: 'sql' | 'mongo' }
+ * @param {object} mockDb   MockDataContext instance.
+ * @returns {Promise<object>} The updated settings object.
+ */
+export async function updateSystemSettings(payload, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings', payload);
+    return data;
+  }
+  await mockDelay(300);
+  return mockDb.applyUpdateSystemSettings(payload);
+}

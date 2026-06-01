@@ -58,6 +58,7 @@ from services.notifications import (
     NotificationSubscriptionService,
 )
 from services.scoring import ScoringService
+from services.system_settings import SystemSettingsService
 from services.user import UserService
 from services.verification import VerificationEngine, VerificationService
 
@@ -491,6 +492,16 @@ def get_user_service(
     the registration + /auth/me PATCH endpoints.
     """
     return UserService(session=session)
+
+
+def get_system_settings_service() -> SystemSettingsService:
+    """
+    Compose a `SystemSettingsService` bound to the configured on-disk
+    settings file. No DB session — settings live outside the database
+    on purpose (the storage_backend value selects which DB is active).
+    Used by the admin-only System Settings endpoints.
+    """
+    return SystemSettingsService(path=settings.system_settings_path)
 
 
 def get_current_user(

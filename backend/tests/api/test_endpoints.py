@@ -26,11 +26,13 @@ from app.api.deps import (
     get_pipeline_task_service,
     get_retry_engine,
     get_scoring_service,
+    get_system_settings_service,
     get_user_action_service,
     get_verification_engine,
     get_verification_service,
 )
 from app.api.deps import get_ingestion_service
+from services.system_settings import SystemSettingsService
 from database import get_session
 from exceptions import ActionExecutionError
 from interfaces.dispatcher import BaseActionHandler
@@ -162,6 +164,14 @@ def client():
     # because the path creates no phones; just a session-bound writer.
     entity_svc = EntityIngestionService(session=test_session)
     app.dependency_overrides[get_entity_ingestion_service] = lambda: entity_svc
+
+    # System Settings — back the service with a throwaway temp file so the
+    # PUT test never pollutes the repo's working directory.
+    import tempfile, os
+    _settings_file = os.path.join(tempfile.mkdtemp(), "system_settings.json")
+    app.dependency_overrides[get_system_settings_service] = (
+        lambda: SystemSettingsService(path=_settings_file)
+    )
 
     # Phase AUTH — seed an admin user + session row so the TestClient
     # is "logged in as admin" by default. Existing Task Center tests
@@ -2892,3 +2902,61 @@ class TestAuthCClientIdsFilter:
         assert mapping[1] in nums
         assert mapping[3] in nums
         assert mapping[2] not in nums
+
+
+# ===========================================================================
+# System Settings — admin-only infrastructure controls
+# ===========================================================================
+
+
+class TestSystemSettingsEndpoint:
+    """GET/PUT /api/v1/system/settings — storage backend selector."""
+
+    def _register_regular(self, tc):
+        _logout(tc)
+        tc.post("/api/v1/auth/register", json={
+            "username": "regular_settings", "password": "pass1234",
+            "managed_client_ids": ["ent-1"],
+        })
+
+    def test_get_returns_default_sql_and_backend_catalog(self, client):
+        tc, _ = client
+        r = tc.get("/api/v1/system/settings")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["storage_backend"] == "sql"
+        assert body["applies_on_restart"] is True
+        by_id = {b["id"]: b["available"] for b in body["backends"]}
+        assert by_id == {"sql": True, "mongo": False}
+
+    def test_put_sql_persists_and_is_reflected_on_get(self, client):
+        tc, _ = client
+        r = tc.put("/api/v1/system/settings", json={"storage_backend": "sql"})
+        assert r.status_code == 200
+        assert r.json()["storage_backend"] == "sql"
+        # Read-back through a fresh GET.
+        assert tc.get("/api/v1/system/settings").json()["storage_backend"] == "sql"
+
+    def test_put_mongo_returns_422_not_available_yet(self, client):
+        tc, _ = client
+        r = tc.put("/api/v1/system/settings", json={"storage_backend": "mongo"})
+        assert r.status_code == 422
+        assert "not available" in r.json()["detail"].lower()
+
+    def test_put_unknown_backend_returns_422(self, client):
+        tc, _ = client
+        r = tc.put("/api/v1/system/settings", json={"storage_backend": "redis"})
+        assert r.status_code == 422
+        assert "unknown" in r.json()["detail"].lower()
+
+    def test_anonymous_returns_401(self, client):
+        tc, _ = client
+        _logout(tc)
+        assert tc.get("/api/v1/system/settings").status_code == 401
+
+    def test_regular_user_returns_403(self, client):
+        tc, _ = client
+        self._register_regular(tc)
+        assert tc.get("/api/v1/system/settings").status_code == 403
+        r = tc.put("/api/v1/system/settings", json={"storage_backend": "sql"})
+        assert r.status_code == 403

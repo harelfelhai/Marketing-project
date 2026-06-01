@@ -49,6 +49,20 @@ class Settings(BaseSettings):
     Internal deployment: replace with PostgreSQL/MySQL DSN.
     """
 
+    system_settings_path: str = "system_settings.json"
+    """
+    Path to the operator-editable system-settings file (System Settings tab).
+
+    Holds runtime-selectable infrastructure choices that an admin flips from
+    the frontend — starting with `storage_backend` (the DB engine selector).
+
+    This file lives OUTSIDE the swappable database on purpose: the storage
+    backend choice must be readable at boot regardless of which DB is active,
+    so it cannot be stored in the database it selects. Resolved relative to
+    the process working directory. Changes take effect on the next
+    reconnect / restart.
+    """
+
     # ------------------------------------------------------------------
     # Injectable Module Paths
     # ------------------------------------------------------------------

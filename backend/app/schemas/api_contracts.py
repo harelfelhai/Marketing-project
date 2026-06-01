@@ -766,6 +766,51 @@ class WorkerRunResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# System Settings (admin-only infrastructure controls)
+# ---------------------------------------------------------------------------
+
+
+class StorageBackendOption(BaseModel):
+    """One storage backend the System Settings tab may surface."""
+
+    id: str = Field(..., description="Opaque backend id ('sql' | 'mongo').")
+    available: bool = Field(
+        ...,
+        description="True when this backend is wired and selectable right now.",
+    )
+
+
+class SystemSettingsResponse(BaseModel):
+    """
+    Response contract for GET/PUT /api/v1/system/settings.
+
+    Carries the active storage backend plus the catalog of known backends
+    (each flagged `available`) so the UI can render unavailable options as
+    disabled. `applies_on_restart` signals that a change is persisted but
+    only takes effect on the next reconnect / restart.
+    """
+
+    storage_backend: str = Field(
+        ..., description="Currently selected storage backend id."
+    )
+    backends: list[StorageBackendOption] = Field(
+        ..., description="Catalog of known backends with availability flags."
+    )
+    applies_on_restart: bool = Field(
+        ...,
+        description="When True, a change is saved but takes effect on next restart.",
+    )
+
+
+class SystemSettingsUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings."""
+
+    storage_backend: str = Field(
+        ..., description="Backend id to activate. Must be a known, available backend."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 

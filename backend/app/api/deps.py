@@ -38,6 +38,7 @@ from dependencies import (  # noqa: F401  (re-exported for router convenience)
     get_notification_dispatcher,
     get_notification_subscription_service,
     get_scoring_service,
+    get_system_settings_service,
     get_user_service,
     get_verification_engine,
     require_admin,

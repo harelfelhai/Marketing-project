@@ -1062,8 +1062,26 @@ export function buildInitialDb() {
     // mock-mode operators register through the LoginPage.
     users:               [],
     currentMockUserId:   null,
+    // System Settings tab — admin-only infrastructure controls. Mirrors
+    // the backend GET /system/settings shape. Only 'sql' is wired today;
+    // 'mongo' is a known-but-not-yet-available option.
+    systemSettings:      structuredClone(SEED_SYSTEM_SETTINGS),
   };
 }
+
+
+// ---------------------------------------------------------------------------
+// System Settings (mock parity with backend /system/settings)
+// ---------------------------------------------------------------------------
+
+export const SEED_SYSTEM_SETTINGS = {
+  storage_backend: 'sql',
+  backends: [
+    { id: 'sql',   available: true  },
+    { id: 'mongo', available: false },
+  ],
+  applies_on_restart: true,
+};
 
 
 // ---------------------------------------------------------------------------
