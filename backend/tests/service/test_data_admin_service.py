@@ -22,6 +22,7 @@ from sqlalchemy.pool import StaticPool
 import models  # noqa: F401
 from models.entity import Entity
 from models.phone_number import PhoneNumber
+from repositories.storage import SqlStorage
 from services.data_admin import DataAdminService
 
 
@@ -44,7 +45,7 @@ def session() -> Session:
 
 @pytest.fixture()
 def svc(session) -> DataAdminService:
-    return DataAdminService(session=session)
+    return DataAdminService(storage=SqlStorage(session))
 
 
 @pytest.fixture()

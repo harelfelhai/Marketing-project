@@ -417,17 +417,34 @@ def get_entity_ingestion_service(
     return EntityIngestionService(session=session)
 
 
-def get_data_admin_service(
+def get_storage(
     session: Session = Depends(get_session),
 ):
     """
-    UAT round-3: per-request DataAdminService for edit + soft-delete
-    of Entity and PhoneNumber rows. Same minimal wiring as the
-    ingestion service — session only.
+    Per-request `Storage` bundle — one Repository per aggregate, all wired
+    to the currently active storage backend. Services that have been
+    migrated to the repository seam depend on this rather than on the raw
+    Session, so the SQL→Mongo switch flows through here.
+
+    Today the SQL backend is the only available one (System Settings tab
+    surfaces 'mongo' as a known-but-unavailable option). The Mongo branch
+    is added once its connection / index management lands.
+    """
+    from repositories.storage import SqlStorage
+    return SqlStorage(session)
+
+
+def get_data_admin_service(
+    storage=Depends(get_storage),
+):
+    """
+    UAT round-3: per-request DataAdminService for edit + soft-delete of
+    Entity and PhoneNumber rows. Wired through the Storage seam so it runs
+    identically on SQL and Mongo.
     """
     # Local import to avoid an import-time cycle with services/__init__.
     from services.data_admin import DataAdminService
-    return DataAdminService(session=session)
+    return DataAdminService(storage=storage)
 
 
 # ===========================================================================

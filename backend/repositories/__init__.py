@@ -15,6 +15,16 @@ regardless of which backend is active.
 """
 
 from repositories.base import Repository, WhereError
+from repositories.mongo_repository import MongoRepository
 from repositories.sql_repository import SqlRepository
+from repositories.storage import MongoStorage, SqlStorage, Storage
 
-__all__ = ["Repository", "WhereError", "SqlRepository"]
+__all__ = [
+    "Repository",
+    "WhereError",
+    "SqlRepository",
+    "MongoRepository",
+    "Storage",
+    "SqlStorage",
+    "MongoStorage",
+]

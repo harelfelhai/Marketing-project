@@ -24,23 +24,25 @@ Why a timestamp:
 
 Cascade rule (per UAT spec):
   - Soft-deleting an Entity also soft-deletes EVERY PhoneNumber whose
-    `entity_id` matches. The caller surfaces a warning to the operator
-    BEFORE invoking — this service does not prompt.
-  - Restoring an Entity does NOT auto-restore phones; phones must be
-    individually restored. Asymmetric on purpose: the original delete
-    is a deliberate "drop everything for this person"; the restore is
-    a curated step where the operator may have already cleaned up
-    some of the dropped phones.
+    `entity_id` matches, plus every member entity pointing at it. Every
+    row stamped in one cascade shares a `deletion_group_id` (UUID).
+  - Restore is symmetric: restoring any row in a group revives the
+    whole group. Rows tombstoned in unrelated actions stay deleted.
+
+Storage seam
+------------
+This service speaks to the storage layer only through repositories
+(see `repositories/`), so it runs identically on SQL and MongoDB. The
+two backends are kept in sync by `tests/repositories/test_repository_contract.py`.
 """
 
 from datetime import datetime, timezone
 import uuid
 from typing import Optional
 
-from sqlmodel import Session, select
-
 from models.entity import Entity
 from models.phone_number import PhoneNumber
+from repositories.storage import Storage
 
 
 def _utc_now() -> datetime:
@@ -61,23 +63,21 @@ class DataAdminService:
     """
     Edit + soft-delete + restore for Entity and PhoneNumber.
 
-    All public methods take an integer id and either:
-      - return the freshly-mutated row, OR
-      - raise ValueError("Entity {id} not found") on a miss / mismatch.
-
-    Mutations commit before returning. Cascades use the same Session
-    so atomicity is preserved.
+    All public methods take a string id and either return the freshly-
+    mutated row or raise ValueError("Entity {id} not found") on a miss
+    / mismatch.
     """
 
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, storage: Storage) -> None:
+        self.entities = storage.entities
+        self.phones = storage.phones
 
     # ----------------------------------------------------------------
     # Entity
     # ----------------------------------------------------------------
 
     def get_entity(self, entity_id: str, include_deleted: bool = False) -> Entity:
-        ent = self.session.get(Entity, entity_id)
+        ent = self.entities.get(entity_id)
         if ent is None:
             raise ValueError(f"Entity {entity_id} not found")
         if ent.deleted_at is not None and not include_deleted:
@@ -88,13 +88,13 @@ class DataAdminService:
         self,
         *,
         client_id: Optional[str] = None,
-        client_ids: Optional[list[int]] = None,
+        client_ids: Optional[list[str]] = None,
         entity_type: Optional[str] = None,
         include_deleted: bool = False,
         q: Optional[str] = None,
     ) -> list[Entity]:
         """
-        Read-side query for the new "Entities" view tab (PR-B).
+        Read-side query for the Entities view tab.
 
         Filter shape mirrors GET /phones for consistency:
           - client_id  / client_ids  →  partition + personalization
@@ -104,23 +104,23 @@ class DataAdminService:
           - q                        →  substring match on name fields
                                           inside extra_data
         """
-        stmt = select(Entity)
+        where: dict = {}
         if not include_deleted:
-            stmt = stmt.where(Entity.deleted_at.is_(None))
+            where["deleted_at"] = None
         if client_id is not None:
-            stmt = stmt.where(Entity.client_id == client_id)
+            where["client_id"] = client_id
         if client_ids:
-            stmt = stmt.where(Entity.client_id.in_(client_ids))
+            where["client_id"] = {"in": list(client_ids)}
         if entity_type:
-            stmt = stmt.where(Entity.entity_type == entity_type)
+            where["entity_type"] = entity_type
 
-        rows = list(self.session.exec(stmt))
+        rows = self.entities.list(where)
 
         if q:
             # Substring match on first_name + last_name inside
             # extra_data. Done in Python because SQLite/Postgres JSON
-            # operators diverge; the entity volume in any one client
-            # partition stays bounded.
+            # operators diverge and Mongo would need a different path;
+            # the entity volume in any one client partition stays bounded.
             needle = q.strip().lower()
             def _hay(e: Entity) -> str:
                 fn = (e.extra_data or {}).get("first_name") or ""
@@ -178,10 +178,7 @@ class DataAdminService:
                 extra["last_name"] = last_name.strip() or None
             ent.extra_data = extra
 
-        self.session.add(ent)
-        self.session.commit()
-        self.session.refresh(ent)
-        return ent
+        return self.entities.update(ent)
 
     def soft_delete_entity(self, entity_id: str) -> dict:
         """
@@ -201,34 +198,31 @@ class DataAdminService:
         group_id = _new_deletion_group_id()
 
         # Children (associated entities targeting this entity).
-        child_entities = list(self.session.exec(
-            select(Entity)
-            .where(Entity.target_entity_id == entity_id)
-            .where(Entity.deleted_at.is_(None))
-        ))
-        entity_ids_to_kill = {entity_id, *(c.id for c in child_entities)}
+        child_entities = self.entities.list({
+            "target_entity_id": entity_id,
+            "deleted_at": None,
+        })
+        entity_ids_to_kill = [entity_id, *(c.id for c in child_entities)]
 
         # Phones across the whole sub-graph.
-        phones = list(self.session.exec(
-            select(PhoneNumber)
-            .where(PhoneNumber.entity_id.in_(entity_ids_to_kill))
-            .where(PhoneNumber.deleted_at.is_(None))
-        ))
+        phones = self.phones.list({
+            "entity_id": {"in": entity_ids_to_kill},
+            "deleted_at": None,
+        })
         for p in phones:
             p.deleted_at = now
             p.deletion_group_id = group_id
-            self.session.add(p)
+            self.phones.update(p)
 
         for child in child_entities:
             child.deleted_at = now
             child.deletion_group_id = group_id
-            self.session.add(child)
+            self.entities.update(child)
 
         ent.deleted_at = now
         ent.deletion_group_id = group_id
-        self.session.add(ent)
+        self.entities.update(ent)
 
-        self.session.commit()
         return {
             "entity_id":          entity_id,
             "phones_deleted":     len(phones),
@@ -248,7 +242,7 @@ class DataAdminService:
         Returns:
             {entity_id, phones_restored, entities_restored}
         """
-        ent = self.session.get(Entity, entity_id)
+        ent = self.entities.get(entity_id)
         if ent is None:
             raise ValueError(f"Entity {entity_id} not found")
         if ent.deleted_at is None:
@@ -264,36 +258,32 @@ class DataAdminService:
         # Restore the entity itself first.
         ent.deleted_at = None
         ent.deletion_group_id = None
-        self.session.add(ent)
+        self.entities.update(ent)
         entities_restored = 1
         phones_restored = 0
 
         # If we have a group id, restore the rest of the cascade peers.
         if group_id:
-            sibling_entities = list(self.session.exec(
-                select(Entity)
-                .where(Entity.deletion_group_id == group_id)
-                .where(Entity.id != entity_id)
-                .where(Entity.deleted_at.is_not(None))
-            ))
+            sibling_entities = [
+                e for e in self.entities.list({"deletion_group_id": group_id})
+                if e.id != entity_id and e.deleted_at is not None
+            ]
             for child in sibling_entities:
                 child.deleted_at = None
                 child.deletion_group_id = None
-                self.session.add(child)
+                self.entities.update(child)
             entities_restored += len(sibling_entities)
 
-            sibling_phones = list(self.session.exec(
-                select(PhoneNumber)
-                .where(PhoneNumber.deletion_group_id == group_id)
-                .where(PhoneNumber.deleted_at.is_not(None))
-            ))
+            sibling_phones = [
+                p for p in self.phones.list({"deletion_group_id": group_id})
+                if p.deleted_at is not None
+            ]
             for p in sibling_phones:
                 p.deleted_at = None
                 p.deletion_group_id = None
-                self.session.add(p)
+                self.phones.update(p)
             phones_restored = len(sibling_phones)
 
-        self.session.commit()
         return {
             "entity_id":          entity_id,
             "phones_restored":    phones_restored,
@@ -305,7 +295,7 @@ class DataAdminService:
     # ----------------------------------------------------------------
 
     def get_phone(self, phone_id: str, include_deleted: bool = False) -> PhoneNumber:
-        ph = self.session.get(PhoneNumber, phone_id)
+        ph = self.phones.get(phone_id)
         if ph is None:
             raise ValueError(f"Phone {phone_id} not found")
         if ph.deleted_at is not None and not include_deleted:
@@ -336,8 +326,7 @@ class DataAdminService:
         if phone_number is not None:
             ph.phone_number = phone_number.strip()
         if entity_id is not None:
-            # Validate the new owner exists and is active.
-            owner = self.session.get(Entity, entity_id)
+            owner = self.entities.get(entity_id)
             if owner is None or owner.deleted_at is not None:
                 raise ValueError(f"Entity {entity_id} not found")
             ph.entity_id = entity_id
@@ -354,10 +343,7 @@ class DataAdminService:
         if verification_reason is not None:
             ph.verification_reason = verification_reason.strip() or None
 
-        self.session.add(ph)
-        self.session.commit()
-        self.session.refresh(ph)
-        return ph
+        return self.phones.update(ph)
 
     def soft_delete_phone(self, phone_id: str) -> PhoneNumber:
         # Standalone phone delete still stamps a fresh group_id so the
@@ -367,10 +353,7 @@ class DataAdminService:
         ph = self.get_phone(phone_id, include_deleted=False)
         ph.deleted_at = _utc_now()
         ph.deletion_group_id = _new_deletion_group_id()
-        self.session.add(ph)
-        self.session.commit()
-        self.session.refresh(ph)
-        return ph
+        return self.phones.update(ph)
 
     def restore_phone(self, phone_id: str) -> PhoneNumber:
         """
@@ -379,7 +362,7 @@ class DataAdminService:
         the same group_id is revived too — symmetric with the
         soft_delete_entity → restore_entity behavior.
         """
-        ph = self.session.get(PhoneNumber, phone_id)
+        ph = self.phones.get(phone_id)
         if ph is None:
             raise ValueError(f"Phone {phone_id} not found")
         if ph.deleted_at is None:
@@ -388,29 +371,24 @@ class DataAdminService:
         group_id = ph.deletion_group_id
         ph.deleted_at = None
         ph.deletion_group_id = None
-        self.session.add(ph)
+        self.phones.update(ph)
 
         if group_id:
-            sibling_entities = list(self.session.exec(
-                select(Entity)
-                .where(Entity.deletion_group_id == group_id)
-                .where(Entity.deleted_at.is_not(None))
-            ))
+            sibling_entities = [
+                e for e in self.entities.list({"deletion_group_id": group_id})
+                if e.deleted_at is not None
+            ]
             for child in sibling_entities:
                 child.deleted_at = None
                 child.deletion_group_id = None
-                self.session.add(child)
-            sibling_phones = list(self.session.exec(
-                select(PhoneNumber)
-                .where(PhoneNumber.deletion_group_id == group_id)
-                .where(PhoneNumber.id != phone_id)
-                .where(PhoneNumber.deleted_at.is_not(None))
-            ))
+                self.entities.update(child)
+            sibling_phones = [
+                p for p in self.phones.list({"deletion_group_id": group_id})
+                if p.id != phone_id and p.deleted_at is not None
+            ]
             for sp in sibling_phones:
                 sp.deleted_at = None
                 sp.deletion_group_id = None
-                self.session.add(sp)
+                self.phones.update(sp)
 
-        self.session.commit()
-        self.session.refresh(ph)
         return ph
