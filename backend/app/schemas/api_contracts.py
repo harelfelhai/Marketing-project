@@ -129,9 +129,9 @@ class IngestionResponse(BaseModel):
           initial `pending` state and carry no information at ingest time.
     """
 
-    id: int = Field(..., description="Surrogate PK of the new PhoneNumber row.")
+    id: str = Field(..., description="Surrogate PK of the new PhoneNumber row.")
     phone_number: str = Field(..., description="The ingested phone number (as stored).")
-    entity_id: int = Field(..., description="PK of the Entity record that owns this number.")
+    entity_id: str = Field(..., description="PK of the Entity record that owns this number.")
     verification_status: str = Field(
         ...,
         description="Always 'pending' on fresh ingestion. Changes after Phase 3 evaluation.",
@@ -189,7 +189,7 @@ class ManualActionTriggerRequest(BaseModel):
     spoof attribution.
     """
 
-    phone_id: int = Field(
+    phone_id: str = Field(
         ...,
         description="PK of the PhoneNumber row to dispatch the action against.",
         examples=[42],
@@ -301,7 +301,7 @@ class VerificationVerdictRequest(BaseModel):
     must be present — an empty submission is rejected with 422.
     """
 
-    phone_id: int = Field(
+    phone_id: str = Field(
         ...,
         description="PK of the PhoneNumber row being judged.",
         examples=[99],
@@ -404,8 +404,8 @@ class EntitySummary(BaseModel):
     to prevent proprietary payload from leaking into list-view responses.
     """
 
-    id: int = Field(..., description="Entity surrogate PK.")
-    client_id: Optional[int] = Field(
+    id: str = Field(..., description="Entity surrogate PK.")
+    client_id: Optional[str] = Field(
         default=None,
         description=(
             "Integer client partition identifier. Frontend maps this to a display name. "
@@ -423,7 +423,7 @@ class EntitySummary(BaseModel):
         ...,
         description="Sub-classification within the relation_type (e.g. 'family', 'friend').",
     )
-    target_entity_id: Optional[int] = Field(
+    target_entity_id: Optional[str] = Field(
         default=None,
         description="FK to the primary target Entity. Null if this entity IS the target.",
     )
@@ -442,8 +442,8 @@ class ActionLogResponse(BaseModel):
         - Direct response for POST /actions/trigger and POST /actions/retry-now.
     """
 
-    id: int = Field(..., description="ActionLog surrogate PK.")
-    phone_id: int = Field(..., description="FK to the targeted PhoneNumber.")
+    id: str = Field(..., description="ActionLog surrogate PK.")
+    phone_id: str = Field(..., description="FK to the targeted PhoneNumber.")
     action_type: str = Field(..., description="Token of the action type executed.")
     status: str = Field(
         ...,
@@ -494,10 +494,10 @@ class PhoneSummary(BaseModel):
     mass proprietary data exposure in large result sets.
     """
 
-    id: int = Field(..., description="PhoneNumber surrogate PK.")
+    id: str = Field(..., description="PhoneNumber surrogate PK.")
     phone_number: str = Field(..., description="The stored phone number string.")
-    entity_id: int = Field(..., description="FK to the owning Entity.")
-    client_id: Optional[int] = Field(
+    entity_id: str = Field(..., description="FK to the owning Entity.")
+    client_id: Optional[str] = Field(
         default=None,
         description="Integer client partition identifier sourced from the owning Entity.",
     )
@@ -619,9 +619,9 @@ class PhoneDetailsResponse(BaseModel):
     natural operator reading order when auditing a phone's history.
     """
 
-    id: int = Field(..., description="PhoneNumber surrogate PK.")
+    id: str = Field(..., description="PhoneNumber surrogate PK.")
     phone_number: str = Field(..., description="The stored phone number string.")
-    entity_id: int = Field(..., description="FK to the owning Entity.")
+    entity_id: str = Field(..., description="FK to the owning Entity.")
 
     # Mutable classification field
     classification_type: Optional[str] = Field(
@@ -838,9 +838,9 @@ class PipelineTaskResponse(BaseModel):
     wire; the frontend resolves it to a display name via clientRegistry.js.
     """
 
-    id: int = Field(..., description="PipelineTask surrogate PK.")
-    phone_id: int = Field(..., description="FK to the PhoneNumber this task is about.")
-    source_action_log_id: Optional[int] = Field(
+    id: str = Field(..., description="PipelineTask surrogate PK.")
+    phone_id: str = Field(..., description="FK to the PhoneNumber this task is about.")
+    source_action_log_id: Optional[str] = Field(
         default=None,
         description=(
             "FK to the originating ActionLog when the task was opened by the "
@@ -893,7 +893,7 @@ class PipelineTaskResponse(BaseModel):
         default=None,
         description="Echoed from PhoneNumber.phone_number via JOIN.",
     )
-    entity_id: Optional[int] = Field(
+    entity_id: Optional[str] = Field(
         default=None,
         description="Echoed from PhoneNumber.entity_id via JOIN.",
     )
@@ -901,7 +901,7 @@ class PipelineTaskResponse(BaseModel):
         default=None,
         description="Echoed from Entity.entity_type via JOIN.",
     )
-    client_id: Optional[int] = Field(
+    client_id: Optional[str] = Field(
         default=None,
         description=(
             "Integer client partition identifier sourced from the owning Entity. "
@@ -954,7 +954,7 @@ class OpenTaskRequest(BaseModel):
         open tasks without a session.
     """
 
-    phone_id: int = Field(..., description="FK to the target PhoneNumber.")
+    phone_id: str = Field(..., description="FK to the target PhoneNumber.")
     task_type: str = Field(
         ...,
         min_length=1,
@@ -976,7 +976,7 @@ class OpenTaskRequest(BaseModel):
             "in operator opens the task — current_user.username wins."
         ),
     )
-    source_action_log_id: Optional[int] = Field(
+    source_action_log_id: Optional[str] = Field(
         default=None,
         description=(
             "Optional FK to the originating ActionLog. Required for "
@@ -1100,7 +1100,7 @@ class BulkResolveTaskRequest(BaseModel):
     resilience contract.
     """
 
-    task_ids: List[int] = Field(
+    task_ids: List[str] = Field(
         ...,
         min_length=1,
         max_length=200,
@@ -1135,7 +1135,7 @@ class BulkResolveTaskRequest(BaseModel):
 class BulkResolveTaskFailedRow(BaseModel):
     """One per-task failure inside a BulkResolveTaskResponse."""
 
-    task_id: int = Field(..., description="The id that failed to settle.")
+    task_id: str = Field(..., description="The id that failed to settle.")
     error: str = Field(
         ...,
         description=(
@@ -1159,7 +1159,7 @@ class BulkResolveTaskResponse(BaseModel):
 
     success_count: int = Field(..., ge=0, description="Tasks settled to the requested outcome.")
     failed_count:  int = Field(..., ge=0, description="Equals len(failed_rows); convenience.")
-    success_ids:   List[int] = Field(
+    success_ids:   List[str] = Field(
         default_factory=list,
         description="Task ids that settled successfully, in submission order.",
     )
@@ -1240,7 +1240,7 @@ class BulkTextIngestRequest(BaseModel):
             "before insertion."
         ),
     )
-    client_id: int = Field(
+    client_id: str = Field(
         ...,
         description=(
             "Opaque integer client partition id. NOT validated against an "
@@ -1259,7 +1259,7 @@ class BulkTextIngestRequest(BaseModel):
         ),
         examples=["family", "social_envelope"],
     )
-    target_entity_id: Optional[int] = Field(
+    target_entity_id: Optional[str] = Field(
         default=None,
         description=(
             "FK to the primary target Entity this batch's new Entity "
@@ -1328,11 +1328,11 @@ class BulkIngestSummary(BaseModel):
 
     success_count: int = Field(..., ge=0, description="Rows successfully inserted.")
     failed_count:  int = Field(..., ge=0, description="Equals len(failed_rows); convenience.")
-    phone_ids: List[int] = Field(
+    phone_ids: List[str] = Field(
         default_factory=list,
         description="PKs of newly-created PhoneNumber rows, in insertion order.",
     )
-    entity_ids: List[int] = Field(
+    entity_ids: List[str] = Field(
         default_factory=list,
         description=(
             "PKs of Entity rows touched by the batch. /bulk-text always "

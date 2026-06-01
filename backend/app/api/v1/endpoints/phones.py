@@ -115,7 +115,7 @@ def list_phones(
         default=None,
         description="Filter by the system classification label on the PhoneNumber row.",
     ),
-    client_id: Optional[int] = Query(
+    client_id: Optional[str] = Query(
         default=None,
         description=(
             "Filter by single integer client partition identifier. "
@@ -123,7 +123,7 @@ def list_phones(
             "Example: pass 1 to return only phones for the first client partition."
         ),
     ),
-    client_ids: Optional[list[int]] = Query(
+    client_ids: Optional[list[str]] = Query(
         default=None,
         description=(
             "Phase AUTH-C — multi-value client filter for the "
@@ -438,7 +438,7 @@ def bulk_upload_template() -> Response:
     ),
 )
 def get_phone_detail(
-    phone_id: int,
+    phone_id: str,
     session: Session = Depends(get_session),
 ) -> PhoneDetailsResponse:
     """
@@ -536,7 +536,7 @@ def get_phone_detail(
     ),
 )
 def update_phone(
-    phone_id: int,
+    phone_id: str,
     body: PhoneUpdateRequest,
     session: Session = Depends(get_session),
     trigger_service: ActionDataTriggerService = Depends(get_action_data_trigger_service),
@@ -804,7 +804,7 @@ def _phone_to_dict(ph) -> dict:
 class _PhonePatchIn(_AdminBaseModel):
     # UAT round-3 follow-up: expose every operator-editable phone field.
     phone_number:        Optional[str] = _AdminField(default=None, max_length=40)
-    entity_id:           Optional[int] = _AdminField(default=None)
+    entity_id:           Optional[str] = _AdminField(default=None)
     classification_type: Optional[str] = _AdminField(default=None, max_length=40)
     ingestion_source:    Optional[str] = _AdminField(default=None, max_length=40)
     ingestion_reason:    Optional[str] = _AdminField(default=None, max_length=400)
@@ -824,7 +824,7 @@ class _PhonePatchIn(_AdminBaseModel):
     ),
 )
 def admin_patch_phone(
-    phone_id: int,
+    phone_id: str,
     body: _PhonePatchIn,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
@@ -850,7 +850,7 @@ def admin_patch_phone(
     summary="Soft-delete a phone (admin, UAT round-3)",
 )
 def soft_delete_phone(
-    phone_id: int,
+    phone_id: str,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -865,7 +865,7 @@ def soft_delete_phone(
     summary="Restore a soft-deleted phone (admin, UAT round-3)",
 )
 def restore_phone(
-    phone_id: int,
+    phone_id: str,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -887,7 +887,7 @@ from services.ingestion import IngestionService  # noqa: E402
 class _QuickAttachIn(_AdminBaseModel):
     """Body for POST /phones/quick — minimal phone-attach form."""
     phone_number:    str
-    entity_id:       int
+    entity_id:       str
     ingestion_reason: Optional[str] = None
 
 

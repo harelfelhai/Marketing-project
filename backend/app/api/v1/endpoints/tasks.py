@@ -143,7 +143,7 @@ def list_tasks(
             "'manual_recommendation'."
         ),
     ),
-    phone_id: Optional[int] = Query(
+    phone_id: Optional[str] = Query(
         default=None,
         description="Filter to tasks attached to a single PhoneNumber.",
     ),
@@ -170,7 +170,7 @@ def list_tasks(
             "matched — filter by the client_id dropdown for that."
         ),
     ),
-    client_ids: Optional[list[int]] = Query(
+    client_ids: Optional[list[str]] = Query(
         default=None,
         description=(
             "Phase AUTH-C — multi-value client filter for the "
@@ -232,7 +232,7 @@ def list_tasks(
     ),
 )
 def get_task(
-    task_id: int,
+    task_id: str,
     _admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
@@ -443,7 +443,7 @@ def bulk_resolve_tasks(
     ),
 )
 def resolve_task(
-    task_id: int,
+    task_id: str,
     body: ResolveTaskRequest,
     admin: User = Depends(require_admin),     # Task Center guardrail
     service: PipelineTaskService = Depends(get_pipeline_task_service),

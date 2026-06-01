@@ -39,7 +39,7 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
-from models.types import UTCDateTime, utc_now as _utc_now
+from models.types import UTCDateTime, new_id, utc_now as _utc_now
 
 
 class PhoneNumber(SQLModel, table=True):
@@ -63,14 +63,14 @@ class PhoneNumber(SQLModel, table=True):
     # CORE IDENTIFIERS
     # ==================================================================
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Opaque string primary key. Supplied by the upstream system of record, or defaulted via new_id().",
     )
-    """Surrogate primary key. Auto-assigned by the database on insert."""
+    """Surrogate string primary key. Set by the system of record on insert, or defaulted by `new_id()`."""
 
-    entity_id: int = Field(
+    entity_id: str = Field(
         foreign_key="entity.id",
         index=True,
         nullable=False,
@@ -332,7 +332,7 @@ class PhoneNumber(SQLModel, table=True):
     # Audit attribution (Phase AUTH)
     # ------------------------------------------------------------------
 
-    uploaded_by_user_id: Optional[int] = Field(
+    uploaded_by_user_id: Optional[str] = Field(
         default=None,
         foreign_key="user.id",
         index=True,

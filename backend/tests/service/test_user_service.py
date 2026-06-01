@@ -179,12 +179,14 @@ class TestExtractors:
         u = User(username="x", password_hash="x", role="regular", extra_data={})
         assert managed_client_ids_of(u) == []
 
-    def test_managed_clients_filters_non_ints(self):
+    def test_managed_clients_filters_non_strings(self):
+        # Client ids are opaque strings — the extractor drops any
+        # non-string junk (legacy ints, nulls) defensively.
         u = User(
             username="x", password_hash="x", role="regular",
-            extra_data={"managed_client_ids": [1, "bad", 3, None]},
+            extra_data={"managed_client_ids": ["ent-1", 2, "ent-3", None]},
         )
-        assert managed_client_ids_of(u) == [1, 3]
+        assert managed_client_ids_of(u) == ["ent-1", "ent-3"]
 
     def test_managed_clients_returns_empty_when_value_not_list(self):
         u = User(

@@ -76,7 +76,7 @@ class NotificationSubscriptionCreate(BaseModel):
             "of context (target_id must be NULL)."
         ),
     )
-    target_id: Optional[int] = Field(
+    target_id: Optional[str] = Field(
         default=None,
         description=(
             "FK to the targeted record. Required for non-global "
@@ -154,10 +154,10 @@ class NotificationSubscriptionUpdate(BaseModel):
 class NotificationSubscriptionResponse(BaseModel):
     """Echoed shape — every column of NotificationSubscription."""
 
-    id: int
+    id: str
     trigger_event_type: str
     target_kind: str
-    target_id: Optional[int] = None
+    target_id: Optional[str] = None
     recipients: List[str] = Field(default_factory=list)
     title_template: Optional[str] = None
     body_template: Optional[str] = None
@@ -178,8 +178,8 @@ class NotificationSubscriptionResponse(BaseModel):
 class NotificationDeliveryResponse(BaseModel):
     """Echoed shape — every column of NotificationDelivery."""
 
-    id: int
-    subscription_id: Optional[int] = None
+    id: str
+    subscription_id: Optional[str] = None
     trigger_event_type: str
     title: str
     body: str

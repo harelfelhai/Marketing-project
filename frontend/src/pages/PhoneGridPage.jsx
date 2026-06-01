@@ -54,11 +54,8 @@ export default function PhoneGridPage() {
   useEffect(() => {
     const raw = searchParams.get('client_id');
     if (raw) {
-      // Real-API mode uses integer client_ids; URL params are always strings.
-      // Parse to number when the param is purely numeric so filter comparisons
-      // against integer entity.client_id values succeed without coercion.
-      const parsed = Number(raw);
-      seedClientFilter(Number.isFinite(parsed) && raw.trim() !== '' ? parsed : raw);
+      // client_id is an opaque string id — pass the URL param through as-is.
+      seedClientFilter(raw);
     }
     // We intentionally do NOT clear the filter when the param is absent —
     // operators may have set it manually via the dropdown.
@@ -70,9 +67,8 @@ export default function PhoneGridPage() {
   useEffect(() => {
     const raw = searchParams.get('phone_id');
     if (raw) {
-      const parsed = Number(raw);
-      const id = Number.isFinite(parsed) && raw.trim() !== '' ? parsed : null;
-      if (id != null) setSelectedId(id);
+      // phone_id is an opaque string id — use the URL param directly.
+      setSelectedId(raw);
     }
   }, [searchParams]);
 

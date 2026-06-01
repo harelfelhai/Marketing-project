@@ -16,10 +16,11 @@ the structural relationship — never the secret payload.
 
 INTERNAL HOOK POINTS
 --------------------
-- `client_id`: integer FK to the owning client partition. The integer (1, 2,
-  3 …) is a structural index key — it carries no confidential information.
-  Human-readable client names live exclusively in the frontend config layer
-  (`src/config/clientRegistry.js`). The backend never stores names.
+- `client_id`: DERIVED string id of the owning client (root entity) —
+  `COALESCE(target_entity_id, id)`. It is a structural key carrying no
+  confidential information, not a stored column. Human-readable client names
+  live on the root entity's `extra_data` and in the frontend config layer
+  (`src/config/clientRegistry.js`).
 - `relation_type`: explicit enum-like string ('primary' | 'associated').
   'primary' marks the direct marketing target; 'associated' marks perimeter
   contacts (family, friends, colleagues). Indexed for fast sub-set queries.
@@ -34,6 +35,8 @@ from typing import Optional
 from sqlalchemy import Column, JSON, func
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlmodel import Field, SQLModel
+
+from models.types import new_id
 
 
 class Entity(SQLModel, table=True):
@@ -76,12 +79,12 @@ class Entity(SQLModel, table=True):
     # Identity
     # ------------------------------------------------------------------
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Opaque string primary key. Supplied by the upstream system of record, or defaulted via new_id().",
     )
-    """Surrogate primary key. Auto-assigned by the database on insert."""
+    """Surrogate string primary key. Set by the system of record on insert, or defaulted by `new_id()`."""
 
     # ------------------------------------------------------------------
     # Client Membership (DERIVED — no stored column)
@@ -160,7 +163,7 @@ class Entity(SQLModel, table=True):
     # Self-Referencing Hierarchy
     # ------------------------------------------------------------------
 
-    target_entity_id: Optional[int] = Field(
+    target_entity_id: Optional[str] = Field(
         default=None,
         foreign_key="entity.id",
         index=True,
@@ -230,7 +233,7 @@ class Entity(SQLModel, table=True):
     # Audit attribution (Phase AUTH)
     # ------------------------------------------------------------------
 
-    created_by_user_id: Optional[int] = Field(
+    created_by_user_id: Optional[str] = Field(
         default=None,
         foreign_key="user.id",
         index=True,

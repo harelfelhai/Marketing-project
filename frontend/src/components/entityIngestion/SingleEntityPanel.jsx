@@ -141,7 +141,7 @@ export default function SingleEntityPanel({ active }) {
       first_name:        form.firstName.trim(),
       last_name:         form.lastName.trim() || null,
       relation_type:     form.relation,
-      target_entity_id:  Number(form.targetId),
+      target_entity_id:  form.targetId || null,
       ...(sid ? { strong_identifier: sid } : {}),
     };
 

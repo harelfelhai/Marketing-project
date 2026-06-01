@@ -88,7 +88,7 @@ describe('Task Center — Requirement 2 (bulk action bar)', () => {
     await screen.findByRole('heading', { name: /מרכז משימות/ });
 
     // SEED_TASKS row 1 is pending (visible by default).
-    await user.click(await findRowCheckbox(1));
+    await user.click(await findRowCheckbox('task-1'));
 
     const bar = await screen.findByTestId('task-bulk-action-bar');
     expect(within(bar).getByText(/1 משימות נבחרו/)).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe('Task Center — Requirement 2 (bulk action bar)', () => {
     renderApp({ route: '/operations' });
     await screen.findByRole('heading', { name: /מרכז משימות/ });
 
-    await user.click(await findRowCheckbox(1));
+    await user.click(await findRowCheckbox('task-1'));
     // Drawer didn't open — no role="dialog" present.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -125,8 +125,8 @@ describe('Task Center — Requirement 2 (bulk action bar)', () => {
     await screen.findByRole('heading', { name: /מרכז משימות/ });
 
     // Select two pending tasks (rows 1 and 3).
-    await user.click(await findRowCheckbox(1));
-    await user.click(await findRowCheckbox(3));
+    await user.click(await findRowCheckbox('task-1'));
+    await user.click(await findRowCheckbox('task-3'));
 
     const bar = await screen.findByTestId('task-bulk-action-bar');
     expect(within(bar).getByText(/2 משימות נבחרו/)).toBeInTheDocument();
@@ -148,7 +148,7 @@ describe('Task Center — Requirement 2 (bulk action bar)', () => {
     renderApp({ route: '/operations' });
     await screen.findByRole('heading', { name: /מרכז משימות/ });
 
-    await user.click(await findRowCheckbox(1));
+    await user.click(await findRowCheckbox('task-1'));
     await user.click(screen.getByTestId('task-bulk-reject'));
 
     // Bar gone (selection cleared after success); the settled row
@@ -169,7 +169,7 @@ describe('Task Center — Requirement 2 (bulk action bar)', () => {
     renderApp({ route: '/operations' });
     await screen.findByRole('heading', { name: /מרכז משימות/ });
 
-    await user.click(await findRowCheckbox(1));
+    await user.click(await findRowCheckbox('task-1'));
     const bar = await screen.findByTestId('task-bulk-action-bar');
     await user.click(within(bar).getByLabelText(/נקה בחירה/));
 

@@ -38,7 +38,7 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
-from models.types import UTCDateTime, utc_now as _utc_now
+from models.types import UTCDateTime, new_id, utc_now as _utc_now
 
 
 # All three timestamps on this table are timezone-aware UTC per Phase DX
@@ -64,17 +64,17 @@ class PipelineTask(SQLModel, table=True):
     # Identity
     # ------------------------------------------------------------------
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Opaque string primary key. Supplied by the upstream system of record, or defaulted via new_id().",
     )
 
     # ------------------------------------------------------------------
     # Structural foreign keys
     # ------------------------------------------------------------------
 
-    phone_id: int = Field(
+    phone_id: str = Field(
         foreign_key="phone_number.id",
         index=True,
         nullable=False,
@@ -82,7 +82,7 @@ class PipelineTask(SQLModel, table=True):
     )
     """Indexed for 'fetch all tasks for phone X' queries."""
 
-    source_action_log_id: Optional[int] = Field(
+    source_action_log_id: Optional[str] = Field(
         default=None,
         foreign_key="action_log.id",
         index=True,

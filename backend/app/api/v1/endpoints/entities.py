@@ -387,7 +387,7 @@ class EntityPatchIn(BaseModel):
     first_name:        Optional[str] = Field(default=None, max_length=80)
     last_name:         Optional[str] = Field(default=None, max_length=80)
     relation_type:     Optional[str] = Field(default=None, max_length=40)
-    target_entity_id:  Optional[int] = None
+    target_entity_id:  Optional[str] = None
     strong_identifier: Optional[str] = Field(default=None, max_length=80)
 
 
@@ -401,8 +401,8 @@ class EntityPatchIn(BaseModel):
     ),
 )
 def list_entities(
-    client_id: Optional[int] = Query(default=None),
-    client_ids: Optional[list[int]] = Query(default=None),
+    client_id: Optional[str] = Query(default=None),
+    client_ids: Optional[list[str]] = Query(default=None),
     entity_type: Optional[str] = Query(default=None),
     include_deleted: bool = Query(default=False),
     q: Optional[str] = Query(default=None),
@@ -423,7 +423,7 @@ def list_entities(
     summary="Fetch a single entity by id",
 )
 def get_entity(
-    entity_id: int,
+    entity_id: str,
     include_deleted: bool = Query(default=False),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
@@ -440,7 +440,7 @@ def get_entity(
     description="Partial update. Only non-null body fields are applied.",
 )
 def patch_entity(
-    entity_id: int,
+    entity_id: str,
     body: EntityPatchIn,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
@@ -463,7 +463,7 @@ def patch_entity(
     summary="Soft-delete an entity (admin) — cascades to its phones",
 )
 def soft_delete_entity(
-    entity_id: int,
+    entity_id: str,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -484,7 +484,7 @@ def soft_delete_entity(
     ),
 )
 def restore_entity(
-    entity_id: int,
+    entity_id: str,
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
@@ -495,7 +495,7 @@ def restore_entity(
 
 class _EnvelopeIn(BaseModel):
     """Body for POST /entities/envelope — UAT round-3 envelope mint."""
-    client_id: int
+    client_id: str
 
 
 @router.post(

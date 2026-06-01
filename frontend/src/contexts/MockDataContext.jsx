@@ -24,6 +24,18 @@ import { CLIENT_REGISTRY } from '../config/clientRegistry';
 
 const MockDataContext = createContext(null);
 
+// All ids are opaque strings (parity with the backend's string PKs). New
+// mock rows get a fresh uuid-suffixed id per table; in real mode these ids
+// come from the backend / system of record. The prefix is cosmetic — it
+// just makes ids self-describing in the dev console.
+const _uid = (prefix) => {
+  const rand =
+    (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return `${prefix}-${rand}`;
+};
+
 // Minimal empty db used as the real-mode boot state while the API hydrates.
 const EMPTY_DB = {
   clients:    [],
@@ -307,8 +319,8 @@ export function MockDataProvider({ children }) {
   // -------------------------------------------------------------------------
   const applyIngest = useCallback((payload) => {
     setDb((prev) => {
-      const nextEntityId = Math.max(...prev.entities.map((e) => e.id), 0) + 1;
-      const nextPhoneId  = Math.max(...prev.phones.map((p) => p.id), 0) + 1;
+      const nextEntityId = _uid('ent');
+      const nextPhoneId  = _uid('ph');
       const now = new Date().toISOString();
 
       const newEntity = {
@@ -371,7 +383,7 @@ export function MockDataProvider({ children }) {
         );
       }
 
-      const nextId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      const nextId = _uid('ent');
       const now    = new Date().toISOString();
 
       const firstName = String(payload.first_name || '').trim();
@@ -512,7 +524,7 @@ export function MockDataProvider({ children }) {
       });
 
       // Pass 2 — build new entities.
-      let nextId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      // ids are generated per row below (string ids).
       const now  = new Date().toISOString();
       const newEntities = candidates.map((c) => {
         const extra = {
@@ -522,7 +534,7 @@ export function MockDataProvider({ children }) {
         if (c.lastName) extra.last_name = c.lastName;
         if (c.rowToken) extra.row_token = c.rowToken;
         const ent = {
-          id:               nextId,
+          id:               _uid('ent'),
           client_id:        c.target.client_id,
           relation_type:    'associated',
           entity_type:      c.relation,
@@ -531,7 +543,6 @@ export function MockDataProvider({ children }) {
           created_at:       now,
           updated_at:       now,
         };
-        nextId += 1;
         return ent;
       });
 
@@ -599,12 +610,13 @@ export function MockDataProvider({ children }) {
     let result;
     setDb((prev) => {
       // Pre-resolve all referenced target_entity_id values in one pass.
+      // Ids are opaque strings — normalise to a trimmed string and resolve.
       const targetById = new Map();
       for (const row of rows) {
         const raw = row.target_entity_id;
         if (raw == null || raw === '') continue;
-        const id = Number(raw);
-        if (!Number.isFinite(id) || targetById.has(id)) continue;
+        const id = String(raw).trim();
+        if (targetById.has(id)) continue;
         const ent = prev.entities.find((e) => e.id === id);
         if (ent) targetById.set(id, ent);
       }
@@ -634,14 +646,7 @@ export function MockDataProvider({ children }) {
           failedRows.push({ row: rowNum, input: echo, error: 'Missing target_entity_id' });
           return;
         }
-        const tgtId = Number(tgtRaw);
-        if (!Number.isFinite(tgtId)) {
-          failedRows.push({
-            row: rowNum, input: echo,
-            error: 'target_entity_id must be an integer',
-          });
-          return;
-        }
+        const tgtId = String(tgtRaw).trim();
         const tgt = targetById.get(tgtId);
         if (!tgt) {
           failedRows.push({
@@ -664,7 +669,7 @@ export function MockDataProvider({ children }) {
         });
       });
 
-      let nextId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
+      // ids are generated per row below (string ids).
       const now  = new Date().toISOString();
       const newEntities = candidates.map((c) => {
         const extra = {
@@ -673,7 +678,7 @@ export function MockDataProvider({ children }) {
         };
         if (c.lastName) extra.last_name = c.lastName;
         const ent = {
-          id:               nextId,
+          id:               _uid('ent'),
           client_id:        c.target.client_id,
           relation_type:    'associated',
           entity_type:      c.relation,
@@ -682,7 +687,6 @@ export function MockDataProvider({ children }) {
           created_at:       now,
           updated_at:       now,
         };
-        nextId += 1;
         return ent;
       });
 
@@ -772,8 +776,7 @@ export function MockDataProvider({ children }) {
     // resulting summary out via a closure-mutated `result` ref.
     let result;
     setDb((prev) => {
-      const nextEntityId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
-      let nextPhoneId    = Math.max(0, ...prev.phones.map((p) => p.id)) + 1;
+      const nextEntityId = _uid('ent');
       const now = new Date().toISOString();
 
       const newEntity = {
@@ -789,8 +792,7 @@ export function MockDataProvider({ children }) {
       };
 
       const newPhones = candidates.map(({ normalized }) => {
-        const id = nextPhoneId;
-        nextPhoneId += 1;
+        const id = _uid('ph');
         return {
           id,
           entity_id:           nextEntityId,
@@ -925,25 +927,10 @@ export function MockDataProvider({ children }) {
         });
         return;
       }
-      const clientIdNum = Number(row.client_id);
-      if (!Number.isInteger(clientIdNum)) {
-        failedRows.push({
-          row: rowIdx, input: rawPhone.slice(0, INPUT_CAP),
-          error: 'client_id must be an integer',
-        });
-        return;
-      }
-      row.client_id = clientIdNum;
+      // Ids are opaque strings — normalise to a trimmed string id.
+      row.client_id = String(row.client_id).trim();
       if (row.target_entity_id !== '' && row.target_entity_id != null) {
-        const tgt = Number(row.target_entity_id);
-        if (!Number.isInteger(tgt)) {
-          failedRows.push({
-            row: rowIdx, input: rawPhone.slice(0, INPUT_CAP),
-            error: 'target_entity_id must be an integer',
-          });
-          return;
-        }
-        row.target_entity_id = tgt;
+        row.target_entity_id = String(row.target_entity_id).trim();
       } else {
         row.target_entity_id = null;
       }
@@ -972,8 +959,7 @@ export function MockDataProvider({ children }) {
 
     let result;
     setDb((prev) => {
-      let nextEntityId = Math.max(0, ...prev.entities.map((e) => e.id)) + 1;
-      let nextPhoneId  = Math.max(0, ...prev.phones.map((p) => p.id)) + 1;
+      // entity + phone ids generated per row below (string ids).
       const now = new Date().toISOString();
 
       // Per-row target_entity_id existence check INSIDE the mutation — a
@@ -994,10 +980,8 @@ export function MockDataProvider({ children }) {
           });
           return;
         }
-        const entityId = nextEntityId;
-        nextEntityId += 1;
-        const phoneId = nextPhoneId;
-        nextPhoneId += 1;
+        const entityId = _uid('ent');
+        const phoneId = _uid('ph');
 
         newEntities.push({
           id:               entityId,
@@ -1200,7 +1184,7 @@ export function MockDataProvider({ children }) {
       const original = prev.actionLogs.find((l) => l.id === logId);
       if (!original) return prev;
 
-      const nextId = Math.max(...prev.actionLogs.map((l) => l.id), 0) + 1;
+      const nextId = _uid('log');
       const now    = new Date().toISOString();
 
       const retryLog = {
@@ -1271,7 +1255,7 @@ export function MockDataProvider({ children }) {
   // -------------------------------------------------------------------------
   const applyOpenTask = useCallback((payload) => {
     setDb((prev) => {
-      const nextId = Math.max(...prev.tasks.map((t) => t.id), 0) + 1;
+      const nextId = _uid('task');
       const now    = new Date().toISOString();
       const phone  = prev.phones.find((p) => p.id === payload.phone_id);
       const entity = phone ? prev.entities.find((e) => e.id === phone.entity_id) : null;
@@ -1449,7 +1433,7 @@ export function MockDataProvider({ children }) {
     const author = _currentOperatorUsername(body.created_by);
     let created;
     setDb((prev) => {
-      const nextId = Math.max(0, ...(prev.notificationSubscriptions || []).map((s) => s.id)) + 1;
+      const nextId = _uid('sub');
       const now = new Date().toISOString();
       created = {
         id:                  nextId,
@@ -1512,7 +1496,7 @@ export function MockDataProvider({ children }) {
     // NotificationDelivery row tagged trigger_event_type='manual.test'.
     let delivery;
     setDb((prev) => {
-      const nextId = Math.max(0, ...(prev.notificationDeliveries || []).map((d) => d.id)) + 1;
+      const nextId = _uid('del');
       const now = new Date().toISOString();
       delivery = {
         id:                   nextId,
@@ -1574,7 +1558,7 @@ export function MockDataProvider({ children }) {
     if ((db.users || []).some((u) => u.username === body.username)) {
       throw new Error(`Username '${body.username}' is already taken.`);
     }
-    const nextId = Math.max(0, ...(db.users || []).map((u) => u.id)) + 1;
+    const nextId = _uid('usr');
     const user = {
       id:                  nextId,
       username:            body.username,
@@ -1949,7 +1933,7 @@ export function MockDataProvider({ children }) {
   const applyCreateEnvelope = useCallback((clientId) => {
     let snapshot;
     setDb((prev) => {
-      const nextId = 1 + (prev.entities.reduce((m, e) => Math.max(m, e.id || 0), 0));
+      const nextId = _uid('ent');
       const now = new Date().toISOString();
       const ent = {
         id: nextId,
@@ -1997,7 +1981,7 @@ export function MockDataProvider({ children }) {
           reject(new Error(`Entity ${body.entity_id} not found`));
           return prev;
         }
-        const nextId = 1 + (prev.phones.reduce((m, p) => Math.max(m, p.id || 0), 0));
+        const nextId = _uid('ph');
         const now = new Date().toISOString();
         const ph = {
           id: nextId,

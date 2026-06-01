@@ -39,7 +39,7 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
-from models.types import UTCDateTime, utc_now as _utc_now
+from models.types import UTCDateTime, new_id, utc_now as _utc_now
 
 
 # Vocabulary of allowed roles. Stored as a string column for forward
@@ -79,10 +79,10 @@ class User(SQLModel, table=True):
     # Identity
     # ------------------------------------------------------------------
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing surrogate PK.",
+        description="Opaque string surrogate PK. Supplied by the upstream system of record, or defaulted via new_id().",
     )
 
     username: str = Field(
@@ -214,7 +214,7 @@ class Session(SQLModel, table=True):
         ),
     )
 
-    user_id: int = Field(
+    user_id: str = Field(
         foreign_key="user.id",
         index=True,
         nullable=False,

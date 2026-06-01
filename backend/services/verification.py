@@ -73,7 +73,7 @@ class VerificationService:
 
     def update_verification_verdict(
         self,
-        phone_id: int,
+        phone_id: str,
         status: str,
         source: str,
         reason: str,
@@ -151,7 +151,7 @@ class VerificationService:
 
     def apply_two_axis_verdict(
         self,
-        phone_id: int,
+        phone_id: str,
         phone_axis: Optional[str]      = None,   # 'confirm' | 'refute' | None
         relation_axis: Optional[str]   = None,   # 'confirm' | 'refute' | None
         identification: Optional[dict] = None,   # {first_name, last_name, relation}

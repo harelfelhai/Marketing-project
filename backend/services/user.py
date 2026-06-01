@@ -53,7 +53,7 @@ class UserService:
         *,
         username: str,
         password: str,
-        managed_client_ids: List[int],
+        managed_client_ids: List[str],
         display_name: Optional[str] = None,
     ) -> User:
         """
@@ -64,7 +64,7 @@ class UserService:
             username (str): Trimmed and de-spaced by the caller; we
                 only verify uniqueness here.
             password (str): Plaintext; hashed via bcrypt before storage.
-            managed_client_ids (List[int]): Personalization seed.
+            managed_client_ids (List[str]): Personalization seed.
                 Caller (endpoint layer) is the source of truth for
                 the non-empty invariant — we double-check defensively.
             display_name (Optional[str]): Optional friendly label.
@@ -209,8 +209,8 @@ class UserService:
 
     def update_managed_client_ids(
         self,
-        user_id: int,
-        client_ids: List[int],
+        user_id: str,
+        client_ids: List[str],
     ) -> User:
         """
         Replace the operator's managed-client list.
@@ -230,7 +230,7 @@ class UserService:
         self.session.refresh(user)
         return user
 
-    def update_display_name(self, user_id: int, display_name: str) -> User:
+    def update_display_name(self, user_id: str, display_name: str) -> User:
         """Patch `extra_data.display_name`. Operator-mutable UI field."""
         user = self.session.get(User, user_id)
         if user is None:
@@ -247,7 +247,7 @@ class UserService:
     # Readers (used by tests + by the admin-sync hook)
     # ----------------------------------------------------------------
 
-    def get(self, user_id: int) -> Optional[User]:
+    def get(self, user_id: str) -> Optional[User]:
         return self.session.get(User, user_id)
 
     def get_by_username(self, username: str) -> Optional[User]:
@@ -268,12 +268,12 @@ class UserService:
 # ===========================================================================
 
 
-def managed_client_ids_of(user: User) -> List[int]:
+def managed_client_ids_of(user: User) -> List[str]:
     """
     Convenience accessor — extract the personalization seed from the
     user's `extra_data`. Defensive against malformed JSON: returns
     an empty list when the key is missing or the value isn't a list
-    of ints. The response-shape layer + `require_admin` dep both
+    of string ids. The response-shape layer + `require_admin` dep both
     need this; keeping it as a module-level helper avoids importing
     the whole UserService just for read access.
     """
@@ -282,7 +282,7 @@ def managed_client_ids_of(user: User) -> List[int]:
     raw = user.extra_data.get("managed_client_ids", [])
     if not isinstance(raw, list):
         return []
-    return [c for c in raw if isinstance(c, int)]
+    return [c for c in raw if isinstance(c, str)]
 
 
 def display_name_of(user: User) -> Optional[str]:

@@ -39,7 +39,7 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
-from models.types import UTCDateTime, utc_now as _utc_now
+from models.types import UTCDateTime, new_id, utc_now as _utc_now
 
 
 # ===========================================================================
@@ -67,10 +67,10 @@ class NotificationSubscription(SQLModel, table=True):
     # Identity
     # ------------------------------------------------------------------
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Opaque string primary key. Supplied by the upstream system of record, or defaulted via new_id().",
     )
 
     # ------------------------------------------------------------------
@@ -110,7 +110,7 @@ class NotificationSubscription(SQLModel, table=True):
         ),
     )
 
-    target_id: Optional[int] = Field(
+    target_id: Optional[str] = Field(
         default=None,
         index=True,
         description=(
@@ -246,13 +246,13 @@ class NotificationDelivery(SQLModel, table=True):
     # Identity + parentage
     # ------------------------------------------------------------------
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Opaque string primary key. Supplied by the upstream system of record, or defaulted via new_id().",
     )
 
-    subscription_id: Optional[int] = Field(
+    subscription_id: Optional[str] = Field(
         default=None,
         foreign_key="notification_subscription.id",
         index=True,

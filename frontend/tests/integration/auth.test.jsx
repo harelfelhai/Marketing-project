@@ -75,7 +75,7 @@ describe('Phase AUTH — login flow', () => {
     // Phase AUTH-C — managed_client_ids picker is a searchable
     // combobox. Focus opens the dropdown; click the option chip.
     await user.click(screen.getByTestId('reg-client-picker-input'));
-    await user.click(await screen.findByTestId('client-option-1'));
+    await user.click(await screen.findByTestId('client-option-ent-1'));
     await user.click(screen.getByTestId('auth-register-submit'));
 
     // Registered → authenticated → app loads (no more auth card).
@@ -134,7 +134,7 @@ describe('Phase AUTH — register validation', () => {
     // Phase AUTH-C — managed_client_ids picker is a searchable
     // combobox. Focus opens the dropdown; click the option chip.
     await user.click(screen.getByTestId('reg-client-picker-input'));
-    await user.click(await screen.findByTestId('client-option-1'));
+    await user.click(await screen.findByTestId('client-option-ent-1'));
     await user.click(screen.getByTestId('auth-register-submit'));
 
     await screen.findByText(/הסיסמאות אינן תואמות/);
@@ -171,7 +171,7 @@ describe('Phase AUTH — register validation', () => {
     // Phase AUTH-C — managed_client_ids picker is a searchable
     // combobox. Focus opens the dropdown; click the option chip.
     await user.click(screen.getByTestId('reg-client-picker-input'));
-    await user.click(await screen.findByTestId('client-option-1'));
+    await user.click(await screen.findByTestId('client-option-ent-1'));
     await user.click(screen.getByTestId('auth-register-submit'));
 
     await screen.findByText(/לפחות 4 תווים/);

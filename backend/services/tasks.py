@@ -74,10 +74,10 @@ class PipelineTaskService:
 
     def open_task(
         self,
-        phone_id: int,
+        phone_id: str,
         task_type: str,
         requested_by: str,
-        source_action_log_id: Optional[int] = None,
+        source_action_log_id: Optional[str] = None,
         extra_data: Optional[dict] = None,
     ) -> PipelineTask:
         """
@@ -132,7 +132,7 @@ class PipelineTaskService:
 
     def resolve_task(
         self,
-        task_id: int,
+        task_id: str,
         operator_id: str,
         outcome: str,
         resolution_note: Optional[str] = None,
@@ -229,7 +229,7 @@ class PipelineTaskService:
                 failed_count:  int,
                 success_ids:   List[int],   # ids that settled successfully
                 failed_rows:   List[{       # one entry per non-settling id
-                    task_id: int,
+                    task_id: str,
                     error:   str,
                 }],
             }
@@ -396,7 +396,7 @@ class PipelineTaskService:
 
         return list(rows), total
 
-    def get_task_with_join(self, task_id: int) -> TaskJoinRow:
+    def get_task_with_join(self, task_id: str) -> TaskJoinRow:
         """
         Fetch one task with the same JOIN shape as the list endpoint.
 

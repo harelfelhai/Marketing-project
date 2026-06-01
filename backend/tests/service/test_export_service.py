@@ -240,8 +240,11 @@ class TestExportPhonesFilters:
         assert len(rows) == 1 + 2   # 2 pending
 
     def test_client_id_filter(self, svc, seeded_phones):
+        # client_id is the root entity's string id now; p3 hangs off the
+        # second root, so filter by that root's id (p3.entity_id == e2.id).
+        e2_id = seeded_phones[2].entity_id
         xlsx_bytes, _ = svc.export_phones(
-            filters={"client_id": 2},
+            filters={"client_id": e2_id},
             columns=[_col("phone_number")],
         )
         wb = _read_workbook(xlsx_bytes)

@@ -94,11 +94,11 @@ class EntityIngestionService:
         *,
         first_name: str,
         relation_type: str,
-        target_entity_id: int,
+        target_entity_id: str,
         last_name: Optional[str] = None,
         strong_identifier: Optional[str] = None,
         extra_data: Optional[dict] = None,
-        created_by_user_id: Optional[int] = None,
+        created_by_user_id: Optional[str] = None,
     ) -> Entity:
         """
         Create one Entity row associated with an existing root target.
@@ -219,9 +219,9 @@ class EntityIngestionService:
 
     def create_envelope(
         self,
-        client_id: int,
+        client_id: str,
         *,
-        created_by_user_id: Optional[int] = None,
+        created_by_user_id: Optional[str] = None,
     ):
         """
         Mint an anonymous social-envelope entity under a client.
@@ -273,8 +273,8 @@ class EntityIngestionService:
         *,
         rows: list[dict],
         default_relation_type: str,
-        default_target_entity_id: int,
-        created_by_user_id: Optional[int] = None,
+        default_target_entity_id: str,
+        created_by_user_id: Optional[str] = None,
     ) -> dict:
         """
         Insert one Entity row per item in `rows` with per-row resilience.
@@ -343,13 +343,13 @@ class EntityIngestionService:
         # default target is added to the cache so Pass 1's lookup loop
         # has a single uniform shape.
         # ----------------------------------------------------------------
-        override_ids: set[int] = {
-            int(r["target_entity_id"])
+        override_ids: set[str] = {
+            r["target_entity_id"]
             for r in rows
             if r.get("target_entity_id") is not None
-            and int(r["target_entity_id"]) != default_target_entity_id
+            and r["target_entity_id"] != default_target_entity_id
         }
-        target_lookup: dict[int, Entity] = {default_target.id: default_target}
+        target_lookup: dict[str, Entity] = {default_target.id: default_target}
         if override_ids:
             for ent in self.session.exec(
                 select(Entity).where(Entity.id.in_(override_ids))
@@ -390,7 +390,7 @@ class EntityIngestionService:
                 continue
 
             override_tgt = row.get("target_entity_id")
-            tgt_id = int(override_tgt) if override_tgt is not None else default_target_entity_id
+            tgt_id = override_tgt if override_tgt is not None else default_target_entity_id
             tgt = target_lookup.get(tgt_id)
             if tgt is None:
                 failed_rows.append({
@@ -488,7 +488,7 @@ class EntityIngestionService:
         self,
         file_bytes: bytes,
         filename: str,
-        created_by_user_id: Optional[int] = None,
+        created_by_user_id: Optional[str] = None,
     ) -> dict:
         """
         Parse an Excel (.xlsx) or CSV file and insert one Entity per row.
@@ -532,16 +532,12 @@ class EntityIngestionService:
         # ----------------------------------------------------------------
         # Pre-resolve target FKs in one pass to avoid N+1 lookups.
         # ----------------------------------------------------------------
-        candidate_target_ids: set[int] = set()
+        candidate_target_ids: set[str] = set()
         for row in rows:
             tgt = row.get("target_entity_id")
             if tgt not in (None, ""):
-                try:
-                    candidate_target_ids.add(int(tgt))
-                except (TypeError, ValueError):
-                    # bad-format target lands as a per-row failure below
-                    pass
-        target_lookup: dict[int, Entity] = {}
+                candidate_target_ids.add(str(tgt).strip())
+        target_lookup: dict[str, Entity] = {}
         if candidate_target_ids:
             for ent in self.session.exec(
                 select(Entity).where(Entity.id.in_(candidate_target_ids))
@@ -584,15 +580,7 @@ class EntityIngestionService:
                     "error": "Missing target_entity_id",
                 })
                 continue
-            try:
-                tgt_id = int(tgt_raw)
-            except (TypeError, ValueError):
-                failed_rows.append({
-                    "row": row_idx,
-                    "input": _safe_input_str(row),
-                    "error": "target_entity_id must be an integer",
-                })
-                continue
+            tgt_id = str(tgt_raw).strip()
 
             tgt = target_lookup.get(tgt_id)
             if tgt is None:

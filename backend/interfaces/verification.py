@@ -54,7 +54,7 @@ class BaseVerificationStrategy(ABC):
     """
 
     @abstractmethod
-    def evaluate_quality(self, phone_id: int) -> VerificationVerdict:
+    def evaluate_quality(self, phone_id: str) -> VerificationVerdict:
         """
         Analyse a phone number's history and return a quality verdict.
 
@@ -90,7 +90,7 @@ class BaseVerificationStrategy(ABC):
 
         Examples:
             # Minimal mock — always returns "verified_good":
-            def evaluate_quality(self, phone_id: int) -> VerificationVerdict:
+            def evaluate_quality(self, phone_id: str) -> VerificationVerdict:
                 return VerificationVerdict(
                     status="verified_good",
                     reason="mock evaluation passed",

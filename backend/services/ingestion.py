@@ -89,7 +89,7 @@ class IngestionService:
         self,
         payload: IngestionPayload,
         *,
-        uploaded_by_user_id: Optional[int] = None,
+        uploaded_by_user_id: Optional[str] = None,
     ) -> PhoneNumber:
         """
         Ingest a new circle-of-trust phone number into the system.
@@ -157,7 +157,7 @@ class IngestionService:
             )
 
         # The target's Entity.id is the FK we need for the new circle member.
-        target_entity_id: int = target_phone_row.entity_id
+        target_entity_id: str = target_phone_row.entity_id
 
         # ----------------------------------------------------------------
         # b) ATOMIC CREATE — Entity + PhoneNumber under one transaction.
@@ -240,9 +240,9 @@ class IngestionService:
         self,
         *,
         phone_number: str,
-        entity_id: int,
+        entity_id: str,
         ingestion_reason: Optional[str] = None,
-        uploaded_by_user_id: Optional[int] = None,
+        uploaded_by_user_id: Optional[str] = None,
     ) -> PhoneNumber:
         """
         Create a PhoneNumber attached to an EXISTING entity.

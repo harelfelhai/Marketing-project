@@ -207,20 +207,20 @@ export default function SingleIngestionPanel({ active }) {
   };
 
   const resolveEntityId = useCallback(async () => {
-    if (form.mode === 'existing') return Number(form.existingEntityId);
+    if (form.mode === 'existing') return form.existingEntityId;
 
     if (form.mode === 'new') {
       const created = await createEntity({
         first_name:        form.newFirstName.trim(),
         last_name:         form.newLastName.trim() || null,
         relation_type:     form.newRelation,
-        target_entity_id:  Number(form.newTargetId),
+        target_entity_id:  form.newTargetId,
       }, mockDb);
       return created.id;
     }
 
     if (form.mode === 'envelope') {
-      const env = await createEnvelopeEntity(Number(form.envelopeClientId), mockDb);
+      const env = await createEnvelopeEntity(form.envelopeClientId, mockDb);
       return env.id;
     }
 

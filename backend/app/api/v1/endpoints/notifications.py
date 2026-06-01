@@ -116,7 +116,7 @@ def list_subscriptions(
         default=None,
         description="Filter by scope. 'phone' | 'entity' | 'task' | 'global'.",
     ),
-    target_id: Optional[int] = Query(
+    target_id: Optional[str] = Query(
         default=None,
         description="Filter by record id (combine with target_kind).",
     ),
@@ -159,7 +159,7 @@ def list_subscriptions(
     ),
 )
 def list_deliveries(
-    subscription_id: Optional[int] = Query(
+    subscription_id: Optional[str] = Query(
         default=None,
         description="Filter to one subscription's history.",
     ),
@@ -222,7 +222,7 @@ def test_fire(
     summary="Get one notification subscription by id",
 )
 def get_subscription(
-    subscription_id: int,
+    subscription_id: str,
     service: NotificationSubscriptionService = Depends(get_notification_subscription_service),
 ) -> NotificationSubscriptionResponse:
     try:
@@ -247,7 +247,7 @@ def get_subscription(
     ),
 )
 def patch_subscription(
-    subscription_id: int,
+    subscription_id: str,
     body: NotificationSubscriptionUpdate,
     service: NotificationSubscriptionService = Depends(get_notification_subscription_service),
 ) -> NotificationSubscriptionResponse:
@@ -284,7 +284,7 @@ def patch_subscription(
     ),
 )
 def delete_subscription(
-    subscription_id: int,
+    subscription_id: str,
     service: NotificationSubscriptionService = Depends(get_notification_subscription_service),
 ) -> None:
     try:

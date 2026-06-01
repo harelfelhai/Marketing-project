@@ -98,7 +98,7 @@ class ScoringService:
 
     def recalculate_for_phone(
         self,
-        phone_id: int,
+        phone_id: str,
         commit: bool = True,
     ) -> PhoneNumber:
         """
@@ -157,7 +157,7 @@ class ScoringService:
 
     def update_confidence_and_recalc(
         self,
-        phone_id: int,
+        phone_id: str,
         new_confidence: float,
         commit: bool = True,
     ) -> PhoneNumber:

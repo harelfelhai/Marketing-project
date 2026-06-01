@@ -104,7 +104,7 @@ def trigger_manual_action(
     ),
 )
 def retry_now(
-    log_id: int,
+    log_id: str,
     body: RetryNowRequest = RetryNowRequest(),
     current_user: User = Depends(require_authenticated_user),
     dispatcher: ActionDispatcher = Depends(get_action_dispatcher),
@@ -210,7 +210,7 @@ def list_action_logs(
         default=None,
         description="Filter by the action type token (e.g. 'advertisement_type_a').",
     ),
-    phone_id: Optional[int] = Query(
+    phone_id: Optional[str] = Query(
         default=None,
         description="Filter to the dispatch history of a single phone number.",
     ),

@@ -43,8 +43,8 @@ describe('Phase E2-D — entity bulk-upload (Tab 2)', () => {
     // Target id 1 is one of the seeded root targets (Client Alpha).
     const csv = [
       'first_name,relation_type,target_entity_id,last_name',
-      'Jane,family,1,Doe',
-      'Sam,colleague,1,Chen',
+      'Jane,family,ent-1,Doe',
+      'Sam,colleague,ent-1,Chen',
     ].join('\n');
     const file = new File([csv], 'people.csv', { type: 'text/csv' });
 

@@ -76,7 +76,7 @@ class TestVerificationVerdict:
 class TestOpenTaskRequest:
     def test_minimal_valid(self):
         r = OpenTaskRequest(
-            phone_id=1,
+            phone_id="ph-1",
             task_type="remediation_failure",
             requested_by="automation:retry_engine",
         )
@@ -85,13 +85,13 @@ class TestOpenTaskRequest:
 
     def test_full_payload(self):
         r = OpenTaskRequest(
-            phone_id=1,
+            phone_id="ph-1",
             task_type="approval_required",
             requested_by="mock_operator_02",
-            source_action_log_id=42,
+            source_action_log_id="al-42",
             extra_data={"requested_action_type": "action_type_a"},
         )
-        assert r.source_action_log_id == 42
+        assert r.source_action_log_id == "al-42"
         assert r.extra_data == {"requested_action_type": "action_type_a"}
 
     # Phase AUTH-B: requested_by is now OPTIONAL on this schema.
@@ -100,7 +100,7 @@ class TestOpenTaskRequest:
     # body. So the required-field set on the SCHEMA shrinks to two.
     @pytest.mark.parametrize("missing", ["phone_id", "task_type"])
     def test_required_field_missing_raises(self, missing):
-        kwargs = dict(phone_id=1, task_type="x", requested_by="op")
+        kwargs = dict(phone_id="ph-1", task_type="x", requested_by="op")
         kwargs.pop(missing)
         with pytest.raises(ValidationError):
             OpenTaskRequest(**kwargs)
@@ -109,12 +109,12 @@ class TestOpenTaskRequest:
         # No longer raises — the endpoint reads from current_user when
         # the caller is logged in. The schema still accepts a body
         # value (used by anonymous automation callers).
-        r = OpenTaskRequest(phone_id=1, task_type="x")
+        r = OpenTaskRequest(phone_id="ph-1", task_type="x")
         assert r.requested_by is None
 
     @pytest.mark.parametrize("field", ["task_type"])
     def test_empty_string_rejected(self, field):
-        kwargs = dict(phone_id=1, task_type="x", requested_by="op")
+        kwargs = dict(phone_id="ph-1", task_type="x", requested_by="op")
         kwargs[field] = ""
         with pytest.raises(ValidationError):
             OpenTaskRequest(**kwargs)

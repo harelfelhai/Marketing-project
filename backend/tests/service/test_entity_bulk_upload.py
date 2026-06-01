@@ -89,9 +89,10 @@ class TestExcelHappyPath:
 
         # Each row inherits its OWN target's client_id (independent
         # context per row — distinct from bulk-text's shared default).
+        # client_id is the root's string id now.
         ents = [session.get(Entity, eid) for eid in summary["entity_ids"]]
-        clients = sorted(e.client_id for e in ents)
-        assert clients == [1, 2]
+        clients = {e.client_id for e in ents}
+        assert clients == {root_target.id, second_root_target.id}
 
     def test_audit_trail_stamped_on_every_entity(
         self, svc, root_target, session
@@ -244,16 +245,17 @@ class TestPerRowFailures:
         assert summary["success_count"] == 0
         assert "not a root" in summary["failed_rows"][0]["error"]
 
-    def test_target_not_integer(self, svc, root_target):
-        # Pasting a string into target_entity_id should land as a clear
-        # per-row failure, not a generic 'not found'.
+    def test_unknown_target_lands_in_failed_rows(self, svc, root_target):
+        # Ids are strings now: the old int-format validation is gone.
+        # An arbitrary string target is a syntactically-valid id that
+        # simply doesn't exist → it lands as a 'not found' per-row failure.
         payload = _build_xlsx(
             header=list(BULK_ENTITY_ALL_COLUMNS),
             rows=[["Jane", "family", "abc", "Doe"]],
         )
         summary = svc.ingest_bulk_upload(payload, "upload.xlsx")
         assert summary["success_count"] == 0
-        assert "integer" in summary["failed_rows"][0]["error"].lower()
+        assert "not found" in summary["failed_rows"][0]["error"].lower()
 
 
 # ===========================================================================

@@ -93,7 +93,7 @@ class EntitySingleCreateIn(BaseModel):
         ),
         examples=["family"],
     )
-    target_entity_id: int = Field(
+    target_entity_id: str = Field(
         ...,
         description=(
             "FK to the root target Entity this person is being associated "
@@ -157,11 +157,11 @@ class EntitySingleCreateOut(BaseModel):
     not `"AssociatedRelationType.FAMILY"`.
     """
 
-    id: int = Field(
+    id: str = Field(
         ...,
         description="Surrogate PK of the newly created Entity row.",
     )
-    client_id: Optional[int] = Field(
+    client_id: Optional[str] = Field(
         default=None,
         description=(
             "Integer client partition identifier, inherited from the "
@@ -177,7 +177,7 @@ class EntitySingleCreateOut(BaseModel):
             "plain string — same value the request supplied."
         ),
     )
-    target_entity_id: int = Field(
+    target_entity_id: str = Field(
         ...,
         description="FK to the root target Entity this person is associated with.",
     )
@@ -259,7 +259,7 @@ class EntityBulkTextRow(BaseModel):
             "provided, must be one of the operator-creatable tokens."
         ),
     )
-    target_entity_id: Optional[int] = Field(
+    target_entity_id: Optional[str] = Field(
         default=None,
         description=(
             "Per-row override of the request-level "
@@ -309,7 +309,7 @@ class EntityBulkTextIn(BaseModel):
             "per-row `relation_type` is null."
         ),
     )
-    default_target_entity_id: int = Field(
+    default_target_entity_id: str = Field(
         ...,
         description=(
             "Modal-level default target FK applied to every row whose "

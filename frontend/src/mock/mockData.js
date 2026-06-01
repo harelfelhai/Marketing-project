@@ -19,11 +19,11 @@
 // ---------------------------------------------------------------------------
 
 export const SEED_CLIENTS = [
-  { id: 1,  name: 'Client Alpha',   sla_hours: 6,  sla_threshold_pct: 85 },
-  { id: 9,  name: 'Client Beta',    sla_hours: 8,  sla_threshold_pct: 90 },
-  { id: 17, name: 'Client Gamma',   sla_hours: 4,  sla_threshold_pct: 80 },
-  { id: 24, name: 'Client Delta',   sla_hours: 12, sla_threshold_pct: 75 },
-  { id: 33, name: 'Client Epsilon', sla_hours: 6,  sla_threshold_pct: 88 },
+  { id: 'ent-1',  name: 'Client Alpha',   sla_hours: 6,  sla_threshold_pct: 85 },
+  { id: 'ent-9',  name: 'Client Beta',    sla_hours: 8,  sla_threshold_pct: 90 },
+  { id: 'ent-17', name: 'Client Gamma',   sla_hours: 4,  sla_threshold_pct: 80 },
+  { id: 'ent-24', name: 'Client Delta',   sla_hours: 12, sla_threshold_pct: 75 },
+  { id: 'ent-33', name: 'Client Epsilon', sla_hours: 6,  sla_threshold_pct: 88 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -35,11 +35,11 @@ export const SEED_CLIENTS = [
 // ---------------------------------------------------------------------------
 
 export const CLIENT_TIER_MAP = {
-  1:  1,   // Alpha
-  9:  2,   // Beta
-  17: 1,   // Gamma
-  24: 3,   // Delta
-  33: 2,   // Epsilon
+  'ent-1':  1,   // Alpha
+  'ent-9':  2,   // Beta
+  'ent-17': 1,   // Gamma
+  'ent-24': 3,   // Delta
+  'ent-33': 2,   // Epsilon
 };
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ export const CLASSIFICATION_TYPES = [
 //
 // There is no stored client_id column — buildInitialDb() materialises the
 // derived value (target_entity_id ?? id) onto each entity and phone so the
-// rest of the app keeps reading an integer client_id unchanged.
+// rest of the app keeps reading a string client_id unchanged.
 // ---------------------------------------------------------------------------
 
 const _now = new Date('2026-05-17T10:00:00Z');
@@ -73,60 +73,60 @@ const _daysAgo = (d) => new Date(_now - d * 86400000).toISOString();
 
 export const SEED_ENTITIES = [
   // ===== Client Alpha — root id 1 + envelope (ids 1-8, 88) =====
-  { id: 1,  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Alpha',  region: 'north' } },
-  { id: 2,  entity_type: 'family',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 1', region: 'north' } },
-  { id: 3,  entity_type: 'friend',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 2', region: 'south' } },
-  { id: 4,  entity_type: 'colleague',       target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 3', region: 'east'  } },
-  { id: 5,  entity_type: 'spouse',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 4', region: 'west'  } },
-  { id: 6,  entity_type: 'family',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 5', region: 'north' } },
-  { id: 7,  entity_type: 'friend',          target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 6', region: 'south' } },
-  { id: 8,  entity_type: 'colleague',       target_entity_id: 1,    extra_data: { first_name: 'Alpha Relative 7', region: 'east'  } },
+  { id: 'ent-1',  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Alpha',  region: 'north' } },
+  { id: 'ent-2',  entity_type: 'family',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 1', region: 'north' } },
+  { id: 'ent-3',  entity_type: 'friend',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 2', region: 'south' } },
+  { id: 'ent-4',  entity_type: 'colleague',       target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 3', region: 'east'  } },
+  { id: 'ent-5',  entity_type: 'spouse',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 4', region: 'west'  } },
+  { id: 'ent-6',  entity_type: 'family',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 5', region: 'north' } },
+  { id: 'ent-7',  entity_type: 'friend',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 6', region: 'south' } },
+  { id: 'ent-8',  entity_type: 'colleague',       target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 7', region: 'east'  } },
   // ===== Client Beta — root id 9 + envelope (ids 9-16, 91) =====
-  { id: 9,  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Beta',   region: 'west'  } },
-  { id: 10, entity_type: 'family',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 1',  region: 'north' } },
-  { id: 11, entity_type: 'friend',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 2',  region: 'east'  } },
-  { id: 12, entity_type: 'colleague',       target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 3',  region: 'south' } },
-  { id: 13, entity_type: 'spouse',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 4',  region: 'north' } },
-  { id: 14, entity_type: 'family',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 5',  region: 'west'  } },
-  { id: 15, entity_type: 'friend',          target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 6',  region: 'east'  } },
-  { id: 16, entity_type: 'colleague',       target_entity_id: 9,    extra_data: { first_name: 'Beta Relative 7',  region: 'south' } },
+  { id: 'ent-9',  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Beta',   region: 'west'  } },
+  { id: 'ent-10', entity_type: 'family',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 1',  region: 'north' } },
+  { id: 'ent-11', entity_type: 'friend',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 2',  region: 'east'  } },
+  { id: 'ent-12', entity_type: 'colleague',       target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 3',  region: 'south' } },
+  { id: 'ent-13', entity_type: 'spouse',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 4',  region: 'north' } },
+  { id: 'ent-14', entity_type: 'family',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 5',  region: 'west'  } },
+  { id: 'ent-15', entity_type: 'friend',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 6',  region: 'east'  } },
+  { id: 'ent-16', entity_type: 'colleague',       target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 7',  region: 'south' } },
   // ===== Client Gamma — root id 17 (ids 17-23) =====
-  { id: 17, entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Gamma',  region: 'north' } },
-  { id: 18, entity_type: 'family',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 1', region: 'east'  } },
-  { id: 19, entity_type: 'friend',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 2', region: 'west'  } },
-  { id: 20, entity_type: 'colleague',       target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 3', region: 'south' } },
-  { id: 21, entity_type: 'spouse',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 4', region: 'north' } },
-  { id: 22, entity_type: 'family',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 5', region: 'east'  } },
-  { id: 23, entity_type: 'friend',          target_entity_id: 17,   extra_data: { first_name: 'Gamma Relative 6', region: 'west'  } },
+  { id: 'ent-17', entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Gamma',  region: 'north' } },
+  { id: 'ent-18', entity_type: 'family',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 1', region: 'east'  } },
+  { id: 'ent-19', entity_type: 'friend',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 2', region: 'west'  } },
+  { id: 'ent-20', entity_type: 'colleague',       target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 3', region: 'south' } },
+  { id: 'ent-21', entity_type: 'spouse',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 4', region: 'north' } },
+  { id: 'ent-22', entity_type: 'family',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 5', region: 'east'  } },
+  { id: 'ent-23', entity_type: 'friend',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 6', region: 'west'  } },
   // ===== Client Delta — root id 24 (ids 24-32) =====
-  { id: 24, entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Delta',  region: 'south' } },
-  { id: 25, entity_type: 'family',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 1', region: 'north' } },
-  { id: 26, entity_type: 'friend',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 2', region: 'east'  } },
-  { id: 27, entity_type: 'colleague',       target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 3', region: 'west'  } },
-  { id: 28, entity_type: 'spouse',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 4', region: 'south' } },
-  { id: 29, entity_type: 'family',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 5', region: 'north' } },
-  { id: 30, entity_type: 'friend',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 6', region: 'east'  } },
-  { id: 31, entity_type: 'colleague',       target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 7', region: 'west'  } },
-  { id: 32, entity_type: 'spouse',          target_entity_id: 24,   extra_data: { first_name: 'Delta Relative 8', region: 'south' } },
+  { id: 'ent-24', entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Delta',  region: 'south' } },
+  { id: 'ent-25', entity_type: 'family',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 1', region: 'north' } },
+  { id: 'ent-26', entity_type: 'friend',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 2', region: 'east'  } },
+  { id: 'ent-27', entity_type: 'colleague',       target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 3', region: 'west'  } },
+  { id: 'ent-28', entity_type: 'spouse',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 4', region: 'south' } },
+  { id: 'ent-29', entity_type: 'family',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 5', region: 'north' } },
+  { id: 'ent-30', entity_type: 'friend',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 6', region: 'east'  } },
+  { id: 'ent-31', entity_type: 'colleague',       target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 7', region: 'west'  } },
+  { id: 'ent-32', entity_type: 'spouse',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 8', region: 'south' } },
   // ===== Client Epsilon — root id 33 (ids 33-40) =====
-  { id: 33, entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Epsilon', region: 'north' } },
-  { id: 34, entity_type: 'family',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 1', region: 'east'  } },
-  { id: 35, entity_type: 'friend',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 2', region: 'west'  } },
-  { id: 36, entity_type: 'colleague',       target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 3', region: 'south' } },
-  { id: 37, entity_type: 'spouse',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 4', region: 'north' } },
-  { id: 38, entity_type: 'family',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 5', region: 'east'  } },
-  { id: 39, entity_type: 'friend',          target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 6', region: 'west'  } },
-  { id: 40, entity_type: 'colleague',       target_entity_id: 33,   extra_data: { first_name: 'Epsilon Relative 7', region: 'south' } },
+  { id: 'ent-33', entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Epsilon', region: 'north' } },
+  { id: 'ent-34', entity_type: 'family',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 1', region: 'east'  } },
+  { id: 'ent-35', entity_type: 'friend',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 2', region: 'west'  } },
+  { id: 'ent-36', entity_type: 'colleague',       target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 3', region: 'south' } },
+  { id: 'ent-37', entity_type: 'spouse',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 4', region: 'north' } },
+  { id: 'ent-38', entity_type: 'family',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 5', region: 'east'  } },
+  { id: 'ent-39', entity_type: 'friend',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 6', region: 'west'  } },
+  { id: 'ent-40', entity_type: 'colleague',       target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 7', region: 'south' } },
 
   // Phase DY-4 — social_envelope entities (Vector B). target_entity_id
   // points at the owning root so the row sits inside that client's
   // queue. Identity unknown at ingest; the operator's audit either
   // confirms placement, identifies the owner, or refutes the surfacing.
-  { id: 88, entity_type: 'social_envelope',
-    target_entity_id: 1,
+  { id: 'ent-88', entity_type: 'social_envelope',
+    target_entity_id: 'ent-1',
     extra_data: { envelope_id: 'EP-088', scrape_source: 'social_cluster_alpha' } },
-  { id: 91, entity_type: 'social_envelope',
-    target_entity_id: 9,
+  { id: 'ent-91', entity_type: 'social_envelope',
+    target_entity_id: 'ent-9',
     extra_data: { envelope_id: 'EP-091', scrape_source: 'co_occurrence_beta' } },
 ];
 
@@ -137,7 +137,7 @@ export const SEED_ENTITIES = [
 export const SEED_PHONES = [
   // --- Alpha phones (entity_ids 1-8) ---
   {
-    id: 1,  entity_id: 1,  phone_number: '+15550000001',
+    id: 'ph-1',  entity_id: 'ent-1',  phone_number: '+15550000001',
     classification_type: 'type_a', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(10),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -146,7 +146,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', campaign: 'Q2-2026' },
   },
   {
-    id: 2,  entity_id: 2,  phone_number: '+15550000002',
+    id: 'ph-2',  entity_id: 'ent-2',  phone_number: '+15550000002',
     classification_type: 'type_b', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(9),
     verification_status: 'pending', verification_source: null,
@@ -155,7 +155,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium', notes: 'Awaiting first contact' },
   },
   {
-    id: 3,  entity_id: 3,  phone_number: '+15550000003',
+    id: 'ph-3',  entity_id: 'ent-3',  phone_number: '+15550000003',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'referral', ingested_at: _daysAgo(8),
     verification_status: 'verified_bad', verification_source: 'automated',
@@ -164,7 +164,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', notes: 'Disconnected number confirmed' },
   },
   {
-    id: 4,  entity_id: 4,  phone_number: '+15550000004',
+    id: 'ph-4',  entity_id: 'ent-4',  phone_number: '+15550000004',
     classification_type: 'type_a', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(7),
     verification_status: 'pending', verification_source: null,
@@ -173,7 +173,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', batch: 'import-2026-05-10' },
   },
   {
-    id: 5,  entity_id: 5,  phone_number: '+15550000005',
+    id: 'ph-5',  entity_id: 'ent-5',  phone_number: '+15550000005',
     classification_type: 'type_d', ingestion_source: 'api',
     ingestion_reason: 'partner_feed', ingested_at: _daysAgo(6),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -182,7 +182,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', partner: 'partner-01' },
   },
   {
-    id: 6,  entity_id: 6,  phone_number: '+15550000006',
+    id: 'ph-6',  entity_id: 'ent-6',  phone_number: '+15550000006',
     classification_type: 'type_b', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(5),
     verification_status: 'pending', verification_source: null,
@@ -191,7 +191,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium' },
   },
   {
-    id: 7,  entity_id: 7,  phone_number: '+15550000007',
+    id: 'ph-7',  entity_id: 'ent-7',  phone_number: '+15550000007',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(4),
     verification_status: 'verified_good', verification_source: 'automated',
@@ -200,7 +200,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', campaign: 'Q2-2026' },
   },
   {
-    id: 8,  entity_id: 8,  phone_number: '+15550000008',
+    id: 'ph-8',  entity_id: 'ent-8',  phone_number: '+15550000008',
     classification_type: 'type_a', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(3),
     verification_status: 'pending', verification_source: null,
@@ -210,7 +210,7 @@ export const SEED_PHONES = [
   },
   // --- Beta phones (entity_ids 9-16) ---
   {
-    id: 9,  entity_id: 9,  phone_number: '+15550000009',
+    id: 'ph-9',  entity_id: 'ent-9',  phone_number: '+15550000009',
     classification_type: 'type_b', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(12),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -219,7 +219,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium', campaign: 'Q1-2026' },
   },
   {
-    id: 10, entity_id: 10, phone_number: '+15550000010',
+    id: 'ph-10', entity_id: 'ent-10', phone_number: '+15550000010',
     classification_type: 'type_a', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(11),
     verification_status: 'pending', verification_source: null,
@@ -228,7 +228,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high' },
   },
   {
-    id: 11, entity_id: 11, phone_number: '+15550000011',
+    id: 'ph-11', entity_id: 'ent-11', phone_number: '+15550000011',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'referral', ingested_at: _daysAgo(10),
     verification_status: 'verified_bad', verification_source: 'automated',
@@ -237,7 +237,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', failure_code: 'QC-403' },
   },
   {
-    id: 12, entity_id: 12, phone_number: '+15550000012',
+    id: 'ph-12', entity_id: 'ent-12', phone_number: '+15550000012',
     classification_type: 'type_d', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(9),
     verification_status: 'pending', verification_source: null,
@@ -246,7 +246,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium', batch: 'import-2026-05-08' },
   },
   {
-    id: 13, entity_id: 13, phone_number: '+15550000013',
+    id: 'ph-13', entity_id: 'ent-13', phone_number: '+15550000013',
     classification_type: 'type_a', ingestion_source: 'api',
     ingestion_reason: 'partner_feed', ingested_at: _daysAgo(8),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -255,7 +255,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', partner: 'partner-02' },
   },
   {
-    id: 14, entity_id: 14, phone_number: '+15550000014',
+    id: 'ph-14', entity_id: 'ent-14', phone_number: '+15550000014',
     classification_type: 'type_b', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(6),
     verification_status: 'pending', verification_source: null,
@@ -264,7 +264,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low' },
   },
   {
-    id: 15, entity_id: 15, phone_number: '+15550000015',
+    id: 'ph-15', entity_id: 'ent-15', phone_number: '+15550000015',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(4),
     verification_status: 'verified_good', verification_source: 'automated',
@@ -273,7 +273,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium', campaign: 'Q2-2026', score: 0.92 },
   },
   {
-    id: 16, entity_id: 16, phone_number: '+15550000016',
+    id: 'ph-16', entity_id: 'ent-16', phone_number: '+15550000016',
     classification_type: 'type_d', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(2),
     verification_status: 'pending', verification_source: null,
@@ -283,7 +283,7 @@ export const SEED_PHONES = [
   },
   // --- Gamma phones (entity_ids 17-23) ---
   {
-    id: 17, entity_id: 17, phone_number: '+15550000017',
+    id: 'ph-17', entity_id: 'ent-17', phone_number: '+15550000017',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(14),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -292,7 +292,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', campaign: 'Q1-2026' },
   },
   {
-    id: 18, entity_id: 18, phone_number: '+15550000018',
+    id: 'ph-18', entity_id: 'ent-18', phone_number: '+15550000018',
     classification_type: 'type_a', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(13),
     verification_status: 'verified_bad', verification_source: 'manual',
@@ -301,7 +301,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', failure_reason: 'invalid_format' },
   },
   {
-    id: 19, entity_id: 19, phone_number: '+15550000019',
+    id: 'ph-19', entity_id: 'ent-19', phone_number: '+15550000019',
     classification_type: 'type_b', ingestion_source: 'api',
     ingestion_reason: 'referral', ingested_at: _daysAgo(11),
     verification_status: 'pending', verification_source: null,
@@ -310,7 +310,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium' },
   },
   {
-    id: 20, entity_id: 20, phone_number: '+15550000020',
+    id: 'ph-20', entity_id: 'ent-20', phone_number: '+15550000020',
     classification_type: 'type_d', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(9),
     verification_status: 'verified_good', verification_source: 'automated',
@@ -319,7 +319,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', score: 0.97, batch: 'import-2026-05-08' },
   },
   {
-    id: 21, entity_id: 21, phone_number: '+15550000021',
+    id: 'ph-21', entity_id: 'ent-21', phone_number: '+15550000021',
     classification_type: 'type_a', ingestion_source: 'api',
     ingestion_reason: 'partner_feed', ingested_at: _daysAgo(7),
     verification_status: 'pending', verification_source: null,
@@ -328,7 +328,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', partner: 'partner-03' },
   },
   {
-    id: 22, entity_id: 22, phone_number: '+15550000022',
+    id: 'ph-22', entity_id: 'ent-22', phone_number: '+15550000022',
     classification_type: 'type_c', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(5),
     verification_status: 'pending', verification_source: null,
@@ -337,7 +337,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low' },
   },
   {
-    id: 23, entity_id: 23, phone_number: '+15550000023',
+    id: 'ph-23', entity_id: 'ent-23', phone_number: '+15550000023',
     classification_type: 'type_b', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(3),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -347,7 +347,7 @@ export const SEED_PHONES = [
   },
   // --- Delta phones (entity_ids 24-32) ---
   {
-    id: 24, entity_id: 24, phone_number: '+15550000024',
+    id: 'ph-24', entity_id: 'ent-24', phone_number: '+15550000024',
     classification_type: 'type_d', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(15),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -356,7 +356,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', campaign: 'Q1-2026' },
   },
   {
-    id: 25, entity_id: 25, phone_number: '+15550000025',
+    id: 'ph-25', entity_id: 'ent-25', phone_number: '+15550000025',
     classification_type: 'type_a', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(14),
     verification_status: 'pending', verification_source: null,
@@ -365,7 +365,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium', batch: 'import-2026-05-03' },
   },
   {
-    id: 26, entity_id: 26, phone_number: '+15550000026',
+    id: 'ph-26', entity_id: 'ent-26', phone_number: '+15550000026',
     classification_type: 'type_b', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(12),
     verification_status: 'verified_bad', verification_source: 'automated',
@@ -374,7 +374,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', suppression_code: 'SUP-007' },
   },
   {
-    id: 27, entity_id: 27, phone_number: '+15550000027',
+    id: 'ph-27', entity_id: 'ent-27', phone_number: '+15550000027',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'referral', ingested_at: _daysAgo(10),
     verification_status: 'pending', verification_source: null,
@@ -383,7 +383,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium' },
   },
   {
-    id: 28, entity_id: 28, phone_number: '+15550000028',
+    id: 'ph-28', entity_id: 'ent-28', phone_number: '+15550000028',
     classification_type: 'type_d', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(8),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -392,7 +392,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', batch: 'import-2026-05-09' },
   },
   {
-    id: 29, entity_id: 29, phone_number: '+15550000029',
+    id: 'ph-29', entity_id: 'ent-29', phone_number: '+15550000029',
     classification_type: 'type_a', ingestion_source: 'api',
     ingestion_reason: 'partner_feed', ingested_at: _daysAgo(6),
     verification_status: 'pending', verification_source: null,
@@ -401,7 +401,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', partner: 'partner-01' },
   },
   {
-    id: 30, entity_id: 30, phone_number: '+15550000030',
+    id: 'ph-30', entity_id: 'ent-30', phone_number: '+15550000030',
     classification_type: 'type_b', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(4),
     verification_status: 'pending', verification_source: null,
@@ -410,7 +410,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium' },
   },
   {
-    id: 31, entity_id: 31, phone_number: '+15550000031',
+    id: 'ph-31', entity_id: 'ent-31', phone_number: '+15550000031',
     classification_type: 'type_c', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(2),
     verification_status: 'verified_good', verification_source: 'automated',
@@ -419,7 +419,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', campaign: 'Q2-2026', score: 0.89 },
   },
   {
-    id: 32, entity_id: 32, phone_number: '+15550000032',
+    id: 'ph-32', entity_id: 'ent-32', phone_number: '+15550000032',
     classification_type: 'type_d', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(1),
     verification_status: 'pending', verification_source: null,
@@ -429,7 +429,7 @@ export const SEED_PHONES = [
   },
   // --- Epsilon phones (entity_ids 33-40) ---
   {
-    id: 33, entity_id: 33, phone_number: '+15550000033',
+    id: 'ph-33', entity_id: 'ent-33', phone_number: '+15550000033',
     classification_type: 'type_a', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(16),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -438,7 +438,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', campaign: 'Q1-2026' },
   },
   {
-    id: 34, entity_id: 34, phone_number: '+15550000034',
+    id: 'ph-34', entity_id: 'ent-34', phone_number: '+15550000034',
     classification_type: 'type_b', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(15),
     verification_status: 'pending', verification_source: null,
@@ -447,7 +447,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium' },
   },
   {
-    id: 35, entity_id: 35, phone_number: '+15550000035',
+    id: 'ph-35', entity_id: 'ent-35', phone_number: '+15550000035',
     classification_type: 'type_c', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(13),
     verification_status: 'verified_bad', verification_source: 'automated',
@@ -456,7 +456,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', score: 0.31, batch: 'import-2026-05-04' },
   },
   {
-    id: 36, entity_id: 36, phone_number: '+15550000036',
+    id: 'ph-36', entity_id: 'ent-36', phone_number: '+15550000036',
     classification_type: 'type_d', ingestion_source: 'api',
     ingestion_reason: 'referral', ingested_at: _daysAgo(11),
     verification_status: 'pending', verification_source: null,
@@ -465,7 +465,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high' },
   },
   {
-    id: 37, entity_id: 37, phone_number: '+15550000037',
+    id: 'ph-37', entity_id: 'ent-37', phone_number: '+15550000037',
     classification_type: 'type_a', ingestion_source: 'manual',
     ingestion_reason: 'direct_entry', ingested_at: _daysAgo(9),
     verification_status: 'verified_good', verification_source: 'manual',
@@ -474,7 +474,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'medium' },
   },
   {
-    id: 38, entity_id: 38, phone_number: '+15550000038',
+    id: 'ph-38', entity_id: 'ent-38', phone_number: '+15550000038',
     classification_type: 'type_b', ingestion_source: 'api',
     ingestion_reason: 'partner_feed', ingested_at: _daysAgo(7),
     verification_status: 'pending', verification_source: null,
@@ -483,7 +483,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'low', partner: 'partner-02' },
   },
   {
-    id: 39, entity_id: 39, phone_number: '+15550000039',
+    id: 'ph-39', entity_id: 'ent-39', phone_number: '+15550000039',
     classification_type: 'type_c', ingestion_source: 'import',
     ingestion_reason: 'bulk_import', ingested_at: _daysAgo(5),
     verification_status: 'verified_good', verification_source: 'automated',
@@ -492,7 +492,7 @@ export const SEED_PHONES = [
     extra_data: { priority: 'high', score: 0.94, batch: 'import-2026-05-12' },
   },
   {
-    id: 40, entity_id: 40, phone_number: '+15550000040',
+    id: 'ph-40', entity_id: 'ent-40', phone_number: '+15550000040',
     classification_type: 'type_d', ingestion_source: 'api',
     ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(2),
     verification_status: 'pending', verification_source: null,
@@ -512,7 +512,7 @@ export const SEED_PHONES = [
 
   // EP-088 — raw envelope, untouched. Demonstrates "📡 ◌ 🔍 ◇".
   {
-    id: 88, entity_id: 88, phone_number: '+15559000088',
+    id: 'ph-88', entity_id: 'ent-88', phone_number: '+15559000088',
     classification_type: 'type_b', ingestion_source: 'automated',
     ingestion_reason: 'Surfaced via social-cluster scrape.',
     ingested_at: _daysAgo(6),
@@ -525,7 +525,7 @@ export const SEED_PHONES = [
   // EP-091 — phone-in-network confirmed but owner unknown.
   // Demonstrates "📡 ● 🔍 ◇" — your specific scenario.
   {
-    id: 91, entity_id: 91, phone_number: '+15559000091',
+    id: 'ph-91', entity_id: 'ent-91', phone_number: '+15559000091',
     classification_type: 'type_a', ingestion_source: 'automated',
     ingestion_reason: 'Surfaced via co-occurrence cluster.',
     ingested_at: _daysAgo(5),
@@ -545,21 +545,21 @@ export const SEED_PHONES = [
 export const SEED_ACTION_LOGS = [
   // Phone 1 — successful pipeline
   {
-    id: 1,  phone_id: 1,  action_type: 'outreach_a', status: 'sent',
+    id: 'log-1',  phone_id: 'ph-1',  action_type: 'outreach_a', status: 'sent',
     requested_at: _daysAgo(10), executed_at: _daysAgo(10),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01', result: 'delivered' },
   },
   // Phone 2 — pending, action queued
   {
-    id: 2,  phone_id: 2,  action_type: 'outreach_b', status: 'scheduled_retry',
+    id: 'log-2',  phone_id: 'ph-2',  action_type: 'outreach_b', status: 'scheduled_retry',
     requested_at: _daysAgo(9), executed_at: null,
     retry_count: 1, retry_after: _daysAgo(-1),
     extra_data: { operator_id: 'mock_operator_01', error_detail: 'Temporary timeout on first attempt' },
   },
   // Phone 3 — failed
   {
-    id: 3,  phone_id: 3,  action_type: 'outreach_a', status: 'failed',
+    id: 'log-3',  phone_id: 'ph-3',  action_type: 'outreach_a', status: 'failed',
     requested_at: _daysAgo(8), executed_at: _daysAgo(8),
     retry_count: 3, retry_after: null,
     extra_data: {
@@ -570,14 +570,14 @@ export const SEED_ACTION_LOGS = [
   },
   // Phone 4 — sent
   {
-    id: 4,  phone_id: 4,  action_type: 'outreach_c', status: 'sent',
+    id: 'log-4',  phone_id: 'ph-4',  action_type: 'outreach_c', status: 'sent',
     requested_at: _daysAgo(7), executed_at: _daysAgo(7),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 5 — two logs: first failed, retry succeeded
   {
-    id: 5,  phone_id: 5,  action_type: 'outreach_b', status: 'failed',
+    id: 'log-5',  phone_id: 'ph-5',  action_type: 'outreach_b', status: 'failed',
     requested_at: _daysAgo(6), executed_at: _daysAgo(6),
     retry_count: 1, retry_after: null,
     extra_data: {
@@ -587,28 +587,28 @@ export const SEED_ACTION_LOGS = [
     },
   },
   {
-    id: 6,  phone_id: 5,  action_type: 'outreach_b', status: 'sent',
+    id: 'log-6',  phone_id: 'ph-5',  action_type: 'outreach_b', status: 'sent',
     requested_at: _daysAgo(5), executed_at: _daysAgo(5),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 7 — sent
   {
-    id: 7,  phone_id: 7,  action_type: 'outreach_a', status: 'sent',
+    id: 'log-7',  phone_id: 'ph-7',  action_type: 'outreach_a', status: 'sent',
     requested_at: _daysAgo(4), executed_at: _daysAgo(4),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 9 — Beta, sent
   {
-    id: 8,  phone_id: 9,  action_type: 'outreach_c', status: 'sent',
+    id: 'log-8',  phone_id: 'ph-9',  action_type: 'outreach_c', status: 'sent',
     requested_at: _daysAgo(12), executed_at: _daysAgo(12),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 10 — Beta, failed
   {
-    id: 9,  phone_id: 10, action_type: 'outreach_a', status: 'failed',
+    id: 'log-9',  phone_id: 'ph-10', action_type: 'outreach_a', status: 'failed',
     requested_at: _daysAgo(11), executed_at: _daysAgo(11),
     retry_count: 2, retry_after: null,
     extra_data: {
@@ -619,7 +619,7 @@ export const SEED_ACTION_LOGS = [
   },
   // Phone 11 — Beta, failed
   {
-    id: 10, phone_id: 11, action_type: 'outreach_b', status: 'failed',
+    id: 'log-10', phone_id: 'ph-11', action_type: 'outreach_b', status: 'failed',
     requested_at: _daysAgo(10), executed_at: _daysAgo(10),
     retry_count: 3, retry_after: null,
     extra_data: {
@@ -630,49 +630,49 @@ export const SEED_ACTION_LOGS = [
   },
   // Phone 13 — Beta, sent
   {
-    id: 11, phone_id: 13, action_type: 'outreach_c', status: 'sent',
+    id: 'log-11', phone_id: 'ph-13', action_type: 'outreach_c', status: 'sent',
     requested_at: _daysAgo(8), executed_at: _daysAgo(8),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 15 — Beta, sent
   {
-    id: 12, phone_id: 15, action_type: 'outreach_a', status: 'sent',
+    id: 'log-12', phone_id: 'ph-15', action_type: 'outreach_a', status: 'sent',
     requested_at: _daysAgo(4), executed_at: _daysAgo(4),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 17 — Gamma, sent
   {
-    id: 13, phone_id: 17, action_type: 'outreach_b', status: 'sent',
+    id: 'log-13', phone_id: 'ph-17', action_type: 'outreach_b', status: 'sent',
     requested_at: _daysAgo(14), executed_at: _daysAgo(14),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 19 — Gamma, scheduled_retry
   {
-    id: 14, phone_id: 19, action_type: 'outreach_c', status: 'scheduled_retry',
+    id: 'log-14', phone_id: 'ph-19', action_type: 'outreach_c', status: 'scheduled_retry',
     requested_at: _daysAgo(11), executed_at: null,
     retry_count: 2, retry_after: _daysAgo(-2),
     extra_data: { operator_id: 'mock_operator_01', error_detail: 'Rate limit hit — backing off' },
   },
   // Phone 20 — Gamma, sent
   {
-    id: 15, phone_id: 20, action_type: 'outreach_a', status: 'sent',
+    id: 'log-15', phone_id: 'ph-20', action_type: 'outreach_a', status: 'sent',
     requested_at: _daysAgo(9), executed_at: _daysAgo(9),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 24 — Delta, sent
   {
-    id: 16, phone_id: 24, action_type: 'outreach_d', status: 'sent',
+    id: 'log-16', phone_id: 'ph-24', action_type: 'outreach_d', status: 'sent',
     requested_at: _daysAgo(15), executed_at: _daysAgo(15),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 26 — Delta, failed
   {
-    id: 17, phone_id: 26, action_type: 'outreach_a', status: 'failed',
+    id: 'log-17', phone_id: 'ph-26', action_type: 'outreach_a', status: 'failed',
     requested_at: _daysAgo(12), executed_at: _daysAgo(12),
     retry_count: 3, retry_after: null,
     extra_data: {
@@ -683,28 +683,28 @@ export const SEED_ACTION_LOGS = [
   },
   // Phone 28 — Delta, sent
   {
-    id: 18, phone_id: 28, action_type: 'outreach_b', status: 'sent',
+    id: 'log-18', phone_id: 'ph-28', action_type: 'outreach_b', status: 'sent',
     requested_at: _daysAgo(8), executed_at: _daysAgo(8),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 31 — Delta, sent
   {
-    id: 19, phone_id: 31, action_type: 'outreach_c', status: 'sent',
+    id: 'log-19', phone_id: 'ph-31', action_type: 'outreach_c', status: 'sent',
     requested_at: _daysAgo(2), executed_at: _daysAgo(2),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 33 — Epsilon, sent
   {
-    id: 20, phone_id: 33, action_type: 'outreach_d', status: 'sent',
+    id: 'log-20', phone_id: 'ph-33', action_type: 'outreach_d', status: 'sent',
     requested_at: _daysAgo(16), executed_at: _daysAgo(16),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 35 — Epsilon, failed
   {
-    id: 21, phone_id: 35, action_type: 'outreach_a', status: 'failed',
+    id: 'log-21', phone_id: 'ph-35', action_type: 'outreach_a', status: 'failed',
     requested_at: _daysAgo(13), executed_at: _daysAgo(13),
     retry_count: 3, retry_after: null,
     extra_data: {
@@ -715,14 +715,14 @@ export const SEED_ACTION_LOGS = [
   },
   // Phone 37 — Epsilon, sent
   {
-    id: 22, phone_id: 37, action_type: 'outreach_b', status: 'sent',
+    id: 'log-22', phone_id: 'ph-37', action_type: 'outreach_b', status: 'sent',
     requested_at: _daysAgo(9), executed_at: _daysAgo(9),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
   },
   // Phone 39 — Epsilon, sent
   {
-    id: 23, phone_id: 39, action_type: 'outreach_c', status: 'sent',
+    id: 'log-23', phone_id: 'ph-39', action_type: 'outreach_c', status: 'sent',
     requested_at: _daysAgo(5), executed_at: _daysAgo(5),
     retry_count: 0, retry_after: null,
     extra_data: { operator_id: 'mock_operator_01' },
@@ -780,7 +780,7 @@ export const SEED_FORM_SCHEMA = {
       type: 'select',
       required: true,
       // Derived client_id == heading root entity id (see SEED_CLIENTS).
-      options: [1, 9, 17, 24, 33],
+      options: ['ent-1', 'ent-9', 'ent-17', 'ent-24', 'ent-33'],
       help_text: 'Associate this contact with a client account.',
     },
     {
@@ -811,8 +811,8 @@ export const SEED_FORM_SCHEMA = {
 
 export const SEED_TASKS = [
   {
-    id: 1,
-    phone_id: 2,
+    id: 'task-1',
+    phone_id: 'ph-2',
     source_action_log_id: null,
     task_type: 'remediation_failure',
     status: 'pending',
@@ -827,13 +827,13 @@ export const SEED_TASKS = [
     },
     // JOIN convenience fields (inlined to match real-mode payload).
     phone_number: '+14155550102',
-    entity_id:    2,
+    entity_id:    'ent-2',
     entity_type:  'family',
-    client_id:    1,
+    client_id:    'ent-1',
   },
   {
-    id: 2,
-    phone_id: 9,
+    id: 'task-2',
+    phone_id: 'ph-9',
     source_action_log_id: null,
     task_type: 'remediation_failure',
     status: 'assigned',
@@ -847,13 +847,13 @@ export const SEED_TASKS = [
       suggested_remediation: 'Retry tomorrow after quota reset.',
     },
     phone_number: '+14155550109',
-    entity_id:    9,
+    entity_id:    'ent-9',
     entity_type:  'target',
-    client_id:    9,
+    client_id:    'ent-9',
   },
   {
-    id: 3,
-    phone_id: 17,
+    id: 'task-3',
+    phone_id: 'ph-17',
     source_action_log_id: null,
     task_type: 'approval_required',
     status: 'pending',
@@ -867,13 +867,13 @@ export const SEED_TASKS = [
       operator_note: 'Customer requested call-back outside of normal cadence.',
     },
     phone_number: '+14155550117',
-    entity_id:    17,
+    entity_id:    'ent-17',
     entity_type:  'target',
-    client_id:    17,
+    client_id:    'ent-17',
   },
   {
-    id: 4,
-    phone_id: 25,
+    id: 'task-4',
+    phone_id: 'ph-25',
     source_action_log_id: null,
     task_type: 'manual_recommendation',
     status: 'resolved',
@@ -889,13 +889,13 @@ export const SEED_TASKS = [
       resolution_note: 'Confirmed reachable; marked verified_good.',
     },
     phone_number: '+14155550125',
-    entity_id:    25,
+    entity_id:    'ent-25',
     entity_type:  'family',
-    client_id:    24,
+    client_id:    'ent-24',
   },
   {
-    id: 5,
-    phone_id: 33,
+    id: 'task-5',
+    phone_id: 'ph-33',
     source_action_log_id: null,
     task_type: 'approval_required',
     status: 'rejected',
@@ -912,9 +912,9 @@ export const SEED_TASKS = [
       resolution_note: 'Carrier intercept is permanent; do not retry.',
     },
     phone_number: '+14155550133',
-    entity_id:    33,
+    entity_id:    'ent-33',
     entity_type:  'target',
-    client_id:    33,
+    client_id:    'ent-33',
   },
 ];
 

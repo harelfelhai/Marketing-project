@@ -76,7 +76,7 @@ class DataAdminService:
     # Entity
     # ----------------------------------------------------------------
 
-    def get_entity(self, entity_id: int, include_deleted: bool = False) -> Entity:
+    def get_entity(self, entity_id: str, include_deleted: bool = False) -> Entity:
         ent = self.session.get(Entity, entity_id)
         if ent is None:
             raise ValueError(f"Entity {entity_id} not found")
@@ -87,7 +87,7 @@ class DataAdminService:
     def list_entities(
         self,
         *,
-        client_id: Optional[int] = None,
+        client_id: Optional[str] = None,
         client_ids: Optional[list[int]] = None,
         entity_type: Optional[str] = None,
         include_deleted: bool = False,
@@ -134,12 +134,12 @@ class DataAdminService:
 
     def patch_entity(
         self,
-        entity_id: int,
+        entity_id: str,
         *,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         relation_type: Optional[str] = None,
-        target_entity_id: Optional[int] = None,
+        target_entity_id: Optional[str] = None,
         strong_identifier: Optional[str] = None,
     ) -> Entity:
         """
@@ -183,7 +183,7 @@ class DataAdminService:
         self.session.refresh(ent)
         return ent
 
-    def soft_delete_entity(self, entity_id: int) -> dict:
+    def soft_delete_entity(self, entity_id: str) -> dict:
         """
         Tombstone an entity AND cascade through the full sub-graph.
 
@@ -236,7 +236,7 @@ class DataAdminService:
             "deletion_group_id":  group_id,
         }
 
-    def restore_entity(self, entity_id: int) -> dict:
+    def restore_entity(self, entity_id: str) -> dict:
         """
         Symmetric counterpart to soft_delete_entity.
 
@@ -304,7 +304,7 @@ class DataAdminService:
     # PhoneNumber
     # ----------------------------------------------------------------
 
-    def get_phone(self, phone_id: int, include_deleted: bool = False) -> PhoneNumber:
+    def get_phone(self, phone_id: str, include_deleted: bool = False) -> PhoneNumber:
         ph = self.session.get(PhoneNumber, phone_id)
         if ph is None:
             raise ValueError(f"Phone {phone_id} not found")
@@ -314,10 +314,10 @@ class DataAdminService:
 
     def patch_phone(
         self,
-        phone_id: int,
+        phone_id: str,
         *,
         phone_number: Optional[str] = None,
-        entity_id: Optional[int] = None,
+        entity_id: Optional[str] = None,
         classification_type: Optional[str] = None,
         ingestion_source: Optional[str] = None,
         ingestion_reason: Optional[str] = None,
@@ -359,7 +359,7 @@ class DataAdminService:
         self.session.refresh(ph)
         return ph
 
-    def soft_delete_phone(self, phone_id: int) -> PhoneNumber:
+    def soft_delete_phone(self, phone_id: str) -> PhoneNumber:
         # Standalone phone delete still stamps a fresh group_id so the
         # restore path is uniform across single-phone and cascade
         # tombstones — restore_phone simply revives whatever shares the
@@ -372,7 +372,7 @@ class DataAdminService:
         self.session.refresh(ph)
         return ph
 
-    def restore_phone(self, phone_id: int) -> PhoneNumber:
+    def restore_phone(self, phone_id: str) -> PhoneNumber:
         """
         Restore a soft-deleted phone. If the phone fell as part of a
         cascade (deletion_group_id != null), every other row sharing

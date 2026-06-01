@@ -186,14 +186,14 @@ class BulkIngestionService:
     def ingest_bulk_text(
         self,
         phone_numbers_raw: str,
-        client_id: int,
+        client_id: str,
         entity_type: str,
         ingestion_source: str,
-        target_entity_id: Optional[int] = None,
+        target_entity_id: Optional[str] = None,
         ingestion_reason: Optional[str] = None,
         entity_extra: Optional[dict] = None,
         phone_extra_shared: Optional[dict] = None,
-        uploaded_by_user_id: Optional[int] = None,
+        uploaded_by_user_id: Optional[str] = None,
     ) -> dict:
         """
         Execute the two-pass bulk-text ingestion.
@@ -353,7 +353,7 @@ class BulkIngestionService:
         self,
         file_bytes: bytes,
         filename: str,
-        uploaded_by_user_id: Optional[int] = None,
+        uploaded_by_user_id: Optional[str] = None,
     ) -> dict:
         """
         Parse an Excel (.xlsx) or CSV file and insert one PhoneNumber
@@ -442,28 +442,12 @@ class BulkIngestionService:
                     "error": f"Missing required field(s): {', '.join(missing)}",
                 })
                 continue
-            # client_id coercion to int.
-            try:
-                row["client_id"] = int(row["client_id"])
-            except (TypeError, ValueError):
-                failed_rows.append({
-                    "row": row_idx,
-                    "input": raw_phone[:_FAILURE_INPUT_CAP],
-                    "error": "client_id must be an integer",
-                })
-                continue
-            # Optional target_entity_id coercion.
+            # client_id normalised to a string id (required column).
+            row["client_id"] = str(row["client_id"]).strip()
+            # Optional target_entity_id normalised to a string id.
             tgt = row.get("target_entity_id")
             if tgt not in (None, ""):
-                try:
-                    row["target_entity_id"] = int(tgt)
-                except (TypeError, ValueError):
-                    failed_rows.append({
-                        "row": row_idx,
-                        "input": raw_phone[:_FAILURE_INPUT_CAP],
-                        "error": "target_entity_id must be an integer",
-                    })
-                    continue
+                row["target_entity_id"] = str(tgt).strip()
             else:
                 row["target_entity_id"] = None
             # Within-batch dedup.

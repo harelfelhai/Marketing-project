@@ -65,13 +65,27 @@ def _xlsx_bytes(rows: list[list]) -> bytes:
 # ===========================================================================
 
 
+def _seed_roots(session, n=2):
+    """Insert `n` root target entities; return their string ids."""
+    roots = []
+    for _ in range(n):
+        r = Entity(entity_type="target", relation_type="primary")
+        session.add(r)
+        roots.append(r)
+    session.commit()
+    for r in roots:
+        session.refresh(r)
+    return [r.id for r in roots]
+
+
 class TestHappyPath:
     def test_csv_three_valid_rows_creates_three_entities(self, bulk, session):
+        r1, r2 = _seed_roots(session, 2)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551101", "1", "family", "manual"],
-            ["+14155551102", "1", "friend", "manual"],
-            ["+14155551103", "2", "social_envelope", "automated"],
+            ["+14155551101", r1, "family", "manual"],
+            ["+14155551102", r1, "friend", "manual"],
+            ["+14155551103", r2, "social_envelope", "automated"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 3
@@ -81,10 +95,11 @@ class TestHappyPath:
         assert len(summary["phone_ids"]) == 3
 
     def test_xlsx_happy_path(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _xlsx_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551110", 1, "family", "manual"],
-            ["+14155551111", 1, "friend", "manual"],
+            ["+14155551110", r1, "family", "manual"],
+            ["+14155551111", r1, "friend", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.xlsx")
         assert summary["success_count"] == 2
@@ -92,10 +107,11 @@ class TestHappyPath:
         assert len(summary["entity_ids"]) == 2
 
     def test_scoring_hook_fires_per_row(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551120", "1", "family", "manual"],
-            ["+14155551121", "1", "friend", "manual"],
+            ["+14155551120", r1, "family", "manual"],
+            ["+14155551121", r1, "friend", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         for pid in summary["phone_ids"]:
@@ -104,10 +120,11 @@ class TestHappyPath:
             assert phone.priority_updated_at is not None
 
     def test_audit_trail_stamped_on_entity_and_phones(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551130", "1", "family", "manual"],
-            ["+14155551131", "1", "friend", "manual"],
+            ["+14155551130", r1, "family", "manual"],
+            ["+14155551131", r1, "friend", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         sid = summary["bulk_submission_id"]
@@ -145,11 +162,12 @@ class TestHappyPath:
 
 class TestPerRowFailures:
     def test_invalid_phone_format_lands_in_failed_rows(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551150", "1", "family", "manual"],
-            ["NOTAPHONE",   "1", "family", "manual"],
-            ["+14155551151", "1", "family", "manual"],
+            ["+14155551150", r1, "family", "manual"],
+            ["NOTAPHONE",   r1, "family", "manual"],
+            ["+14155551151", r1, "family", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 2
@@ -157,42 +175,47 @@ class TestPerRowFailures:
         assert summary["failed_rows"][0]["row"] == 2
 
     def test_missing_required_field_lands_in_failed_rows(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551160", "1", "family", "manual"],
-            ["+14155551161", "1", "",       "manual"],   # entity_type missing
+            ["+14155551160", r1, "family", "manual"],
+            ["+14155551161", r1, "",       "manual"],   # entity_type missing
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 1
         assert summary["failed_count"] == 1
         assert "entity_type" in summary["failed_rows"][0]["error"]
 
-    def test_missing_phone_lands_in_failed_rows(self, bulk):
+    def test_missing_phone_lands_in_failed_rows(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["",            "1", "family", "manual"],
-            ["+14155551170", "1", "family", "manual"],
+            ["",            r1, "family", "manual"],
+            ["+14155551170", r1, "family", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 1
         assert summary["failed_count"] == 1
         assert "phone_number" in summary["failed_rows"][0]["error"].lower()
 
-    def test_bad_client_id_lands_in_failed_rows(self, bulk):
+    def test_missing_client_id_lands_in_failed_rows(self, bulk, session):
+        # The old int-format validation for client_id is gone. A genuinely
+        # MISSING required client_id is what now lands a row in failed_rows.
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551180", "not-an-int", "family", "manual"],
+            ["+14155551180", "", "family", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 0
         assert summary["failed_count"] == 1
         assert "client_id" in summary["failed_rows"][0]["error"]
 
-    def test_within_batch_duplicate_flagged(self, bulk):
+    def test_within_batch_duplicate_flagged(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551190", "1", "family", "manual"],
-            ["+14155551190", "1", "family", "manual"],   # duplicate
+            ["+14155551190", r1, "family", "manual"],
+            ["+14155551190", r1, "family", "manual"],   # duplicate
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 1
@@ -200,8 +223,9 @@ class TestPerRowFailures:
         assert "row 1" in summary["failed_rows"][0]["error"]
 
     def test_unique_constraint_violation_handled_per_row(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         # Pre-seed an existing phone.
-        existing_entity = Entity(entity_type="family", client_id=1)
+        existing_entity = Entity(entity_type="family", target_entity_id=r1)
         session.add(existing_entity); session.flush()
         session.add(PhoneNumber(
             entity_id=existing_entity.id,
@@ -212,22 +236,23 @@ class TestPerRowFailures:
 
         data = _csv_bytes([
             list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551201", "1", "family", "manual"],
-            ["+14155551200", "1", "family", "manual"],   # collides
-            ["+14155551202", "1", "family", "manual"],
+            ["+14155551201", r1, "family", "manual"],
+            ["+14155551200", r1, "family", "manual"],   # collides
+            ["+14155551202", r1, "family", "manual"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 2
         assert summary["failed_count"] == 1
         assert summary["failed_rows"][0]["row"] == 2
 
-    def test_unknown_target_entity_id_per_row_failure(self, bulk):
+    def test_unknown_target_entity_id_per_row_failure(self, bulk, session):
+        (r1,) = _seed_roots(session, 1)
         # Different contract from bulk-text: target_entity_id is on each
         # row, so a bad value is a per-row failure (not request-level).
         data = _csv_bytes([
             list(BULK_UPLOAD_ALL_COLUMNS),
-            ["+14155551210", "1", "family", "manual", "99999", "bad target"],
-            ["+14155551211", "1", "family", "manual", "",      "ok"],
+            ["+14155551210", r1, "family", "manual", "99999", "bad target"],
+            ["+14155551211", r1, "family", "manual", "",      "ok"],
         ])
         summary = bulk.ingest_bulk_upload(data, "upload.csv")
         assert summary["success_count"] == 1

@@ -116,14 +116,9 @@ export default function OperationsQueuePage() {
   // "double-stacked filter" bug where navigating to /operations?phone_id=N
   // would keep a stale client_id filter from a previous cross-link.
   //
-  // Numeric coercion guard same as PhoneGridPage §5.1: URL params are
-  // strings, IDs in real mode are integers.
+  // IDs are opaque strings — URL params pass through as-is (empty → null).
   useEffect(() => {
-    const coerceId = (raw) => {
-      if (raw == null || raw === '') return null;
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) ? parsed : raw;
-    };
+    const coerceId = (raw) => (raw == null || raw === '' ? null : raw);
     seedTaskPhoneFilter(coerceId(searchParams.get('phone_id')));
     seedTaskClientFilter(coerceId(searchParams.get('client_id')));
     updateTaskFilters({ openOnly: searchParams.get('open') === 'true' });

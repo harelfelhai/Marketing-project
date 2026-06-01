@@ -301,7 +301,7 @@ class TestManualActionTrigger:
     def test_unknown_phone_returns_404(self, client):
         tc, _ = client
         r = tc.post("/api/v1/actions/trigger", json={
-            "phone_id": 99999,
+            "phone_id": "ph-missing",
             "action_type": "test_action",
             "operator_id": "op_001",
         })
@@ -519,7 +519,7 @@ class TestVerificationVerdict:
     def test_unknown_phone_returns_404(self, client):
         tc, _ = client
         r = tc.post("/api/v1/verification/verdict", json={
-            "phone_id": 99999,
+            "phone_id": "ph-missing",
             "status": "verified_bad",
             "reason": "Test.",
         })
@@ -609,7 +609,7 @@ class TestTasksEndpoints:
         r = self._open_via_api(tc, phone.id)
         assert r.status_code == 201
         body = r.json()
-        assert body["id"] > 0
+        assert isinstance(body["id"], str) and body["id"]
         assert body["phone_id"] == phone.id
         assert body["status"] == "pending"
         # JOIN fields populated:
@@ -635,7 +635,7 @@ class TestTasksEndpoints:
 
     def test_open_unknown_phone_returns_404(self, client):
         tc, _ = client
-        r = self._open_via_api(tc, phone_id=99999)
+        r = self._open_via_api(tc, phone_id="ph-missing")
         assert r.status_code == 404
 
     def test_open_with_unknown_source_action_log_returns_422(self, client):
@@ -848,7 +848,7 @@ class TestTasksEndpoints:
         a = self._open_via_api(tc, phone.id, task_type="a").json()
 
         r = tc.post("/api/v1/tasks/bulk-status", json={
-            "task_ids":    [a["id"], 99_999],
+            "task_ids":    [a["id"], "task-missing"],
             "operator_id": "manager_1",
             "outcome":     "resolved",
         })
@@ -856,7 +856,7 @@ class TestTasksEndpoints:
         body = r.json()
         assert body["success_count"] == 1
         assert body["failed_count"] == 1
-        assert body["failed_rows"][0]["task_id"] == 99_999
+        assert body["failed_rows"][0]["task_id"] == "task-missing"
 
     def test_bulk_resolve_invalid_outcome_returns_422(self, client):
         tc, _ = client
@@ -1229,7 +1229,7 @@ class TestVerdictTwoAxisDispatch:
         tc, _ = client
         r = tc.post(
             "/api/v1/verification/verdict",
-            json={"phone_id": 99999, "phone_axis": "confirm"},
+            json={"phone_id": "ph-missing", "phone_axis": "confirm"},
         )
         assert r.status_code == 404
 
@@ -1257,7 +1257,7 @@ class TestBulkTextEndpoint:
             "/api/v1/phones/bulk-text",
             json={
                 "phone_numbers_raw": "+14155550701, +14155550702, +14155550703",
-                "client_id": 1,
+                "client_id": "1",
                 "entity_type": "family",
                 "target_entity_id": target.id,
                 "ingestion_source": "manual",
@@ -1279,7 +1279,7 @@ class TestBulkTextEndpoint:
             "/api/v1/phones/bulk-text",
             json={
                 "phone_numbers_raw": "+14155550711, NOTAPHONE, +14155550712",
-                "client_id": 1,
+                "client_id": "1",
                 "entity_type": "family",
                 "target_entity_id": target.id,
                 "ingestion_source": "manual",
@@ -1299,7 +1299,7 @@ class TestBulkTextEndpoint:
             "/api/v1/phones/bulk-text",
             json={
                 "phone_numbers_raw": "+14155550721",
-                "client_id": 1,
+                "client_id": "1",
                 "entity_type": "family",
                 "target_entity_id": 99999,    # does not exist
                 "ingestion_source": "manual",
@@ -1313,7 +1313,7 @@ class TestBulkTextEndpoint:
             "/api/v1/phones/bulk-text",
             json={
                 "phone_numbers_raw": "",
-                "client_id": 1,
+                "client_id": "1",
                 "entity_type": "family",
                 "ingestion_source": "manual",
             },
@@ -1328,7 +1328,7 @@ class TestBulkTextEndpoint:
             "/api/v1/phones/bulk-text",
             json={
                 "phone_numbers_raw": "abc, def, ghi",
-                "client_id": 1,
+                "client_id": "1",
                 "entity_type": "family",
                 "target_entity_id": target.id,
                 "ingestion_source": "manual",
@@ -1348,7 +1348,7 @@ class TestBulkTextEndpoint:
             "/api/v1/phones/bulk-text",
             json={
                 "phone_numbers_raw": "+14155550731",
-                "client_id": 1,
+                "client_id": "1",
                 "entity_type": "family",
                 "target_entity_id": target.id,
                 "ingestion_source": "manual",
@@ -1396,13 +1396,23 @@ _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _HEADERS = ["phone_number", "client_id", "entity_type", "ingestion_source"]
 
 
+def _seed_bulk_root(session) -> str:
+    """Seed a root target Entity; return its string id for use as client_id."""
+    e = Entity(entity_type="target", relation_type="primary")
+    session.add(e)
+    session.commit()
+    session.refresh(e)
+    return e.id
+
+
 class TestBulkUploadEndpoint:
     def test_csv_happy_path_returns_200(self, client):
-        tc, _ = client
+        tc, session = client
+        r1 = _seed_bulk_root(session)
         payload = _build_csv_upload([
             _HEADERS,
-            ["+14155551801", "1", "family", "manual"],
-            ["+14155551802", "1", "friend", "manual"],
+            ["+14155551801", r1, "family", "manual"],
+            ["+14155551802", r1, "friend", "manual"],
         ])
         r = tc.post(
             "/api/v1/phones/bulk-upload",
@@ -1417,10 +1427,11 @@ class TestBulkUploadEndpoint:
         assert body["bulk_submission_id"]
 
     def test_xlsx_happy_path_returns_200(self, client):
-        tc, _ = client
+        tc, session = client
+        r1 = _seed_bulk_root(session)
         payload = _build_xlsx_upload([
             _HEADERS,
-            ["+14155551811", 1, "family", "manual"],
+            ["+14155551811", r1, "family", "manual"],
         ])
         r = tc.post(
             "/api/v1/phones/bulk-upload",
@@ -1430,12 +1441,13 @@ class TestBulkUploadEndpoint:
         assert r.json()["success_count"] == 1
 
     def test_partial_failure_returns_200_with_failed_rows(self, client):
-        tc, _ = client
+        tc, session = client
+        r1 = _seed_bulk_root(session)
         payload = _build_csv_upload([
             _HEADERS,
-            ["+14155551821", "1", "family", "manual"],
-            ["NOTAPHONE",   "1", "family", "manual"],
-            ["+14155551822", "1", "family", "manual"],
+            ["+14155551821", r1, "family", "manual"],
+            ["NOTAPHONE",   r1, "family", "manual"],
+            ["+14155551822", r1, "family", "manual"],
         ])
         r = tc.post(
             "/api/v1/phones/bulk-upload",
@@ -1490,12 +1502,29 @@ class TestBulkTemplateEndpoint:
 
     def test_template_round_trip_through_bulk_upload(self, client):
         """The template the endpoint serves should be a valid input for
-        the upload endpoint after a trivial header-preserving copy. We
-        verify the example rows it ships parse cleanly and ingest."""
-        tc, _ = client
+        the upload endpoint after the operator fills in a real client_id.
+        Ids are UUID strings now, so the example client_id placeholders
+        must be replaced with a real root entity id before upload."""
+        import io as _io
+        from openpyxl import load_workbook
+
+        tc, session = client
+        root_id = _seed_bulk_root(session)
         r = tc.get("/api/v1/phones/bulk-template")
         assert r.status_code == 200
-        payload = r.content
+
+        # Open the template, replace every example client_id with the real
+        # root id, save back to bytes.
+        wb = load_workbook(_io.BytesIO(r.content))
+        ws = wb["data"]
+        header = [c.value for c in next(ws.iter_rows(max_row=1))]
+        cid_col = header.index("client_id") + 1  # 1-based
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=cid_col, value=root_id)
+        buf = _io.BytesIO()
+        wb.save(buf)
+        payload = buf.getvalue()
+
         r2 = tc.post(
             "/api/v1/phones/bulk-upload",
             files={"file": ("upload.xlsx", payload, _XLSX_MIME)},
@@ -1542,7 +1571,7 @@ class TestCreateSingleEntity:
         assert r.status_code == 201
         body = r.json()
         assert body["id"] is not None
-        assert body["client_id"] == 1                # inherited from target
+        assert body["client_id"] == target.id        # inherited from target
         assert body["target_entity_id"] == target.id
         assert body["relation_type"] == "family"
         assert body["first_name"] == "Jane"
@@ -1585,7 +1614,7 @@ class TestCreateSingleEntity:
         r = tc.post("/api/v1/entities", json={
             "first_name": "Jane",
             "relation_type": "family",
-            "target_entity_id": 99_999,   # not seeded
+            "target_entity_id": "99999",   # not seeded
         })
         assert r.status_code == 422
         assert "99999" in r.json()["detail"]
@@ -1747,7 +1776,7 @@ class TestEntityBulkText:
             "default_target_entity_id": target.id,
             "rows": [
                 {"row_token": "ok",  "first_name": "Jane"},
-                {"row_token": "bad", "first_name": "Bad", "target_entity_id": 99_999},
+                {"row_token": "bad", "first_name": "Bad", "target_entity_id": "99999"},
             ],
         })
         # Default target valid → request does not abort. Per-row override
@@ -2111,7 +2140,7 @@ def _create_sub_via_api(tc, **overrides):
     body = {
         "trigger_event_type": "phone.ingested",
         "target_kind": "phone",
-        "target_id": 1,
+        "target_id": "ph-1",
         "recipients": ["ops-alerts"],
         "created_by": "manager_1",
     }
@@ -2140,7 +2169,7 @@ class TestNotificationSubscriptionCRUD:
 
     def test_global_with_target_id_returns_422(self, client):
         tc, _ = client
-        r = _create_sub_via_api(tc, target_kind="global", target_id=5)
+        r = _create_sub_via_api(tc, target_kind="global", target_id="5")
         assert r.status_code == 422
         assert "NULL" in r.json()["detail"]
 
@@ -2164,21 +2193,21 @@ class TestNotificationSubscriptionCRUD:
     def test_list_returns_all_subscriptions_unfiltered(self, client):
         tc, _ = client
         _create_sub_via_api(tc)
-        _create_sub_via_api(tc, target_id=2)
+        _create_sub_via_api(tc, target_id="ph-2")
         r = tc.get("/api/v1/notifications/subscriptions")
         assert r.status_code == 200
         assert len(r.json()) == 2
 
     def test_list_filter_by_target_kind_and_id(self, client):
         tc, _ = client
-        _create_sub_via_api(tc, target_kind="phone", target_id=1)
-        _create_sub_via_api(tc, target_kind="phone", target_id=99)
-        _create_sub_via_api(tc, target_kind="entity", target_id=1)
-        r = tc.get("/api/v1/notifications/subscriptions?target_kind=phone&target_id=1")
+        _create_sub_via_api(tc, target_kind="phone", target_id="ph-1")
+        _create_sub_via_api(tc, target_kind="phone", target_id="ph-99")
+        _create_sub_via_api(tc, target_kind="entity", target_id="ph-1")
+        r = tc.get("/api/v1/notifications/subscriptions?target_kind=phone&target_id=ph-1")
         assert r.status_code == 200
         rows = r.json()
         assert len(rows) == 1
-        assert rows[0]["target_id"] == 1
+        assert rows[0]["target_id"] == "ph-1"
 
     def test_list_filter_by_active(self, client):
         tc, _ = client
@@ -2297,8 +2326,8 @@ class TestNotificationTestFireEndpoint:
 class TestNotificationDeliveriesEndpoint:
     def test_filter_by_subscription_id(self, client):
         tc, _ = client
-        a = _create_sub_via_api(tc, target_id=1).json()
-        b = _create_sub_via_api(tc, target_id=2).json()
+        a = _create_sub_via_api(tc, target_id="ph-1").json()
+        b = _create_sub_via_api(tc, target_id="ph-2").json()
 
         # Fire two test-fires (subscription_id null) + one targeted
         # delivery via the dispatcher would need an event-trigger
@@ -2340,21 +2369,21 @@ class TestAuthRegisterEndpoint:
         r = tc.post("/api/v1/auth/register", json={
             "username": "alice",
             "password": "hunter2",
-            "managed_client_ids": [1, 2],
+            "managed_client_ids": ["ent-1", "ent-9"],
             "display_name": "Alice",
         })
         assert r.status_code == 201
         body = r.json()
         assert body["username"] == "alice"
         assert body["role"] == "regular"
-        assert body["managed_client_ids"] == [1, 2]
+        assert body["managed_client_ids"] == ["ent-1", "ent-9"]
         # Cookie was set as part of the response.
         assert "marketing_session" in tc.cookies
 
     def test_duplicate_username_returns_409(self, client):
         tc, _ = client
         _logout(tc)
-        body = {"username": "dup", "password": "pass1234", "managed_client_ids": [1]}
+        body = {"username": "dup", "password": "pass1234", "managed_client_ids": ["ent-1"]}
         tc.post("/api/v1/auth/register", json=body)
         r2 = tc.post("/api/v1/auth/register", json=body)
         assert r2.status_code == 409
@@ -2378,7 +2407,7 @@ class TestAuthRegisterEndpoint:
         r = tc.post("/api/v1/auth/register", json={
             "username": "a",  # min_length=2
             "password": "pass1234",
-            "managed_client_ids": [1],
+            "managed_client_ids": ["ent-1"],
         })
         assert r.status_code == 422
 
@@ -2389,7 +2418,7 @@ class TestAuthRegisterEndpoint:
         r = tc.post("/api/v1/auth/register", json={
             "username": "alice",
             "password": "pw",   # below min_length=4
-            "managed_client_ids": [1],
+            "managed_client_ids": ["ent-1"],
         })
         assert r.status_code == 422
 
@@ -2400,7 +2429,7 @@ class TestAuthLoginEndpoint:
         return tc.post("/api/v1/auth/register", json={
             "username": username,
             "password": password,
-            "managed_client_ids": [1],
+            "managed_client_ids": ["ent-1"],
         })
 
     def test_happy_path_sets_cookie_and_returns_user(self, client):
@@ -2454,12 +2483,12 @@ class TestAuthMeEndpoint:
         _logout(tc)
         tc.post("/api/v1/auth/register", json={
             "username": "alice", "password": "pass1234",
-            "managed_client_ids": [1],
+            "managed_client_ids": ["ent-1"],
         })
         # The register call set the cookie; the next PATCH uses it.
-        r = tc.patch("/api/v1/auth/me", json={"managed_client_ids": [2, 3]})
+        r = tc.patch("/api/v1/auth/me", json={"managed_client_ids": ["ent-17", "ent-24"]})
         assert r.status_code == 200
-        assert r.json()["managed_client_ids"] == [2, 3]
+        assert r.json()["managed_client_ids"] == ["ent-17", "ent-24"]
 
     def test_patch_with_empty_managed_client_ids_clears_the_list(self, client):
         # UAT round-3: an operator can clear their managed-client list
@@ -2469,7 +2498,7 @@ class TestAuthMeEndpoint:
         _logout(tc)
         tc.post("/api/v1/auth/register", json={
             "username": "carol", "password": "pass1234",
-            "managed_client_ids": [1, 2],
+            "managed_client_ids": ["ent-1", "ent-9"],
         })
         r = tc.patch("/api/v1/auth/me", json={"managed_client_ids": []})
         assert r.status_code == 200
@@ -2506,7 +2535,7 @@ class TestTaskCenterRBACGate:
         _logout(tc)
         tc.post("/api/v1/auth/register", json={
             "username": "regular_alice", "password": "pass1234",
-            "managed_client_ids": [1],
+            "managed_client_ids": ["ent-1"],
         })
         # The register response set the cookie automatically.
 
@@ -2678,7 +2707,7 @@ class TestAuthBOperatorAttribution:
         tc, _ = client
         r = tc.post("/api/v1/notifications/subscriptions", json={
             "trigger_event_type": "phone.ingested",
-            "target_kind": "phone", "target_id": 1,
+            "target_kind": "phone", "target_id": "ph-1",
             "recipients": ["ops-alerts"],
         })
         assert r.status_code == 201
@@ -2756,23 +2785,30 @@ class TestAuthBIngestionAttribution:
 
 
 def _seed_phones_across_clients(session):
-    """Three entities on different clients + one phone each.
-    Returns the (client_id → phone_number) mapping for assertion convenience."""
+    """Three root entities + one phone each.
+
+    client_id is DERIVED (the root's own string id) now, so we return two
+    maps keyed by a stable label (1/2/3):
+      - ids:     label → root entity id (the value to filter client_ids on)
+      - mapping: label → phone_number  (for result assertions)
+    """
     from models.entity import Entity
     from models.phone_number import PhoneNumber
 
+    ids = {}
     mapping = {}
-    for client_id, phone_num in [(1, "+15550001001"), (2, "+15550002002"), (3, "+15550003003")]:
-        e = Entity(entity_type="target", relation_type="primary", client_id=client_id)
+    for label, phone_num in [(1, "+15550001001"), (2, "+15550002002"), (3, "+15550003003")]:
+        e = Entity(entity_type="target", relation_type="primary")
         session.add(e)
         session.flush()
         p = PhoneNumber(
             entity_id=e.id, phone_number=phone_num, ingestion_source="manual",
         )
         session.add(p)
-        mapping[client_id] = phone_num
+        ids[label] = e.id
+        mapping[label] = phone_num
     session.commit()
-    return mapping
+    return ids, mapping
 
 
 class TestAuthCClientIdsFilter:
@@ -2780,10 +2816,10 @@ class TestAuthCClientIdsFilter:
 
     def test_phones_client_ids_filter_narrows_to_listed_clients(self, client):
         tc, session = client
-        mapping = _seed_phones_across_clients(session)
+        ids, mapping = _seed_phones_across_clients(session)
 
         # Personalized view: clients 1 + 3 only.
-        r = tc.get("/api/v1/phones?client_ids=1&client_ids=3")
+        r = tc.get(f"/api/v1/phones?client_ids={ids[1]}&client_ids={ids[3]}")
         assert r.status_code == 200
         nums = {row["phone_number"] for row in r.json()["items"]}
         assert mapping[1] in nums
@@ -2794,7 +2830,7 @@ class TestAuthCClientIdsFilter:
         """Omitting the param is equivalent to 'all system data' —
         the unset / null query param disables the filter."""
         tc, session = client
-        mapping = _seed_phones_across_clients(session)
+        _ids, mapping = _seed_phones_across_clients(session)
         r = tc.get("/api/v1/phones")
         assert r.status_code == 200
         nums = {row["phone_number"] for row in r.json()["items"]}
@@ -2807,9 +2843,11 @@ class TestAuthCClientIdsFilter:
         drilling into a specific client within their personalized
         subset shouldn't trigger an OR widening."""
         tc, session = client
-        mapping = _seed_phones_across_clients(session)
+        ids, mapping = _seed_phones_across_clients(session)
         # Single = 2 (NOT in client_ids list).
-        r = tc.get("/api/v1/phones?client_id=2&client_ids=1&client_ids=3")
+        r = tc.get(
+            f"/api/v1/phones?client_id={ids[2]}&client_ids={ids[1]}&client_ids={ids[3]}"
+        )
         assert r.status_code == 200
         # Empty intersection → empty result set.
         assert r.json()["items"] == []
@@ -2819,7 +2857,7 @@ class TestAuthCClientIdsFilter:
         client partitions, then filter to a subset."""
         from services.tasks import PipelineTaskService
         tc, session = client
-        mapping = _seed_phones_across_clients(session)
+        ids, mapping = _seed_phones_across_clients(session)
         svc = PipelineTaskService(session=session)
 
         # Open one task per client.
@@ -2831,10 +2869,10 @@ class TestAuthCClientIdsFilter:
             ).first()
             svc.open_task(phone_id=phone.id, task_type="x", requested_by="seed")
 
-        r = tc.get("/api/v1/tasks?client_ids=1&client_ids=2")
+        r = tc.get(f"/api/v1/tasks?client_ids={ids[1]}&client_ids={ids[2]}")
         assert r.status_code == 200
         client_ids_in_result = {row["client_id"] for row in r.json()["items"]}
-        assert client_ids_in_result == {1, 2}
+        assert client_ids_in_result == {ids[1], ids[2]}
 
     def test_phones_export_honors_client_ids(self, client):
         """Export endpoint mirrors the list endpoint's filter shape."""
@@ -2842,9 +2880,9 @@ class TestAuthCClientIdsFilter:
         import openpyxl as _openpyxl
 
         tc, session = client
-        mapping = _seed_phones_across_clients(session)
+        ids, mapping = _seed_phones_across_clients(session)
         r = tc.post("/api/v1/phones/export", json={
-            "filters": {"client_ids": [1, 3]},
+            "filters": {"client_ids": [ids[1], ids[3]]},
             "columns": [{"key": "phone_number", "label": "P", "format": "text"}],
         })
         assert r.status_code == 200

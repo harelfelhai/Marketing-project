@@ -1,5 +1,5 @@
 /**
- * clientRegistry.js — maps integer client_id values to UI display metadata.
+ * clientRegistry.js — maps string client_id values to UI display metadata.
  *
  * Two-level model: a "client" IS a root entity (target_entity_id IS NULL),
  * and client_id is the DERIVED value target_entity_id ?? id. The keys here are
@@ -15,7 +15,7 @@
 
 /**
  * @typedef {Object} ClientConfig
- * @property {number} id           - Opaque integer stored by the backend.
+ * @property {string} id           - Opaque string id of the client's root entity.
  * @property {string} name         - Human-readable display name (generic label).
  * @property {string} shortName    - Abbreviated label for compact UI slots.
  * @property {number} slaHours     - SLA threshold in hours for this client.
@@ -26,7 +26,7 @@
 /** @type {ClientConfig[]} */
 export const CLIENT_REGISTRY = [
   {
-    id:                1,                    // root entity heading client Alpha
+    id:                'ent-1',                    // root entity heading client Alpha
     name:              'Client Alpha',      // HOOK FOR ENTERPRISE LABELS
     shortName:         'Alpha',
     slaHours:          6,
@@ -35,7 +35,7 @@ export const CLIENT_REGISTRY = [
     color:             'text-sky-600',
   },
   {
-    id:                9,                    // root entity heading client Beta
+    id:                'ent-9',                    // root entity heading client Beta
     name:              'Client Beta',       // HOOK FOR ENTERPRISE LABELS
     shortName:         'Beta',
     slaHours:          8,
@@ -44,7 +44,7 @@ export const CLIENT_REGISTRY = [
     color:             'text-violet-600',
   },
   {
-    id:                17,                   // root entity heading client Gamma
+    id:                'ent-17',                   // root entity heading client Gamma
     name:              'Client Gamma',      // HOOK FOR ENTERPRISE LABELS
     shortName:         'Gamma',
     slaHours:          4,
@@ -53,7 +53,7 @@ export const CLIENT_REGISTRY = [
     color:             'text-emerald-600',
   },
   {
-    id:                24,                   // root entity heading client Delta
+    id:                'ent-24',                   // root entity heading client Delta
     name:              'Client Delta',      // HOOK FOR ENTERPRISE LABELS
     shortName:         'Delta',
     slaHours:          12,
@@ -62,7 +62,7 @@ export const CLIENT_REGISTRY = [
     color:             'text-amber-600',
   },
   {
-    id:                33,                   // root entity heading client Epsilon
+    id:                'ent-33',                   // root entity heading client Epsilon
     name:              'Client Epsilon',    // HOOK FOR ENTERPRISE LABELS
     shortName:         'Epsilon',
     slaHours:          6,
@@ -73,7 +73,7 @@ export const CLIENT_REGISTRY = [
 ];
 
 /**
- * Fast lookup by integer client_id. Returns undefined for unknown ids.
+ * Fast lookup by string client_id. Returns undefined for unknown ids.
  * @param {number|null|undefined} id
  * @returns {ClientConfig|undefined}
  */

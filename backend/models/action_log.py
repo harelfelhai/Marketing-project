@@ -30,6 +30,8 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
+from models.types import new_id
+
 
 class ActionLog(SQLModel, table=True):
     """
@@ -52,13 +54,13 @@ class ActionLog(SQLModel, table=True):
     # Identity
     # ------------------------------------------------------------------
 
-    id: Optional[int] = Field(
-        default=None,
+    id: Optional[str] = Field(
+        default_factory=new_id,
         primary_key=True,
-        description="Auto-incrementing primary key.",
+        description="Opaque string primary key. Supplied by the upstream system of record, or defaulted via new_id().",
     )
 
-    phone_id: int = Field(
+    phone_id: str = Field(
         foreign_key="phone_number.id",
         index=True,
         nullable=False,

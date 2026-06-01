@@ -88,7 +88,7 @@ class ActionDispatcher:
     # Public entry points
     # ------------------------------------------------------------------
 
-    def dispatch(self, phone_id: int, action_type: str) -> ActionLog:
+    def dispatch(self, phone_id: str, action_type: str) -> ActionLog:
         """
         Create a new ActionLog row and execute the handler against it.
 
@@ -270,7 +270,7 @@ class UserActionService:
 
     def trigger_manual_action(
         self,
-        phone_id: int,
+        phone_id: str,
         action_type: str,
         operator_id: str,
     ) -> ActionLog:
@@ -467,7 +467,7 @@ class ActionDataTriggerService:
 
     def evaluate_data_change_trigger(
         self,
-        phone_id: int,
+        phone_id: str,
         updated_fields: List[str],
     ) -> Optional[ActionLog]:
         """

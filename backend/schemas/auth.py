@@ -54,11 +54,11 @@ class RegisterRequest(BaseModel):
             "typo guard, NOT a security policy."
         ),
     )
-    managed_client_ids: List[int] = Field(
+    managed_client_ids: List[str] = Field(
         default_factory=list,
         max_length=50,
         description=(
-            "Integer ids of the clients the operator is responsible "
+            "String ids of the clients the operator is responsible "
             "for. Drives the personalization default filter. May be "
             "empty at registration — operators can add or remove "
             "managed clients later from the profile editor (UAT "
@@ -105,7 +105,7 @@ class PatchMeRequest(BaseModel):
     we don't allow them. Role changes are the admin-sync file's job.
     """
 
-    managed_client_ids: Optional[List[int]] = Field(
+    managed_client_ids: Optional[List[str]] = Field(
         default=None,
         max_length=50,
         description=(
@@ -133,10 +133,10 @@ class UserResponse(BaseModel):
     invite confusion.
     """
 
-    id: int
+    id: str
     username: str
     role: str
-    managed_client_ids: List[int] = Field(default_factory=list)
+    managed_client_ids: List[str] = Field(default_factory=list)
     display_name: Optional[str] = None
     created_at: datetime
 

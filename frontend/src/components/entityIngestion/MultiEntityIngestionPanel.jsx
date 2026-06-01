@@ -202,7 +202,7 @@ export default function MultiEntityIngestionPanel() {
         strongIdentifier: '',
         relationType:    state.defaultRelation || null,
         targetEntityId:  state.defaultTargetId
-                            ? Number(state.defaultTargetId)
+                            ? state.defaultTargetId
                             : null,
       };
     });
@@ -259,7 +259,7 @@ export default function MultiEntityIngestionPanel() {
 
     const payload = {
       default_relation_type:    state.defaultRelation,
-      default_target_entity_id: Number(state.defaultTargetId),
+      default_target_entity_id: state.defaultTargetId,
       rows: state.rows.map((r) => {
         const sid = (r.strongIdentifier || '').trim();
         const row = {
@@ -532,7 +532,7 @@ export default function MultiEntityIngestionPanel() {
                     <select
                       value={r.targetEntityId == null ? '' : String(r.targetEntityId)}
                       onChange={(e) => updateRow(r.rowId, {
-                        targetEntityId: e.target.value === '' ? null : Number(e.target.value),
+                        targetEntityId: e.target.value === '' ? null : e.target.value,
                       })}
                       className="block w-full h-8 px-1 rounded border border-slate-300 text-sm bg-white"
                     >

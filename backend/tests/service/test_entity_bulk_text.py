@@ -220,9 +220,9 @@ class TestPerRowOverrides:
         first  = session.get(Entity, ent_ids[0])
         second = session.get(Entity, ent_ids[1])
         assert first.target_entity_id == root_target.id
-        assert first.client_id == 1
+        assert first.client_id == root_target.id
         assert second.target_entity_id == second_root_target.id
-        assert second.client_id == 2
+        assert second.client_id == second_root_target.id
 
 
 # ===========================================================================

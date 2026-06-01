@@ -112,7 +112,7 @@ class NotificationDispatcher:
         title: str,
         body: str,
         recipients: List[str],
-        subscription_id: Optional[int] = None,
+        subscription_id: Optional[str] = None,
         metadata: Optional[dict] = None,
     ) -> NotificationDelivery:
         """
@@ -227,7 +227,7 @@ class NotificationSubscriptionService:
         *,
         trigger_event_type: str,
         target_kind: str,
-        target_id: Optional[int],
+        target_id: Optional[str],
         recipients: List[str],
         created_by: str,
         title_template: Optional[str] = None,
@@ -294,7 +294,7 @@ class NotificationSubscriptionService:
 
     def update(
         self,
-        subscription_id: int,
+        subscription_id: str,
         *,
         recipients: Optional[List[str]] = None,
         title_template: Optional[str] = None,
@@ -332,7 +332,7 @@ class NotificationSubscriptionService:
         self.session.refresh(sub)
         return sub
 
-    def delete(self, subscription_id: int) -> None:
+    def delete(self, subscription_id: str) -> None:
         """
         Hard-delete the subscription. Historical NotificationDelivery
         rows are NOT cascaded — they remain for audit (subscription_id
@@ -348,7 +348,7 @@ class NotificationSubscriptionService:
     # Readers
     # ----------------------------------------------------------------
 
-    def get(self, subscription_id: int) -> NotificationSubscription:
+    def get(self, subscription_id: str) -> NotificationSubscription:
         """Fetch by id or raise NotificationSubscriptionNotFoundError."""
         sub = self.session.get(NotificationSubscription, subscription_id)
         if sub is None:
@@ -359,7 +359,7 @@ class NotificationSubscriptionService:
         self,
         *,
         target_kind: Optional[str] = None,
-        target_id: Optional[int] = None,
+        target_id: Optional[str] = None,
         trigger_event_type: Optional[str] = None,
         active: Optional[bool] = None,
     ) -> List[NotificationSubscription]:
@@ -385,7 +385,7 @@ class NotificationSubscriptionService:
     def list_deliveries(
         self,
         *,
-        subscription_id: Optional[int] = None,
+        subscription_id: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 100,
     ) -> List[NotificationDelivery]:
@@ -440,7 +440,7 @@ class EventDispatcher:
         event_type: str,
         *,
         context_kind: Optional[str] = None,
-        context_id: Optional[int] = None,
+        context_id: Optional[str] = None,
         default_title: str,
         default_body: str,
         payload: Optional[dict] = None,

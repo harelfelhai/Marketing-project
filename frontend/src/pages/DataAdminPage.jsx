@@ -509,8 +509,8 @@ function EntityEditModal({ entity, onCancel, onSave }) {
       first_name:        firstName,
       last_name:         lastName,
       relation_type:     relation,
-      client_id:         clientId === '' ? null : Number(clientId),
-      target_entity_id:  targetEntityId === '' ? null : Number(targetEntityId),
+      client_id:         clientId === '' ? null : clientId,
+      target_entity_id:  targetEntityId === '' ? null : targetEntityId,
       strong_identifier: strongIdentifier,
     });
 
@@ -546,7 +546,7 @@ function PhoneEditModal({ phone, onCancel, onSave }) {
   const handleSave = () =>
     onSave({
       phone_number:         number,
-      entity_id:            entityId === '' ? null : Number(entityId),
+      entity_id:            entityId === '' ? null : entityId,
       classification_type:  classification,
       ingestion_source:     ingestionSource,
       ingestion_reason:     ingestionReason,

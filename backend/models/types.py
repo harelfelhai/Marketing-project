@@ -12,9 +12,27 @@ timestamps onto the same tz-aware contract.
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import DateTime
 from sqlalchemy.types import TypeDecorator
+
+
+def new_id() -> str:
+    """
+    Generate a fresh opaque string primary key.
+
+    All surrogate primary keys in the system are strings, not
+    auto-incrementing integers. In production the canonical id is assigned
+    by the upstream system of record when a row is handed to the database;
+    this factory is the default that fills the gap when no id is supplied
+    (dev / SQLite / tests, where SQLite cannot auto-generate string PKs).
+
+    Used as a `default_factory=` on every model's `id` Field. When an
+    explicit id is passed to the constructor (the production path), the
+    factory is bypassed entirely.
+    """
+    return uuid4().hex
 
 
 def utc_now() -> datetime:

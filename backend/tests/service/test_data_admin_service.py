@@ -316,19 +316,27 @@ class TestListEntities:
         assert {primary.id, associated.id}.issubset(ids)
 
     def test_filter_by_client_id(self, svc, session, primary):
-        # Add a second-client entity.
-        other = Entity(client_id=2, entity_type="target", extra_data={})
+        # primary is a root → its derived client_id == primary.id.
+        # Add a second-client root entity.
+        other = Entity(entity_type="target", target_entity_id=None, extra_data={})
         session.add(other)
         session.commit()
-        rows = svc.list_entities(client_id=1)
-        assert {r.client_id for r in rows} == {1}
+        session.refresh(other)
+        rows = svc.list_entities(client_id=primary.id)
+        assert {r.client_id for r in rows} == {primary.id}
 
     def test_filter_by_client_ids_multivalue(self, svc, session, primary):
-        for cid in (2, 3):
-            session.add(Entity(client_id=cid, entity_type="target", extra_data={}))
+        roots = []
+        for _ in range(2):
+            root = Entity(entity_type="target", target_entity_id=None, extra_data={})
+            session.add(root)
+            roots.append(root)
         session.commit()
-        rows = svc.list_entities(client_ids=[1, 3])
-        assert {r.client_id for r in rows} == {1, 3}
+        for root in roots:
+            session.refresh(root)
+        root_b = roots[1]
+        rows = svc.list_entities(client_ids=[primary.id, root_b.id])
+        assert {r.client_id for r in rows} == {primary.id, root_b.id}
 
     def test_filter_by_entity_type(self, svc, primary, associated):
         targets = svc.list_entities(entity_type="target")
