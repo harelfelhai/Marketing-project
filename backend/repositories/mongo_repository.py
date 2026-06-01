@@ -104,7 +104,9 @@ class MongoRepository(Repository[T]):
         self.collection.insert_one(to_document(obj))
         return obj
 
-    def update(self, obj: T) -> T:
+    def update(self, obj: T, *, commit: bool = True) -> T:
+        # `commit` is the SQL-only nested-transaction escape hatch; on Mongo
+        # each write is atomic, so the flag is accepted but ignored.
         doc = to_document(obj)
         self.collection.replace_one({"_id": doc["_id"]}, doc, upsert=True)
         return obj

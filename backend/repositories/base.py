@@ -80,8 +80,16 @@ class Repository(ABC, Generic[T]):
         """Insert `obj` and return the persisted instance."""
 
     @abstractmethod
-    def update(self, obj: T) -> T:
-        """Persist the current field values of `obj` (matched by id)."""
+    def update(self, obj: T, *, commit: bool = True) -> T:
+        """
+        Persist the current field values of `obj` (matched by id).
+
+        `commit=False` is an SQL-only escape hatch for callers running
+        inside a parent transaction / savepoint that owns the final
+        commit (e.g. the bulk-ingestion per-row savepoint). Mongo has
+        no cross-document transactions, so the parameter is accepted
+        but has no effect there — each write is atomic in itself.
+        """
 
     @abstractmethod
     def delete(self, id: str) -> None:

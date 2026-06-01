@@ -97,10 +97,13 @@ class SqlRepository(Repository[T]):
         self.session.refresh(obj)
         return obj
 
-    def update(self, obj: T) -> T:
+    def update(self, obj: T, *, commit: bool = True) -> T:
         self.session.add(obj)
-        self.session.commit()
-        self.session.refresh(obj)
+        if commit:
+            self.session.commit()
+            self.session.refresh(obj)
+        # commit=False: leave the row staged in the unit-of-work so the
+        # caller's outer transaction (or savepoint) owns the flush + commit.
         return obj
 
     def delete(self, id: str) -> None:

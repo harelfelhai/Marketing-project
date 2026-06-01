@@ -15,11 +15,12 @@ from models.phone_number import PhoneNumber
 from modules.mock_scoring import ScoringStrategy
 from services.scoring import ScoringService
 from services.verification import VerificationService
+from repositories.storage import SqlStorage
 
 
 @pytest.fixture()
 def verification(session):
-    scoring = ScoringService(session=session, strategy=ScoringStrategy())
+    scoring = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
     return VerificationService(session=session, scoring_service=scoring)
 
 

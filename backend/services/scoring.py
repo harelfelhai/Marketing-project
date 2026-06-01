@@ -19,31 +19,23 @@ Read pipeline:
        (confidence_score, entity_type, customer_tier).
     6. Write `priority_score` + `priority_updated_at` back onto the phone.
 
-The service NEVER mutates inputs (`confidence_score` is owned by the
-operator + verification pathways), but it does expose
-`update_confidence_and_recalc()` as a convenience for the PATCH endpoint
-which writes both atomically.
-
-TRANSACTION BOUNDARY
---------------------
-Methods accept `commit=True/False`. When called from inside another
-service's transaction (e.g. `VerificationService.update_verification_verdict`
-or `IngestionService.ingest_circle_member`), pass `commit=False` and let
-the outer service control the single commit boundary. This is the
-edge-case-C fix from the design review: scoring and the triggering write
-land atomically rather than as two separate transactions racing each
-other.
+Storage seam
+------------
+Reads + writes flow through repositories so the service runs identically
+on SQL and MongoDB. The `commit=` argument on the public methods is kept
+for backwards compatibility with callers but no longer governs atomicity —
+each write is its own commit on either backend. The trade-off is documented
+on the relevant callers (IngestionService).
 """
 
 from typing import Optional
-
-from sqlmodel import Session
 
 from exceptions import PhoneNumberNotFoundError
 from interfaces.scoring import BaseScoringStrategy
 from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.types import utc_now
+from repositories.storage import Storage
 
 
 # Defensive depth limit when walking the target_entity_id chain. The
@@ -59,11 +51,12 @@ class ScoringService:
     Atomic recalculator for the Phase DY scoring block on PhoneNumber.
 
     Construction:
-        ScoringService(session=db_session, strategy=injected_strategy)
+        ScoringService(storage=storage, strategy=injected_strategy)
     """
 
-    def __init__(self, session: Session, strategy: BaseScoringStrategy) -> None:
-        self.session = session
+    def __init__(self, storage: Storage, strategy: BaseScoringStrategy) -> None:
+        self.entities = storage.entities
+        self.phones = storage.phones
         self.strategy = strategy
 
     # ======================================================================
@@ -77,14 +70,14 @@ class ScoringService:
 
         If the input entity is already a root, returns it unchanged.
         Caps traversal at `_MAX_ROOT_TRAVERSAL_DEPTH` hops to defend
-        against accidental cycles (e.g. seed-data bugs); breaks out
-        and returns whichever entity we ended up on when the cap hits.
+        against accidental cycles; breaks out and returns whichever
+        entity we ended up on when the cap hits.
         """
         current = entity
         for _ in range(_MAX_ROOT_TRAVERSAL_DEPTH):
             if current.target_entity_id is None:
                 return current
-            parent = self.session.get(Entity, current.target_entity_id)
+            parent = self.entities.get(current.target_entity_id)
             if parent is None:
                 # Dangling FK — defensive break. Treat the current node
                 # as the effective root.
@@ -106,14 +99,10 @@ class ScoringService:
         one PhoneNumber.
 
         Args:
-            phone_id (int):    PK of the row to recalculate.
-            commit   (bool):   True (default) — service commits and refreshes
-                               the row itself; safe to call from a context
-                               that does not own a transaction. False —
-                               write happens in-session only; caller is
-                               responsible for the final commit. Use False
-                               when chaining inside another service's
-                               write (verification, ingestion, PATCH).
+            phone_id (str):    PK of the row to recalculate.
+            commit   (bool):   Kept for callsite compatibility. With the
+                               repository seam each write is its own commit,
+                               so this argument no longer affects atomicity.
 
         Returns:
             PhoneNumber: The phone row with the updated scoring block.
@@ -121,11 +110,11 @@ class ScoringService:
         Raises:
             PhoneNumberNotFoundError: phone_id does not exist.
         """
-        phone = self.session.get(PhoneNumber, phone_id)
+        phone = self.phones.get(phone_id)
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
-        entity = self.session.get(Entity, phone.entity_id)
+        entity = self.entities.get(phone.entity_id)
         # The owning entity is guaranteed to exist via FK at insert time,
         # but a defensive guard keeps the failure mode legible.
         if entity is None:
@@ -148,12 +137,7 @@ class ScoringService:
 
         phone.priority_score = float(new_priority)
         phone.priority_updated_at = utc_now()
-        self.session.add(phone)
-
-        if commit:
-            self.session.commit()
-            self.session.refresh(phone)
-        return phone
+        return self.phones.update(phone, commit=commit)
 
     def update_confidence_and_recalc(
         self,
@@ -162,43 +146,26 @@ class ScoringService:
         commit: bool = True,
     ) -> PhoneNumber:
         """
-        Atomically: write `confidence_score` + `confidence_updated_at`,
-        then recompute `priority_score` + `priority_updated_at`. All four
-        fields land in a single commit when `commit=True`.
+        Write `confidence_score` + `confidence_updated_at`, then recompute
+        `priority_score` + `priority_updated_at`.
 
         Used by:
             - PATCH /phones/{id} when the operator audits confidence.
             - Future automated reliability strategies that mutate
               confidence and need a deterministic priority refresh.
 
-        Args:
-            phone_id        (int):   PK of the row to update.
-            new_confidence  (float): Operator-supplied confidence value.
-            commit          (bool):  See `recalculate_for_phone`.
-
-        Returns:
-            PhoneNumber: The updated phone row.
-
         Raises:
             PhoneNumberNotFoundError: phone_id does not exist.
         """
-        phone = self.session.get(PhoneNumber, phone_id)
+        phone = self.phones.get(phone_id)
         if phone is None:
             raise PhoneNumberNotFoundError(identifier=phone_id)
 
         now = utc_now()
         phone.confidence_score = float(new_confidence)
         phone.confidence_updated_at = now
-        self.session.add(phone)
-        # Recompute priority in the same session — pass commit=False so
-        # both writes land in one transaction. The outer flag controls
-        # whether THIS method commits at the end.
-        self.recalculate_for_phone(phone_id, commit=False)
-
-        if commit:
-            self.session.commit()
-            self.session.refresh(phone)
-        return phone
+        self.phones.update(phone, commit=False)
+        return self.recalculate_for_phone(phone_id, commit=commit)
 
     # ======================================================================
     # PRIVATE — extra_data tier extraction

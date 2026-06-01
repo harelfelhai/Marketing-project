@@ -17,6 +17,7 @@ from schemas.ingestion import IngestionPayload
 from services.dispatcher import ActionDispatcher
 from services.ingestion import IngestionService
 from services.tasks import PipelineTaskService
+from repositories.storage import SqlStorage
 
 from tests.conftest import RecordingHandler, RoutingEngineReturning
 
@@ -269,7 +270,7 @@ class TestScoringTransactionBoundary:
     def _scoring(self, session):
         from modules.mock_scoring import ScoringStrategy
         from services.scoring import ScoringService
-        return ScoringService(session=session, strategy=ScoringStrategy())
+        return ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
 
     def _verification(self, session, scoring=None):
         from services.verification import VerificationService
@@ -312,7 +313,7 @@ class TestScoringTransactionBoundary:
             def compute_priority(self, confidence_score, relation_type, customer_tier):
                 raise RuntimeError("simulated strategy failure")
 
-        scoring = ScoringService(session=session, strategy=ExplodingStrategy())
+        scoring = ScoringService(storage=SqlStorage(session), strategy=ExplodingStrategy())
         vs = self._verification(session, scoring=scoring)
 
         original_status = seeded_target.verification_status

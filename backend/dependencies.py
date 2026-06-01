@@ -61,6 +61,7 @@ from services.scoring import ScoringService
 from services.system_settings import SystemSettingsService
 from services.user import UserService
 from services.verification import VerificationEngine, VerificationService
+from repositories.storage import SqlStorage
 
 
 def _load_class(module_path: str, class_name: str):
@@ -306,7 +307,7 @@ def get_scoring_service(
     Returns:
         ScoringService: Ready to recalculate any phone's priority score.
     """
-    return ScoringService(session=session, strategy=strategy)
+    return ScoringService(storage=SqlStorage(session), strategy=strategy)
 
 
 # ===========================================================================

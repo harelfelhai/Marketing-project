@@ -23,6 +23,7 @@ from models.phone_number import PhoneNumber
 from modules.mock_scoring import ScoringStrategy
 from services.scoring import ScoringService
 from services.verification import VerificationService
+from repositories.storage import SqlStorage
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +33,7 @@ from services.verification import VerificationService
 
 @pytest.fixture()
 def scoring(session):
-    return ScoringService(session=session, strategy=ScoringStrategy())
+    return ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
 
 
 @pytest.fixture()
@@ -294,7 +295,7 @@ class TestErrorPaths:
             def compute_priority(self, confidence_score, relation_type, customer_tier):
                 raise RuntimeError("simulated scoring failure")
 
-        scoring = ScoringService(session=session, strategy=ExplodingStrategy())
+        scoring = ScoringService(storage=SqlStorage(session), strategy=ExplodingStrategy())
         vs = VerificationService(session=session, scoring_service=scoring)
 
         original_confidence = named_phone.confidence_score

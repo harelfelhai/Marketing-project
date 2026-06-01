@@ -55,6 +55,7 @@ from services.ingestion import IngestionService
 from services.scoring import ScoringService
 from services.tasks import PipelineTaskService
 from services.verification import VerificationEngine, VerificationService
+from repositories.storage import SqlStorage
 
 
 # ===========================================================================
@@ -121,7 +122,7 @@ def client():
     # Phase DY — real scoring strategy via the mock module so api tests
     # exercise the same code path production uses.
     from modules.mock_scoring import ScoringStrategy as MockScoringStrategy
-    scoring_svc = ScoringService(session=test_session, strategy=MockScoringStrategy())
+    scoring_svc = ScoringService(storage=SqlStorage(test_session), strategy=MockScoringStrategy())
 
     from repositories.storage import SqlStorage as _SqlStorage
     ingestion_svc = IngestionService(
@@ -984,7 +985,7 @@ class TestListSortBy:
         # Trigger scoring on both.
         from modules.mock_scoring import ScoringStrategy
         from services.scoring import ScoringService
-        sc = ScoringService(session=session, strategy=ScoringStrategy())
+        sc = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
         for p in session.exec(sm_select(PhoneNumber)).all():
             sc.recalculate_for_phone(p.id)
 
@@ -1065,7 +1066,7 @@ class TestVerdictTriggersRecalc:
         # Initial recalc to set priority_updated_at to a baseline.
         from modules.mock_scoring import ScoringStrategy
         from services.scoring import ScoringService
-        sc = ScoringService(session=session, strategy=ScoringStrategy())
+        sc = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
         sc.recalculate_for_phone(phone.id)
         session.refresh(phone)
         baseline_ts = phone.priority_updated_at

@@ -49,6 +49,7 @@ from models.action_log import ActionLog  # noqa: E402
 from models.entity import Entity  # noqa: E402
 from models.phone_number import PhoneNumber  # noqa: E402
 from models.pipeline_task import PipelineTask  # noqa: E402
+from repositories.storage import SqlStorage
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +456,7 @@ def seed(reset: bool = False) -> None:
         print("  Computing initial priority scores …")
         from modules.mock_scoring import ScoringStrategy
         from services.scoring import ScoringService
-        scoring_service = ScoringService(session=session, strategy=ScoringStrategy())
+        scoring_service = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
         for phone in phone_records:
             scoring_service.recalculate_for_phone(phone.id, commit=False)
         session.commit()

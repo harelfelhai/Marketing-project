@@ -19,6 +19,7 @@ from models.entity import Entity
 from models.phone_number import PhoneNumber
 from modules.mock_scoring import ScoringStrategy
 from services.scoring import ScoringService
+from repositories.storage import SqlStorage
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +30,7 @@ from services.scoring import ScoringService
 @pytest.fixture()
 def scoring(session):
     """ScoringService wired with the open-source mock strategy."""
-    return ScoringService(session=session, strategy=ScoringStrategy())
+    return ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
 
 
 @pytest.fixture()
