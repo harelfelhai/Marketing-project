@@ -32,13 +32,8 @@ from typing import Iterable
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
-from sqlalchemy import func, or_, select as sa_select
-from sqlalchemy.orm import aliased
-from sqlmodel import Session
 
-from models.entity import Entity
-from models.phone_number import PhoneNumber
-from models.pipeline_task import PipelineTask
+from repositories.storage import Storage
 from services.export_formatters import format_value, resolve_column
 
 
@@ -119,12 +114,20 @@ class ExportService:
     into .xlsx bytes. Constructed via the `get_export_service`
     factory in `dependencies.py`.
 
-    No mutator methods — exports are read-only. The session is held
-    for query execution only.
+    No mutator methods — exports are read-only.
+
+    The JOINs the SQL version did (phone→entity→root-entity for
+    customer_tier / root name; task→phone→entity for client_id) are
+    performed application-side here so the export runs on either storage
+    backend. Candidate rows are loaded, then the referenced entities /
+    roots are batch-fetched and stitched in Python; the volume is capped
+    at MAX_EXPORT_ROWS so the cost stays bounded.
     """
 
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, storage: Storage) -> None:
+        self.entities = storage.entities
+        self.phones = storage.phones
+        self.tasks = storage.tasks
 
     # ----------------------------------------------------------------
     # Public — Phones export
@@ -158,49 +161,65 @@ class ExportService:
                 filter set yields > MAX_EXPORT_ROWS rows.
         """
         self._validate_columns(columns, ALLOWED_EXPORT_COLUMNS_PHONES)
-
-        # Build the same JOIN shape the list endpoint uses, so customer_tier
-        # can be extracted from the root target's extra_data per Phase DY.
-        RootEntity = aliased(Entity)
-        base = (
-            sa_select(
-                PhoneNumber,
-                Entity.entity_type,
-                Entity.client_id,
-                Entity.extra_data.label("immediate_extra"),
-                RootEntity.extra_data.label("root_extra"),
-            )
-            .join(Entity, PhoneNumber.entity_id == Entity.id)
-            .outerjoin(RootEntity, Entity.target_entity_id == RootEntity.id)
-        )
-        count_base = (
-            sa_select(func.count(PhoneNumber.id))
-            .join(Entity, PhoneNumber.entity_id == Entity.id)
-        )
-
-        # Apply the same filters as list_phones. Unknown filter keys
-        # are silently ignored — forward-compatible with future filter
-        # additions (the validator runs on `columns`, not `filters`).
         f = filters or {}
-        for clause in self._phone_filter_clauses(f):
-            base = base.where(clause)
-            count_base = count_base.where(clause)
 
-        total: int = self.session.execute(count_base).scalar_one()
+        # Phone-level filters resolved by the repository; entity-level
+        # filters (entity_type / client_id[s] / q) applied app-side after
+        # the join, mirroring the SQL WHERE clauses exactly.
+        phone_where: dict = {"deleted_at": None}
+        if f.get("verification_status"):
+            phone_where["verification_status"] = f["verification_status"]
+        if f.get("ingestion_source"):
+            phone_where["ingestion_source"] = f["ingestion_source"]
+        if f.get("classification_type"):
+            phone_where["classification_type"] = f["classification_type"]
+
+        phones = self.phones.list(phone_where)
+        entities, roots = self._entity_join_maps(phones)
+
+        entity_type = f.get("entity_type")
+        client_id = f.get("client_id") if f.get("client_id") not in (None, "") else None
+        client_ids = f.get("client_ids")
+        needle = (f.get("q") or "").strip().lower() or None
+
+        matched = []
+        for phone in phones:
+            entity = entities.get(phone.entity_id)
+            if entity is None or entity.deleted_at is not None:
+                continue
+            if entity_type and entity.entity_type != entity_type:
+                continue
+            if client_id is not None and entity.client_id != client_id:
+                continue
+            if client_ids and entity.client_id not in client_ids:
+                continue
+            if needle is not None:
+                hay = f"{phone.phone_number} {entity.client_id} {phone.entity_id}".lower()
+                if needle not in hay:
+                    continue
+            # outerjoin semantics: root_extra is None when the entity is
+            # itself a root (no target_entity_id).
+            root = roots.get(entity.target_entity_id) if entity.target_entity_id else None
+            matched.append((phone, entity, root))
+
+        total = len(matched)
         if total > MAX_EXPORT_ROWS:
             raise ValueError(
                 f"Too many rows: {total} (max {MAX_EXPORT_ROWS}). "
                 "Narrow filters and try again."
             )
 
-        # Fetch up to the cap; sort newest-first to match the table's
-        # default reading order (priority sort would skew the export
-        # for operators who haven't reconfigured it).
-        rows = self.session.execute(
-            base.order_by(PhoneNumber.ingested_at.desc()).limit(MAX_EXPORT_ROWS)
-        ).all()
+        # Newest-first, id tiebreaker; cap at the export ceiling.
+        matched.sort(key=lambda t: (t[0].ingested_at, t[0].id), reverse=True)
+        matched = matched[:MAX_EXPORT_ROWS]
 
-        flattened = [self._flatten_phone_row(r) for r in rows]
+        flattened = [
+            self._flatten_phone_row((
+                phone, entity.entity_type, entity.client_id,
+                entity.extra_data, root.extra_data if root else None,
+            ))
+            for phone, entity, root in matched
+        ]
         applied_filters = {k: v for k, v in f.items() if v not in (None, "")}
 
         xlsx_bytes = self._serialize_xlsx(
@@ -229,41 +248,72 @@ class ExportService:
         exclude_terminal (bool).
         """
         self._validate_columns(columns, ALLOWED_EXPORT_COLUMNS_TASKS)
-
-        base = (
-            sa_select(
-                PipelineTask,
-                PhoneNumber.phone_number,
-                PhoneNumber.entity_id,
-                Entity.entity_type,
-                Entity.client_id,
-            )
-            .join(PhoneNumber, PipelineTask.phone_id == PhoneNumber.id)
-            .join(Entity, PhoneNumber.entity_id == Entity.id)
-        )
-        count_base = (
-            sa_select(func.count(PipelineTask.id))
-            .join(PhoneNumber, PipelineTask.phone_id == PhoneNumber.id)
-            .join(Entity, PhoneNumber.entity_id == Entity.id)
-        )
-
         f = filters or {}
-        for clause in self._task_filter_clauses(f):
-            base = base.where(clause)
-            count_base = count_base.where(clause)
 
-        total: int = self.session.execute(count_base).scalar_one()
+        # Task-level filters via the repository; the phone/entity join +
+        # the entity-level filters (client_ids / q) applied app-side.
+        task_where: dict = {}
+        if f.get("status"):
+            task_where["status"] = f["status"]
+        if f.get("task_type"):
+            task_where["task_type"] = f["task_type"]
+        if f.get("phone_id") not in (None, ""):
+            task_where["phone_id"] = f["phone_id"]
+        if f.get("exclude_terminal") and not f.get("status"):
+            task_where["status"] = {"nin": ["resolved", "rejected"]}
+
+        tasks = self.tasks.list(task_where)
+
+        phone_ids = list({t.phone_id for t in tasks})
+        phones = (
+            {p.id: p for p in self.phones.list({"id": {"in": phone_ids}})}
+            if phone_ids else {}
+        )
+        entity_ids = list({p.entity_id for p in phones.values()})
+        entities = (
+            {e.id: e for e in self.entities.list({"id": {"in": entity_ids}})}
+            if entity_ids else {}
+        )
+
+        client_ids = f.get("client_ids")
+        needle = (f.get("q") or "").strip().lower() or None
+
+        matched = []
+        for task in tasks:
+            phone = phones.get(task.phone_id)
+            if phone is None or phone.deleted_at is not None:
+                continue
+            entity = entities.get(phone.entity_id)
+            if entity is None or entity.deleted_at is not None:
+                continue
+            if client_ids and entity.client_id not in client_ids:
+                continue
+            if needle is not None:
+                hay = " ".join(str(x or "") for x in (
+                    phone.phone_number, task.requested_by,
+                    task.resolved_by, entity.client_id,
+                )).lower()
+                if needle not in hay:
+                    continue
+            matched.append((task, phone, entity))
+
+        total = len(matched)
         if total > MAX_EXPORT_ROWS:
             raise ValueError(
                 f"Too many rows: {total} (max {MAX_EXPORT_ROWS}). "
                 "Narrow filters and try again."
             )
 
-        rows = self.session.execute(
-            base.order_by(PipelineTask.created_at.desc()).limit(MAX_EXPORT_ROWS)
-        ).all()
+        matched.sort(key=lambda t: (t[0].created_at, t[0].id), reverse=True)
+        matched = matched[:MAX_EXPORT_ROWS]
 
-        flattened = [self._flatten_task_row(r) for r in rows]
+        flattened = [
+            self._flatten_task_row((
+                task, phone.phone_number, phone.entity_id,
+                entity.entity_type, entity.client_id,
+            ))
+            for task, phone, entity in matched
+        ]
         applied_filters = {k: v for k, v in f.items() if v not in (None, "")}
 
         xlsx_bytes = self._serialize_xlsx(
@@ -276,80 +326,27 @@ class ExportService:
         return xlsx_bytes, filename
 
     # ----------------------------------------------------------------
-    # Filter-clause builders (private; per table)
+    # Application-side join helper
     # ----------------------------------------------------------------
 
-    @staticmethod
-    def _phone_filter_clauses(f: dict) -> list:
-        """Translate `filters` dict into SQLAlchemy WHERE clauses.
-
-        Same recognition logic the GET /phones endpoint uses. Unknown
-        keys are silently ignored so future filter additions are
-        forward-compatible without breaking older clients.
+    def _entity_join_maps(self, phones):
         """
-        # UAT round-3: exports never include soft-deleted rows.
-        out = [
-            PhoneNumber.deleted_at.is_(None),
-            Entity.deleted_at.is_(None),
-        ]
-        if f.get("verification_status"):
-            out.append(PhoneNumber.verification_status == f["verification_status"])
-        if f.get("ingestion_source"):
-            out.append(PhoneNumber.ingestion_source == f["ingestion_source"])
-        if f.get("entity_type"):
-            out.append(Entity.entity_type == f["entity_type"])
-        if f.get("classification_type"):
-            out.append(PhoneNumber.classification_type == f["classification_type"])
-        if f.get("client_id") is not None and f.get("client_id") != "":
-            out.append(Entity.client_id == f["client_id"])
-        # Phase AUTH-C — multi-value personalization filter.
-        cids = f.get("client_ids")
-        if cids:
-            out.append(Entity.client_id.in_(cids))
-        q = f.get("q")
-        if q:
-            like = f"%{q}%"
-            # Mirrors the FilterBar placeholder: phone_number OR entity_id
-            # OR client_id substring. client name is a frontend-resolved
-            # concept and intentionally not searched here (operators
-            # filter by client via the dropdown).
-            out.append(or_(
-                PhoneNumber.phone_number.ilike(like),
-                func.cast(Entity.client_id, type_=PhoneNumber.phone_number.type).ilike(like),
-                func.cast(PhoneNumber.entity_id, type_=PhoneNumber.phone_number.type).ilike(like),
-            ))
-        return out
-
-    @staticmethod
-    def _task_filter_clauses(f: dict) -> list:
-        # UAT round-3: exports skip rows whose phone or entity is gone.
-        out = [
-            PhoneNumber.deleted_at.is_(None),
-            Entity.deleted_at.is_(None),
-        ]
-        if f.get("status"):
-            out.append(PipelineTask.status == f["status"])
-        if f.get("task_type"):
-            out.append(PipelineTask.task_type == f["task_type"])
-        if f.get("phone_id") is not None and f.get("phone_id") != "":
-            out.append(PipelineTask.phone_id == f["phone_id"])
-        if f.get("exclude_terminal") and not f.get("status"):
-            # Mirrors the list endpoint contract: explicit status wins.
-            out.append(PipelineTask.status.notin_(["resolved", "rejected"]))
-        # Phase AUTH-C — multi-value personalization filter.
-        cids = f.get("client_ids")
-        if cids:
-            out.append(Entity.client_id.in_(cids))
-        q = f.get("q")
-        if q:
-            like = f"%{q}%"
-            out.append(or_(
-                PhoneNumber.phone_number.ilike(like),
-                PipelineTask.requested_by.ilike(like),
-                PipelineTask.resolved_by.ilike(like),
-                func.cast(Entity.client_id, type_=PhoneNumber.phone_number.type).ilike(like),
-            ))
-        return out
+        Batch-fetch the entities owning `phones`, plus the root entities
+        those members point at. Returns (entities_by_id, roots_by_id).
+        """
+        entity_ids = list({p.entity_id for p in phones})
+        entities = (
+            {e.id: e for e in self.entities.list({"id": {"in": entity_ids}})}
+            if entity_ids else {}
+        )
+        root_ids = list({
+            e.target_entity_id for e in entities.values() if e.target_entity_id
+        })
+        roots = (
+            {e.id: e for e in self.entities.list({"id": {"in": root_ids}})}
+            if root_ids else {}
+        )
+        return entities, roots
 
     # ----------------------------------------------------------------
     # Row flatteners (private; per table)

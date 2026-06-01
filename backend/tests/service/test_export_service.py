@@ -43,7 +43,7 @@ def _data_rows(wb):
 
 @pytest.fixture()
 def svc(session):
-    return ExportService(session=session)
+    return ExportService(storage=SqlStorage(session))
 
 
 @pytest.fixture()

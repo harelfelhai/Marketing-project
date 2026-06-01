@@ -392,7 +392,7 @@ def get_export_service(
     Returns:
         ExportService: Ready to handle one phones/tasks export.
     """
-    return ExportService(session=session)
+    return ExportService(storage=SqlStorage(session))
 
 
 # ===========================================================================
