@@ -143,7 +143,7 @@ def client():
         verification_window_days=7,
     )
 
-    task_svc = PipelineTaskService(session=test_session)
+    task_svc = PipelineTaskService(storage=SqlStorage(test_session))
 
     # Override every dependency that touches the DB or external modules.
     app.dependency_overrides[get_session] = lambda: test_session
@@ -2054,7 +2054,7 @@ class TestTaskExportEndpoint:
         something to find."""
         from services.tasks import PipelineTaskService
         phone = _seed_target(session)
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.open_task(
             phone_id=phone.id,
             task_type="approval_required",
@@ -2119,7 +2119,7 @@ class TestListEndpointsAcceptQParam:
         from services.tasks import PipelineTaskService
         tc, session = client
         phone = _seed_target(session)
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.open_task(phone_id=phone.id, task_type="approval_required", requested_by="alice")
         svc.open_task(phone_id=phone.id, task_type="remediation_failure", requested_by="bob")
         r = tc.get("/api/v1/tasks?q=alice")
@@ -2870,7 +2870,7 @@ class TestAuthCClientIdsFilter:
         from services.tasks import PipelineTaskService
         tc, session = client
         ids, mapping = _seed_phones_across_clients(session)
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
 
         # Open one task per client.
         for cid, phone_num in mapping.items():

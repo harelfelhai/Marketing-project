@@ -53,6 +53,7 @@ from services.dispatcher import (
 from services.scoring import ScoringService
 from services.tasks import PipelineTaskService
 from services.verification import VerificationService
+from repositories.storage import SqlStorage
 
 
 # ===========================================================================
@@ -203,4 +204,4 @@ def get_pipeline_task_service(
     Returns:
         PipelineTaskService: Ready to open / resolve / list / fetch tasks.
     """
-    return PipelineTaskService(session=session)
+    return PipelineTaskService(storage=SqlStorage(session))

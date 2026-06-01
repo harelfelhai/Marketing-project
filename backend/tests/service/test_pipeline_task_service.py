@@ -12,6 +12,7 @@ from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.pipeline_task import PipelineTask
 from services.tasks import PipelineTaskService
+from repositories.storage import SqlStorage
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +59,7 @@ def action_log_on(session, seeded_target):
 
 class TestOpenTask:
     def test_creates_pending_task_with_minimal_fields(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = svc.open_task(
             phone_id=seeded_target.id,
             task_type="approval_required",
@@ -74,7 +75,7 @@ class TestOpenTask:
         assert task.created_at is not None
 
     def test_creates_task_with_full_payload(self, session, seeded_target, action_log_on):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = svc.open_task(
             phone_id=seeded_target.id,
             task_type="remediation_failure",
@@ -87,7 +88,7 @@ class TestOpenTask:
         assert task.extra_data == {"failure_category": "provider_blocked"}
 
     def test_unknown_phone_id_raises_PhoneNumberNotFound(self, session):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         with pytest.raises(PhoneNumberNotFoundError):
             svc.open_task(
                 phone_id=99999,
@@ -96,7 +97,7 @@ class TestOpenTask:
             )
 
     def test_unknown_source_action_log_raises_ValueError(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         with pytest.raises(ValueError, match="not found"):
             svc.open_task(
                 phone_id=seeded_target.id,
@@ -109,7 +110,7 @@ class TestOpenTask:
         self, session, seeded_target, second_phone, action_log_on
     ):
         # action_log_on belongs to seeded_target; pass second_phone.id instead.
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         with pytest.raises(ValueError, match="belongs to phone_id"):
             svc.open_task(
                 phone_id=second_phone.id,
@@ -135,7 +136,7 @@ class TestResolveTask:
         return svc.open_task(**defaults)
 
     def test_writes_terminal_state_atomically(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = self._open(svc, seeded_target)
 
         resolved = svc.resolve_task(
@@ -153,7 +154,7 @@ class TestResolveTask:
         assert resolved.extra_data["resolution_note"] == "approved"
 
     def test_rejected_outcome(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = self._open(svc, seeded_target)
         rejected = svc.resolve_task(
             task_id=task.id,
@@ -166,7 +167,7 @@ class TestResolveTask:
         assert "resolution_note" not in rejected.extra_data
 
     def test_extra_data_merge_preserves_opener_keys(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = self._open(
             svc, seeded_target,
             extra_data={"requested_action_type": "action_type_a"},
@@ -181,13 +182,13 @@ class TestResolveTask:
         assert resolved.extra_data["resolution_outcome"] == "resolved"
 
     def test_unknown_task_id_raises_NotFound(self, session):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         with pytest.raises(PipelineTaskNotFoundError):
             svc.resolve_task(task_id=99999, operator_id="op", outcome="resolved")
 
     @pytest.mark.parametrize("terminal_status", ["resolved", "rejected"])
     def test_terminal_task_rejects_resolution(self, session, seeded_target, terminal_status):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = self._open(svc, seeded_target)
         # Manually push to terminal state.
         task.status = terminal_status
@@ -206,7 +207,7 @@ class TestResolveTask:
 
 class TestListAndGet:
     def test_get_returns_join_tuple(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = svc.open_task(
             phone_id=seeded_target.id,
             task_type="approval_required",
@@ -225,12 +226,12 @@ class TestListAndGet:
         assert client_id == entity_id
 
     def test_get_unknown_id_raises(self, session):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         with pytest.raises(PipelineTaskNotFoundError):
             svc.get_task_with_join(task_id=99999)
 
     def test_list_no_filters_returns_all_and_total(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.open_task(phone_id=seeded_target.id, task_type="approval_required", requested_by="op")
         svc.open_task(phone_id=seeded_target.id, task_type="remediation_failure", requested_by="op")
         rows, total = svc.list_tasks_with_join()
@@ -238,7 +239,7 @@ class TestListAndGet:
         assert len(rows) == 2
 
     def test_list_filter_by_status(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         t1 = svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
         t2 = svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="op")
         svc.resolve_task(task_id=t1.id, operator_id="adm", outcome="resolved")
@@ -252,7 +253,7 @@ class TestListAndGet:
         assert resolved_rows[0][0].id == t1.id
 
     def test_list_filter_by_task_type(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.open_task(phone_id=seeded_target.id, task_type="approval_required", requested_by="op")
         svc.open_task(phone_id=seeded_target.id, task_type="remediation_failure", requested_by="op")
         rows, total = svc.list_tasks_with_join(task_type_filter="approval_required")
@@ -260,7 +261,7 @@ class TestListAndGet:
         assert rows[0][0].task_type == "approval_required"
 
     def test_list_filter_by_phone_id(self, session, seeded_target, second_phone):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.open_task(phone_id=seeded_target.id, task_type="x", requested_by="op")
         svc.open_task(phone_id=second_phone.id,  task_type="y", requested_by="op")
         rows, total = svc.list_tasks_with_join(phone_id_filter=second_phone.id)
@@ -268,7 +269,7 @@ class TestListAndGet:
         assert rows[0][0].phone_id == second_phone.id
 
     def test_list_orders_most_recent_first(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         first  = svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
         second = svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="op")
         rows, _ = svc.list_tasks_with_join()
@@ -277,7 +278,7 @@ class TestListAndGet:
         assert rows[1][0].id == first.id
 
     def test_list_pagination(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         for i in range(5):
             svc.open_task(phone_id=seeded_target.id, task_type=f"t{i}", requested_by="op")
         rows, total = svc.list_tasks_with_join(page=1, page_size=2)
@@ -293,7 +294,7 @@ class TestExcludeTerminal:
     `status_filter` overrides the toggle."""
 
     def _seed_mixed(self, session, seeded_target):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         t_pending  = svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
         t_resolved = svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="op")
         t_rejected = svc.open_task(phone_id=seeded_target.id, task_type="c", requested_by="op")
@@ -337,7 +338,7 @@ class TestBulkResolveTasks:
     aborting the rest of the batch."""
 
     def _seed_n_pending(self, session, seeded_target, n):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         ids = []
         for i in range(n):
             t = svc.open_task(phone_id=seeded_target.id, task_type=f"t{i}", requested_by="op")

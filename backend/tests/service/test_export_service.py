@@ -14,6 +14,7 @@ from services.export import (
     ExportService,
 )
 from services.tasks import PipelineTaskService
+from repositories.storage import SqlStorage
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +372,7 @@ class TestAllowlistGuard:
 
 class TestExportTasks:
     def test_happy_path_via_task_service_seed(self, svc, session, seeded_target):
-        task_svc = PipelineTaskService(session=session)
+        task_svc = PipelineTaskService(storage=SqlStorage(session))
         task_svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
         task_svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="op")
 
@@ -385,7 +386,7 @@ class TestExportTasks:
         assert filename.startswith("tasks_")
 
     def test_q_search_matches_requested_by(self, svc, session, seeded_target):
-        task_svc = PipelineTaskService(session=session)
+        task_svc = PipelineTaskService(storage=SqlStorage(session))
         task_svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="alice")
         task_svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="bob")
 
@@ -398,7 +399,7 @@ class TestExportTasks:
         assert len(rows) == 1 + 1   # only alice's task
 
     def test_exclude_terminal_hides_resolved(self, svc, session, seeded_target):
-        task_svc = PipelineTaskService(session=session)
+        task_svc = PipelineTaskService(storage=SqlStorage(session))
         t1 = task_svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
         task_svc.open_task(phone_id=seeded_target.id, task_type="b", requested_by="op")
         task_svc.resolve_task(task_id=t1.id, operator_id="adm", outcome="resolved")
@@ -412,7 +413,7 @@ class TestExportTasks:
         assert len(rows) == 1 + 1   # only the still-pending row
 
     def test_task_allowlist_smoke(self, svc, session, seeded_target):
-        task_svc = PipelineTaskService(session=session)
+        task_svc = PipelineTaskService(storage=SqlStorage(session))
         task_svc.open_task(phone_id=seeded_target.id, task_type="a", requested_by="op")
 
         cols = [_col(k) for k in ALLOWED_EXPORT_COLUMNS_TASKS]

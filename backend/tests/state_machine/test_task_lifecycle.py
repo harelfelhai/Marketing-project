@@ -16,12 +16,13 @@ import pytest
 from exceptions import TaskStateTransitionError
 from models.pipeline_task import PipelineTask
 from services.tasks import PipelineTaskService
+from repositories.storage import SqlStorage
 
 
 @pytest.fixture()
 def opened_task(session, seeded_target):
     """A freshly opened pending task to start every invariant test from."""
-    svc = PipelineTaskService(session=session)
+    svc = PipelineTaskService(storage=SqlStorage(session))
     return svc.open_task(
         phone_id=seeded_target.id,
         task_type="approval_required",
@@ -37,7 +38,7 @@ class TestTerminalStateImmutability:
     def test_cannot_re_resolve_a_terminal_task(
         self, session, opened_task, first_outcome, second_outcome
     ):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.resolve_task(
             task_id=opened_task.id,
             operator_id="mock_admin_01",
@@ -57,7 +58,7 @@ class TestTerminalStateImmutability:
         self, session, opened_task, terminal_status
     ):
         """A failed re-resolution attempt must NOT overwrite the first resolver."""
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         svc.resolve_task(
             task_id=opened_task.id,
             operator_id="first_admin",
@@ -81,7 +82,7 @@ class TestNonTerminalTransitions:
 
     @pytest.mark.parametrize("outcome", ["resolved", "rejected"])
     def test_pending_to_terminal_succeeds(self, session, opened_task, outcome):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         result = svc.resolve_task(
             task_id=opened_task.id,
             operator_id="mock_admin_01",
@@ -98,7 +99,7 @@ class TestNonTerminalTransitions:
         session.add(opened_task)
         session.commit()
 
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         result = svc.resolve_task(
             task_id=opened_task.id,
             operator_id="mock_admin_01",
@@ -111,7 +112,7 @@ class TestResolutionAtomicity:
     """Resolution writes all four fields in a single commit."""
 
     def test_all_four_fields_persisted_atomically(self, session, opened_task):
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         before_status = opened_task.status
         svc.resolve_task(
             task_id=opened_task.id,

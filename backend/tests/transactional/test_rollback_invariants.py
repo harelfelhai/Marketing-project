@@ -137,7 +137,7 @@ class TestPipelineTaskAtomicity:
         session.add() call.
         """
         before = session.exec(select(PipelineTask)).all()
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
 
         with pytest.raises(Exception):
             svc.open_task(
@@ -179,7 +179,7 @@ class TestPipelineTaskAtomicity:
         session.commit()
 
         tasks_before = session.exec(select(PipelineTask)).all()
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
 
         with pytest.raises(ValueError, match="belongs to phone_id"):
             svc.open_task(
@@ -202,7 +202,7 @@ class TestPipelineTaskAtomicity:
         of the four resolution fields (status / resolved_by / resolved_at /
         extra_data). The first resolver's attribution stays intact.
         """
-        svc = PipelineTaskService(session=session)
+        svc = PipelineTaskService(storage=SqlStorage(session))
         task = svc.open_task(
             phone_id=seeded_target.id,
             task_type="approval_required",
