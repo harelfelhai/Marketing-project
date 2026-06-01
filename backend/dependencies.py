@@ -343,7 +343,7 @@ def get_notification_dispatcher(
     Compose and return a `NotificationDispatcher` for the current
     request. Holds the per-request session + the configured channel.
     """
-    return NotificationDispatcher(session=session, channel=channel)
+    return NotificationDispatcher(storage=SqlStorage(session), channel=channel)
 
 
 def get_notification_subscription_service(
@@ -353,7 +353,7 @@ def get_notification_subscription_service(
     Compose and return a `NotificationSubscriptionService`. CRUD-only;
     no chat-channel dependency.
     """
-    return NotificationSubscriptionService(session=session)
+    return NotificationSubscriptionService(storage=SqlStorage(session))
 
 
 def get_event_dispatcher(
@@ -369,7 +369,7 @@ def get_event_dispatcher(
     PipelineTaskService) will accept this as an optional constructor
     arg and call `.fire(event_type, ...)` at their commit points.
     """
-    return EventDispatcher(session=session, dispatcher=dispatcher)
+    return EventDispatcher(storage=SqlStorage(session), dispatcher=dispatcher)
 
 
 # ===========================================================================

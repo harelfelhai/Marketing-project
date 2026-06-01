@@ -4,6 +4,7 @@ import pytest
 
 from interfaces.notifications import BaseNotificationChannel, DeliveryResult
 from models.notification import NotificationDelivery, NotificationSubscription
+from repositories.storage import SqlStorage
 from services.notifications import (
     EVENT_MANUAL_TEST,
     EventDispatcher,
@@ -70,7 +71,7 @@ class RaisingChannel(BaseNotificationChannel):
 class TestDispatcherHappyPath:
     def test_dispatch_persists_pending_then_sent_row(self, session):
         ch = RecordingChannel()
-        disp = NotificationDispatcher(session=session, channel=ch)
+        disp = NotificationDispatcher(storage=SqlStorage(session), channel=ch)
         delivery = disp.dispatch(
             trigger_event_type="phone.ingested",
             title="Phone added",
@@ -93,7 +94,7 @@ class TestDispatcherHappyPath:
         # The DB row stores its OWN copy of recipients — the channel's
         # later edits to its arg don't retroactively change the audit.
         ch = RecordingChannel()
-        disp = NotificationDispatcher(session=session, channel=ch)
+        disp = NotificationDispatcher(storage=SqlStorage(session), channel=ch)
         original = ["A", "B"]
         delivery = disp.dispatch(
             trigger_event_type="manual.test",
@@ -110,7 +111,7 @@ class TestDispatcherHappyPath:
 
     def test_raw_response_lands_in_extra_data(self, session):
         ch = RecordingChannel()
-        disp = NotificationDispatcher(session=session, channel=ch)
+        disp = NotificationDispatcher(storage=SqlStorage(session), channel=ch)
         delivery = disp.dispatch(
             trigger_event_type="manual.test", title="t", body="b",
             recipients=["X"],
@@ -121,7 +122,7 @@ class TestDispatcherHappyPath:
 class TestDispatcherFailurePaths:
     def test_failed_delivery_records_status_and_error(self, session):
         ch = FailingChannel(detail="webhook returned 500")
-        disp = NotificationDispatcher(session=session, channel=ch)
+        disp = NotificationDispatcher(storage=SqlStorage(session), channel=ch)
         delivery = disp.dispatch(
             trigger_event_type="phone.action.failed",
             title="t", body="b", recipients=["X"],
@@ -137,7 +138,7 @@ class TestDispatcherFailurePaths:
         # The ABC contract says channels MUST NOT raise, but a buggy
         # third-party module might. The dispatcher's defensive
         # try/except keeps the system stable.
-        disp = NotificationDispatcher(session=session, channel=RaisingChannel())
+        disp = NotificationDispatcher(storage=SqlStorage(session), channel=RaisingChannel())
         delivery = disp.dispatch(
             trigger_event_type="manual.test",
             title="t", body="b", recipients=["X"],
@@ -156,9 +157,9 @@ class TestDispatcherFailurePaths:
 def event_setup(session):
     """Provides dispatcher + event_dispatcher + sub_service in one place."""
     ch = RecordingChannel()
-    disp = NotificationDispatcher(session=session, channel=ch)
-    evt = EventDispatcher(session=session, dispatcher=disp)
-    subs = NotificationSubscriptionService(session=session)
+    disp = NotificationDispatcher(storage=SqlStorage(session), channel=ch)
+    evt = EventDispatcher(storage=SqlStorage(session), dispatcher=disp)
+    subs = NotificationSubscriptionService(storage=SqlStorage(session))
     return ch, disp, evt, subs
 
 
@@ -361,7 +362,7 @@ class TestEventDispatcherTemplating:
 class TestManualTestFire:
     def test_dispatcher_directly_creates_subscriptionless_delivery(self, session):
         ch = RecordingChannel()
-        disp = NotificationDispatcher(session=session, channel=ch)
+        disp = NotificationDispatcher(storage=SqlStorage(session), channel=ch)
         delivery = disp.dispatch(
             trigger_event_type=EVENT_MANUAL_TEST,
             title="Pipe check",

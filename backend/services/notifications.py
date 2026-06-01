@@ -45,12 +45,10 @@ call succeeds, fails, or is deferred.
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import select as sa_select
-from sqlmodel import Session, select
-
 from exceptions import NotificationSubscriptionNotFoundError
 from interfaces.notifications import BaseNotificationChannel
 from models.notification import NotificationDelivery, NotificationSubscription
+from repositories.storage import Storage
 
 
 # Vocabulary of supported target kinds. Source of truth — the schema
@@ -92,17 +90,17 @@ class NotificationDispatcher:
 
     def __init__(
         self,
-        session: Session,
+        storage: Storage,
         channel: BaseNotificationChannel,
     ) -> None:
         """
         Args:
-            session (Session):                  Active per-request DB session.
+            storage (Storage):                  Per-request repository bundle.
             channel (BaseNotificationChannel):  The configured chat-
                 platform module (loaded via NOTIFICATION_MODULE env var
                 in the dependency factory).
         """
-        self.session = session
+        self.deliveries = storage.notification_deliveries
         self.channel = channel
 
     def dispatch(
@@ -145,9 +143,7 @@ class NotificationDispatcher:
             status="pending",
             retry_count=0,
         )
-        self.session.add(delivery)
-        self.session.commit()
-        self.session.refresh(delivery)
+        self.deliveries.add(delivery)
 
         # Step 2 — channel call. The contract says implementations
         # NEVER raise. We still wrap in a defensive try/except so a
@@ -182,10 +178,7 @@ class NotificationDispatcher:
             merged["raw_response"] = result.raw_response
             delivery.extra_data = merged
 
-        self.session.add(delivery)
-        self.session.commit()
-        self.session.refresh(delivery)
-        return delivery
+        return self.deliveries.update(delivery)
 
 
 def _failure_from_exception(exc: Exception):
@@ -215,8 +208,9 @@ class NotificationSubscriptionService:
     here so the (target_kind, target_id) invariant lives in one place.
     """
 
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, storage: Storage) -> None:
+        self.subscriptions = storage.notification_subscriptions
+        self.deliveries = storage.notification_deliveries
 
     # ----------------------------------------------------------------
     # Writers
@@ -287,10 +281,7 @@ class NotificationSubscriptionService:
             created_by=created_by,
             extra_data=extra_data,
         )
-        self.session.add(sub)
-        self.session.commit()
-        self.session.refresh(sub)
-        return sub
+        return self.subscriptions.add(sub)
 
     def update(
         self,
@@ -309,7 +300,7 @@ class NotificationSubscriptionService:
         define the subscription's identity. To re-scope, delete and
         re-create.
         """
-        sub = self.session.get(NotificationSubscription, subscription_id)
+        sub = self.subscriptions.get(subscription_id)
         if sub is None:
             raise NotificationSubscriptionNotFoundError(subscription_id)
 
@@ -327,10 +318,7 @@ class NotificationSubscriptionService:
             sub.extra_data = extra_data
 
         sub.updated_at = datetime.now(timezone.utc)
-        self.session.add(sub)
-        self.session.commit()
-        self.session.refresh(sub)
-        return sub
+        return self.subscriptions.update(sub)
 
     def delete(self, subscription_id: str) -> None:
         """
@@ -338,11 +326,10 @@ class NotificationSubscriptionService:
         rows are NOT cascaded — they remain for audit (subscription_id
         becomes a dangling FK that the read layer tolerates).
         """
-        sub = self.session.get(NotificationSubscription, subscription_id)
+        sub = self.subscriptions.get(subscription_id)
         if sub is None:
             raise NotificationSubscriptionNotFoundError(subscription_id)
-        self.session.delete(sub)
-        self.session.commit()
+        self.subscriptions.delete(subscription_id)
 
     # ----------------------------------------------------------------
     # Readers
@@ -350,7 +337,7 @@ class NotificationSubscriptionService:
 
     def get(self, subscription_id: str) -> NotificationSubscription:
         """Fetch by id or raise NotificationSubscriptionNotFoundError."""
-        sub = self.session.get(NotificationSubscription, subscription_id)
+        sub = self.subscriptions.get(subscription_id)
         if sub is None:
             raise NotificationSubscriptionNotFoundError(subscription_id)
         return sub
@@ -368,19 +355,18 @@ class NotificationSubscriptionService:
         optional — call with no args to get every subscription
         ordered most-recent-first.
         """
-        stmt = select(NotificationSubscription)
+        where: dict = {}
         if target_kind is not None:
-            stmt = stmt.where(NotificationSubscription.target_kind == target_kind)
+            where["target_kind"] = target_kind
         if target_id is not None:
-            stmt = stmt.where(NotificationSubscription.target_id == target_id)
+            where["target_id"] = target_id
         if trigger_event_type is not None:
-            stmt = stmt.where(
-                NotificationSubscription.trigger_event_type == trigger_event_type
-            )
+            where["trigger_event_type"] = trigger_event_type
         if active is not None:
-            stmt = stmt.where(NotificationSubscription.active == active)
-        stmt = stmt.order_by(NotificationSubscription.created_at.desc())
-        return list(self.session.exec(stmt).all())
+            where["active"] = active
+        return self.subscriptions.list(
+            where, order_by="created_at", descending=True,
+        )
 
     def list_deliveries(
         self,
@@ -393,13 +379,14 @@ class NotificationSubscriptionService:
         Read-only audit listing. Used by the GET /deliveries endpoint.
         Newest-first; capped at `limit` rows per call.
         """
-        stmt = select(NotificationDelivery)
+        where: dict = {}
         if subscription_id is not None:
-            stmt = stmt.where(NotificationDelivery.subscription_id == subscription_id)
+            where["subscription_id"] = subscription_id
         if status is not None:
-            stmt = stmt.where(NotificationDelivery.status == status)
-        stmt = stmt.order_by(NotificationDelivery.created_at.desc()).limit(limit)
-        return list(self.session.exec(stmt).all())
+            where["status"] = status
+        return self.deliveries.list(
+            where, order_by="created_at", descending=True, limit=limit,
+        )
 
 
 # ===========================================================================
@@ -429,10 +416,10 @@ class EventDispatcher:
 
     def __init__(
         self,
-        session: Session,
+        storage: Storage,
         dispatcher: NotificationDispatcher,
     ) -> None:
-        self.session = session
+        self.subscriptions = storage.notification_subscriptions
         self.dispatcher = dispatcher
 
     def fire(
@@ -476,30 +463,27 @@ class EventDispatcher:
             Empty when nothing matched — operators see no alerts but
             no error either.
         """
-        # Build the (event AND active AND (exact-match OR global))
-        # subscription set in ONE query. SQLAlchemy's `or_` keeps
-        # the indexed event lookup as the leading clause so the
-        # exact-target / global branches both ride the same index.
-        stmt = (
-            sa_select(NotificationSubscription)
-            .where(NotificationSubscription.trigger_event_type == event_type)
-            .where(NotificationSubscription.active.is_(True))
-        )
-        match_filters = [NotificationSubscription.target_kind == "global"]
+        # Match set = (event AND active) AND (exact-target match OR global).
+        # The OR branch has no single-field DSL form, so we fetch the
+        # active subscriptions for this event and apply the target match
+        # in Python (the per-event set is small and bounded).
+        active_for_event = self.subscriptions.list({
+            "trigger_event_type": event_type,
+            "active": True,
+        })
         if context_kind is not None and context_id is not None:
-            from sqlalchemy import and_, or_
-            match_filters.append(
-                and_(
-                    NotificationSubscription.target_kind == context_kind,
-                    NotificationSubscription.target_id == context_id,
-                )
-            )
-            stmt = stmt.where(or_(*match_filters))
+            # target_id is an opaque string id; coerce both sides so a
+            # caller passing a non-string context_id still matches (the
+            # SQL backend coerced implicitly — keep parity here).
+            ctx_id = str(context_id)
+            subs = [
+                s for s in active_for_event
+                if s.target_kind == "global"
+                or (s.target_kind == context_kind and str(s.target_id) == ctx_id)
+            ]
         else:
             # No context — only global subscriptions are eligible.
-            stmt = stmt.where(NotificationSubscription.target_kind == "global")
-
-        subs = list(self.session.execute(stmt).scalars())
+            subs = [s for s in active_for_event if s.target_kind == "global"]
 
         if not subs:
             return []

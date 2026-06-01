@@ -5,11 +5,12 @@ import pytest
 from exceptions import NotificationSubscriptionNotFoundError
 from models.notification import NotificationSubscription
 from services.notifications import NotificationSubscriptionService
+from repositories.storage import SqlStorage
 
 
 @pytest.fixture()
 def svc(session):
-    return NotificationSubscriptionService(session=session)
+    return NotificationSubscriptionService(storage=SqlStorage(session))
 
 
 # ---------------------------------------------------------------------------
