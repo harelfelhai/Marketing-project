@@ -75,7 +75,7 @@ const _daysAgo = (d) => new Date(_now - d * 86400000).toISOString();
 
 export const SEED_ENTITIES = [
   // ===== Client Alpha — root id 1 + envelope (ids 1-8) =====
-  { id: 'ent-1',  relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Alpha',       extra_data: { region: 'north' } },
+  { id: 'ent-1',  relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Alpha',       identifier_1: 'IL-001', extra_data: { region: 'north', role: 'מנכ"ל חברת Alpha Solutions' } },
   { id: 'ent-2',  relation_type: 'family',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 1',   extra_data: { region: 'north' } },
   { id: 'ent-3',  relation_type: 'friend',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 2',   extra_data: { region: 'south' } },
   { id: 'ent-4',  relation_type: 'colleague', target_entity_id: 'ent-1',    full_name: 'Alpha Relative 3',   extra_data: { region: 'east'  } },
@@ -84,7 +84,7 @@ export const SEED_ENTITIES = [
   { id: 'ent-7',  relation_type: 'friend',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 6',   extra_data: { region: 'south' } },
   { id: 'ent-8',  relation_type: 'colleague', target_entity_id: 'ent-1',    full_name: 'Alpha Relative 7',   extra_data: { region: 'east'  } },
   // ===== Client Beta — root id 9 (ids 9-16) =====
-  { id: 'ent-9',  relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Beta',        extra_data: { region: 'west'  } },
+  { id: 'ent-9',  relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Beta',        identifier_1: 'IL-009', extra_data: { region: 'west',  role: 'סמנכ"ל כספים, Beta Corp' } },
   { id: 'ent-10', relation_type: 'family',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 1',    extra_data: { region: 'north' } },
   { id: 'ent-11', relation_type: 'friend',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 2',    extra_data: { region: 'east'  } },
   { id: 'ent-12', relation_type: 'colleague', target_entity_id: 'ent-9',    full_name: 'Beta Relative 3',    extra_data: { region: 'south' } },
@@ -93,7 +93,7 @@ export const SEED_ENTITIES = [
   { id: 'ent-15', relation_type: 'friend',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 6',    extra_data: { region: 'east'  } },
   { id: 'ent-16', relation_type: 'colleague', target_entity_id: 'ent-9',    full_name: 'Beta Relative 7',    extra_data: { region: 'south' } },
   // ===== Client Gamma — root id 17 (ids 17-23) =====
-  { id: 'ent-17', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Gamma',       extra_data: { region: 'north' } },
+  { id: 'ent-17', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Gamma',       identifier_1: 'IL-017', extra_data: { region: 'north', role: 'מנהל בכיר, Gamma Industries' } },
   { id: 'ent-18', relation_type: 'family',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 1',   extra_data: { region: 'east'  } },
   { id: 'ent-19', relation_type: 'friend',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 2',   extra_data: { region: 'west'  } },
   { id: 'ent-20', relation_type: 'colleague', target_entity_id: 'ent-17',   full_name: 'Gamma Relative 3',   extra_data: { region: 'south' } },
@@ -101,7 +101,7 @@ export const SEED_ENTITIES = [
   { id: 'ent-22', relation_type: 'family',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 5',   extra_data: { region: 'east'  } },
   { id: 'ent-23', relation_type: 'friend',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 6',   extra_data: { region: 'west'  } },
   // ===== Client Delta — root id 24 (ids 24-32) =====
-  { id: 'ent-24', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Delta',       extra_data: { region: 'south' } },
+  { id: 'ent-24', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Delta',       identifier_1: 'IL-024', extra_data: { region: 'south', role: 'שותף מנהל, Delta Ventures' } },
   { id: 'ent-25', relation_type: 'family',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 1',   extra_data: { region: 'north' } },
   { id: 'ent-26', relation_type: 'friend',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 2',   extra_data: { region: 'east'  } },
   { id: 'ent-27', relation_type: 'colleague', target_entity_id: 'ent-24',   full_name: 'Delta Relative 3',   extra_data: { region: 'west'  } },
@@ -111,7 +111,7 @@ export const SEED_ENTITIES = [
   { id: 'ent-31', relation_type: 'colleague', target_entity_id: 'ent-24',   full_name: 'Delta Relative 7',   extra_data: { region: 'west'  } },
   { id: 'ent-32', relation_type: 'family',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 8',   extra_data: { region: 'south' } },
   // ===== Client Epsilon — root id 33 (ids 33-40) =====
-  { id: 'ent-33', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Epsilon',     extra_data: { region: 'north' } },
+  { id: 'ent-33', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Epsilon',     identifier_1: 'IL-033', extra_data: { region: 'north', role: 'מייסד ומנכ"ל, Epsilon Tech' } },
   { id: 'ent-34', relation_type: 'family',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 1', extra_data: { region: 'east'  } },
   { id: 'ent-35', relation_type: 'friend',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 2', extra_data: { region: 'west'  } },
   { id: 'ent-36', relation_type: 'colleague', target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 3', extra_data: { region: 'south' } },

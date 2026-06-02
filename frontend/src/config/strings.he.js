@@ -1069,3 +1069,14 @@ export const SYSSET_VOCAB_TOAST_ERROR       = (msg) => `שמירת אוצר המ
 export const ENTITIES_COL_IDENTIFIER_1     = 'מזהה 1';
 export const ENTITIES_COL_IDENTIFIER_2     = 'מזהה 2';
 export const ENTITIES_COL_FULL_NAME        = 'שם מלא';
+export const ENTITIES_COL_ROOT_NAME       = 'ישות שורש';
+export const ENTITIES_COL_ROOT_ROLE       = 'תפקיד שורש';
+export const ENTITIES_COL_ROOT_IDENTIFIER = 'מזהה שורש';
+export const TABLE_HEADER_ROOT_NAME       = 'ישות שורש';
+export const TABLE_HEADER_ROOT_ROLE       = 'תפקיד שורש';
+export const TABLE_HEADER_ENTITY_NAME     = 'שם ישות';
+export const TABLE_HEADER_RELATION        = 'קשר';
+export const CLIENT_CARD_SECTION_ROLE        = 'תפקיד';
+export const CLIENT_CARD_SECTION_IDENTIFIER  = 'מזהה';
+export const CLIENT_CARD_SECTION_PHONE_COUNT = 'טלפונים';
+export const ADMIN_FIELD_ROLE             = 'תפקיד';

@@ -21,10 +21,14 @@ import {
   ENTITIES_COL_ID, ENTITIES_COL_NAME, ENTITIES_COL_RELATION,
   ENTITIES_COL_CLIENT, ENTITIES_COL_PHONES, ENTITIES_COL_CREATED,
   ENTITIES_COL_IDENTIFIER_1, ENTITIES_COL_IDENTIFIER_2,
+  ENTITIES_COL_ROOT_NAME, ENTITIES_COL_ROOT_ROLE, ENTITIES_COL_ROOT_IDENTIFIER,
   TABLE_HEADER_ASSOCIATION, TABLE_HEADER_VERIFICATION,
-  TABLE_HEADER_UPDATED,
+  TABLE_HEADER_UPDATED, TABLE_HEADER_ROOT_NAME, TABLE_HEADER_ROOT_ROLE,
+  TABLE_HEADER_ENTITY_NAME, TABLE_HEADER_RELATION,
   CLIENT_CARD_SECTION_METRICS, CLIENT_CARD_SECTION_VERDICTS,
   CLIENT_CARD_SECTION_SLA, CLIENT_CARD_SECTION_TASKS,
+  CLIENT_CARD_SECTION_ROLE, CLIENT_CARD_SECTION_IDENTIFIER,
+  CLIENT_CARD_SECTION_PHONE_COUNT,
   SURFACE_LABEL_ENTITIES, SURFACE_LABEL_PHONES, SURFACE_LABEL_CLIENTS,
 } from './strings.he';
 
@@ -42,38 +46,47 @@ export const DISPLAY_SURFACES = {
     id: 'entities',
     label: SURFACE_LABEL_ENTITIES,
     columns: [
-      { key: 'id',           label: ENTITIES_COL_ID,           default: true },
-      { key: 'name',         label: ENTITIES_COL_NAME,         default: true },
-      { key: 'identifier_1', label: ENTITIES_COL_IDENTIFIER_1, default: true },
-      { key: 'identifier_2', label: ENTITIES_COL_IDENTIFIER_2, default: true },
-      { key: 'relation',     label: ENTITIES_COL_RELATION,     default: true },
-      { key: 'client',       label: ENTITIES_COL_CLIENT,       default: true },
-      { key: 'phones',       label: ENTITIES_COL_PHONES,       default: true },
-      { key: 'created',      label: ENTITIES_COL_CREATED,      default: true },
+      { key: 'root_name',       label: ENTITIES_COL_ROOT_NAME,       default: true  },
+      { key: 'root_role',       label: ENTITIES_COL_ROOT_ROLE,       default: true  },
+      { key: 'root_identifier', label: ENTITIES_COL_ROOT_IDENTIFIER, default: true  },
+      { key: 'name',            label: ENTITIES_COL_NAME,            default: true  },
+      { key: 'relation',        label: ENTITIES_COL_RELATION,        default: true  },
+      { key: 'identifier_1',    label: ENTITIES_COL_IDENTIFIER_1,    default: true  },
+      { key: 'identifier_2',    label: ENTITIES_COL_IDENTIFIER_2,    default: true  },
+      { key: 'id',              label: ENTITIES_COL_ID,              default: false },
+      { key: 'client',          label: ENTITIES_COL_CLIENT,          default: false },
+      { key: 'phones',          label: ENTITIES_COL_PHONES,          default: false },
+      { key: 'created',         label: ENTITIES_COL_CREATED,         default: false },
     ],
   },
-  // Phone table — four columns. The phone column itself (phone_number +
-  // phone_type + score) is the row's identity, so it is NOT toggleable;
-  // the other three are.
+  // Phone table — first column (phone_number + phone_type + score) is always
+  // shown and NOT toggleable. The configurable columns are listed below.
   phones: {
     id: 'phones',
     label: SURFACE_LABEL_PHONES,
     columns: [
-      { key: 'association',  label: TABLE_HEADER_ASSOCIATION,  default: true },
-      { key: 'verification', label: TABLE_HEADER_VERIFICATION, default: true },
-      { key: 'updated',      label: TABLE_HEADER_UPDATED,      default: true },
+      { key: 'root_name',    label: TABLE_HEADER_ROOT_NAME,    default: true  },
+      { key: 'root_role',    label: TABLE_HEADER_ROOT_ROLE,    default: true  },
+      { key: 'entity_name',  label: TABLE_HEADER_ENTITY_NAME,  default: true  },
+      { key: 'relation',     label: TABLE_HEADER_RELATION,     default: true  },
+      { key: 'verification', label: TABLE_HEADER_VERIFICATION, default: true  },
+      { key: 'association',  label: TABLE_HEADER_ASSOCIATION,  default: false },
+      { key: 'updated',      label: TABLE_HEADER_UPDATED,      default: false },
     ],
   },
-  // Client Hub card — four sections beneath the always-visible header
-  // (name + alert dot + tier + chevron + open-tasks badge link).
+  // Client Hub card — header (name + alert dot + chevron) is always shown.
+  // These sections appear beneath it.
   clients: {
     id: 'clients',
     label: SURFACE_LABEL_CLIENTS,
     columns: [
-      { key: 'metrics',  label: CLIENT_CARD_SECTION_METRICS,  default: true },
-      { key: 'verdicts', label: CLIENT_CARD_SECTION_VERDICTS, default: true },
-      { key: 'sla',      label: CLIENT_CARD_SECTION_SLA,      default: true },
-      { key: 'tasks',    label: CLIENT_CARD_SECTION_TASKS,    default: true },
+      { key: 'role',        label: CLIENT_CARD_SECTION_ROLE,        default: true },
+      { key: 'identifier',  label: CLIENT_CARD_SECTION_IDENTIFIER,  default: true },
+      { key: 'phone_count', label: CLIENT_CARD_SECTION_PHONE_COUNT, default: true },
+      { key: 'metrics',     label: CLIENT_CARD_SECTION_METRICS,     default: true },
+      { key: 'verdicts',    label: CLIENT_CARD_SECTION_VERDICTS,    default: true },
+      { key: 'sla',         label: CLIENT_CARD_SECTION_SLA,         default: true },
+      { key: 'tasks',       label: CLIENT_CARD_SECTION_TASKS,       default: true },
     ],
   },
 };
