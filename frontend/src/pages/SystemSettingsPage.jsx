@@ -23,7 +23,8 @@ import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
 import {
   getSystemSettings, updateSystemSettings, updateDisplayFields,
-  updateDisplayLabels, updateFilterFields, updateMongoUrl, updateVocabulary,
+  updateDisplayLabels, updateFilterFields, updateCustomFilters,
+  updateMongoUrl, updateVocabulary,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
@@ -43,6 +44,10 @@ import {
   SYSSET_MONGO_TOAST_OK, SYSSET_MONGO_TOAST_ERROR, SYSSET_MONGO_UPDATE_PROMPT,
   SYSSET_FILTER_FIELDS_TITLE, SYSSET_FILTER_FIELDS_DESC,
   SYSSET_FILTER_FIELDS_TOAST_SAVED, SYSSET_FILTER_FIELDS_TOAST_ERROR,
+  SYSSET_CUSTOM_FILTERS_HEADING, SYSSET_CUSTOM_FILTERS_HINT,
+  SYSSET_CUSTOM_ADD_BTN, SYSSET_CUSTOM_LABEL_PH, SYSSET_CUSTOM_FIELD_PH,
+  SYSSET_CUSTOM_OPTIONS_PH, SYSSET_CUSTOM_WIDGET_TEXT, SYSSET_CUSTOM_WIDGET_SELECT,
+  SYSSET_CUSTOM_REMOVE_ARIA, SYSSET_CUSTOM_EMPTY, SYSSET_CUSTOM_FIELD_REQUIRED,
   SYSSET_VOCAB_TITLE, SYSSET_VOCAB_DESC, SYSSET_VOCAB_NAMES, SYSSET_VOCAB_ORDER,
   SYSSET_VOCAB_ADD_ITEM, SYSSET_VOCAB_PLACEHOLDER, SYSSET_VOCAB_REMOVE_ARIA,
   SYSSET_VOCAB_BTN_SAVE, SYSSET_VOCAB_BTN_SAVING,
@@ -236,6 +241,7 @@ export default function SystemSettingsPage() {
               key={surface.id}
               surface={surface}
               initialSelection={settings.filter_fields?.[surface.id]}
+              initialCustom={settings.custom_filters?.[surface.id]}
               mockDb={mockDb}
               pushToast={pushToast}
             />
@@ -702,12 +708,29 @@ function DisplayFieldsEditor({ surface, initialSelection, initialLabels, mockDb,
 }
 
 
+/** Normalize the persisted custom-filter list into editable rows. */
+function _initialCustomRows(initialCustom) {
+  if (!Array.isArray(initialCustom)) return [];
+  return initialCustom
+    .filter((d) => d && typeof d.key === 'string' && typeof d.field === 'string')
+    .map((d) => ({
+      key: d.key,
+      label: typeof d.label === 'string' ? d.label : d.key,
+      field: d.field,
+      widget: d.widget === 'select' ? 'select' : 'text',
+      options: Array.isArray(d.options)
+        ? d.options.map((o) => o.value).filter(Boolean).join(', ')
+        : '',
+    }));
+}
+
 /**
- * FilterFieldsEditor — toggle which filter controls are visible on a surface.
- * Simpler than DisplayFieldsEditor (no reordering — filter bar order is fixed
- * by the catalog).
+ * FilterFieldsEditor — manage, in ONE place per surface, both the built-in
+ * catalog toggles AND the admin-defined custom filters (including extra_data
+ * key filters). Custom filters render in the same filter bar as the built-in
+ * ones, so the editor keeps them together too — no separate UI region.
  */
-function FilterFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
+function FilterFieldsEditor({ surface, initialSelection, initialCustom, mockDb, pushToast }) {
   const catalogKeys = surface.filters.map((f) => f.key);
   const labelOf = useMemo(
     () => Object.fromEntries(surface.filters.map((f) => [f.key, f.label])),
@@ -722,9 +745,10 @@ function FilterFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
     return new Set(surface.filters.filter((f) => f.default).map((f) => f.key));
   };
 
-  const [visible, setVisible] = useState(_initial);
-  const [dirty, setDirty]     = useState(false);
-  const [saving, setSaving]   = useState(false);
+  const [visible, setVisible]       = useState(_initial);
+  const [customRows, setCustomRows] = useState(() => _initialCustomRows(initialCustom));
+  const [dirty, setDirty]           = useState(false);
+  const [saving, setSaving]         = useState(false);
 
   const toggle = (key) => {
     setVisible((prev) => {
@@ -735,12 +759,47 @@ function FilterFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
     setDirty(true);
   };
 
+  const addCustom = () => {
+    setCustomRows((prev) => [...prev, { key: '', label: '', field: '', widget: 'text', options: '' }]);
+    setDirty(true);
+  };
+  const updateCustom = (idx, patch) => {
+    setCustomRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    setDirty(true);
+  };
+  const removeCustom = (idx) => {
+    setCustomRows((prev) => prev.filter((_, i) => i !== idx));
+    setDirty(true);
+  };
+
   async function save() {
     if (saving) return;
+    // Build + validate custom descriptors. Each needs a label and a field;
+    // the stable key is derived from the field path.
+    const descriptors = [];
+    for (const r of customRows) {
+      const label = r.label.trim();
+      const field = r.field.trim();
+      if (!label || !field) {
+        pushToast({ variant: 'error', message: SYSSET_CUSTOM_FIELD_REQUIRED });
+        return;
+      }
+      const desc = { key: r.key || field, label, field, widget: r.widget };
+      if (r.widget === 'select') {
+        desc.options = r.options
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((v) => ({ value: v, label: v }));
+      }
+      descriptors.push(desc);
+    }
+
     setSaving(true);
     try {
       const fields = catalogKeys.filter((k) => visible.has(k));
-      await updateFilterFields(surface.id, fields, mockDb);
+      if (catalogKeys.length) await updateFilterFields(surface.id, fields, mockDb);
+      await updateCustomFilters(surface.id, descriptors, mockDb);
       pushToast({ variant: 'success', message: SYSSET_FILTER_FIELDS_TOAST_SAVED });
       setDirty(false);
     } catch (err) {
@@ -760,30 +819,102 @@ function FilterFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
     <div data-testid={`filter-fields-${surface.id}`}>
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-[13px] font-semibold text-slate-700">{surface.label}</h3>
-        <button
-          type="button"
-          onClick={reset}
-          className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-700"
-        >
-          <RotateCcw className="w-3 h-3" />{SYSSET_FIELDS_RESET}
-        </button>
+        {catalogKeys.length > 0 && (
+          <button
+            type="button"
+            onClick={reset}
+            className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-700"
+          >
+            <RotateCcw className="w-3 h-3" />{SYSSET_FIELDS_RESET}
+          </button>
+        )}
       </div>
 
-      <ul className="divide-y divide-slate-100 border border-slate-200 rounded-md">
-        {catalogKeys.map((key) => (
-          <li key={key} className="flex items-center gap-3 px-3 py-2"
-              data-testid={`filter-row-${surface.id}-${key}`}>
-            <input
-              type="checkbox"
-              checked={visible.has(key)}
-              onChange={() => toggle(key)}
-              data-testid={`filter-toggle-${surface.id}-${key}`}
-              className="accent-slate-900"
-            />
-            <span className="text-sm text-slate-800 flex-1">{labelOf[key]}</span>
-          </li>
-        ))}
-      </ul>
+      {catalogKeys.length > 0 && (
+        <ul className="divide-y divide-slate-100 border border-slate-200 rounded-md">
+          {catalogKeys.map((key) => (
+            <li key={key} className="flex items-center gap-3 px-3 py-2"
+                data-testid={`filter-row-${surface.id}-${key}`}>
+              <input
+                type="checkbox"
+                checked={visible.has(key)}
+                onChange={() => toggle(key)}
+                data-testid={`filter-toggle-${surface.id}-${key}`}
+                className="accent-slate-900"
+              />
+              <span className="text-sm text-slate-800 flex-1">{labelOf[key]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Custom filters — same surface, same card. */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[12px] font-medium text-slate-600">{SYSSET_CUSTOM_FILTERS_HEADING}</span>
+          <button
+            type="button"
+            onClick={addCustom}
+            data-testid={`custom-filter-add-${surface.id}`}
+            className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+          >
+            <Plus className="w-3 h-3" />{SYSSET_CUSTOM_ADD_BTN}
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-400 mb-2">{SYSSET_CUSTOM_FILTERS_HINT}</p>
+
+        {customRows.length === 0 ? (
+          <p className="text-[12px] text-slate-400 italic">{SYSSET_CUSTOM_EMPTY}</p>
+        ) : (
+          <ul className="space-y-2">
+            {customRows.map((r, idx) => (
+              <li key={idx} className="flex flex-wrap items-center gap-2"
+                  data-testid={`custom-filter-row-${surface.id}-${idx}`}>
+                <input
+                  type="text"
+                  value={r.label}
+                  onChange={(e) => updateCustom(idx, { label: e.target.value })}
+                  placeholder={SYSSET_CUSTOM_LABEL_PH}
+                  className="h-8 px-2 text-sm rounded-md border border-slate-300 min-w-[120px] grow"
+                />
+                <input
+                  type="text"
+                  value={r.field}
+                  onChange={(e) => updateCustom(idx, { field: e.target.value })}
+                  placeholder={SYSSET_CUSTOM_FIELD_PH}
+                  dir="ltr"
+                  className="h-8 px-2 text-sm rounded-md border border-slate-300 min-w-[160px] grow"
+                />
+                <select
+                  value={r.widget}
+                  onChange={(e) => updateCustom(idx, { widget: e.target.value })}
+                  className="h-8 px-2 text-sm rounded-md border border-slate-300 bg-white"
+                >
+                  <option value="text">{SYSSET_CUSTOM_WIDGET_TEXT}</option>
+                  <option value="select">{SYSSET_CUSTOM_WIDGET_SELECT}</option>
+                </select>
+                {r.widget === 'select' && (
+                  <input
+                    type="text"
+                    value={r.options}
+                    onChange={(e) => updateCustom(idx, { options: e.target.value })}
+                    placeholder={SYSSET_CUSTOM_OPTIONS_PH}
+                    className="h-8 px-2 text-sm rounded-md border border-slate-300 min-w-[160px] grow"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeCustom(idx)}
+                  aria-label={SYSSET_CUSTOM_REMOVE_ARIA}
+                  className="text-slate-400 hover:text-rose-600 p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="mt-3 flex justify-end">
         <button

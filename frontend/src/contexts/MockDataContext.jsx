@@ -1954,6 +1954,23 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  const applyUpdateCustomFilters = useCallback((surface, filters) => {
+    let snapshot;
+    setDb((prev) => {
+      const store = { ...(prev.systemSettings.custom_filters || {}) };
+      // An empty list clears the surface's custom filters (mirrors backend).
+      if (Array.isArray(filters) && filters.length) {
+        store[surface] = filters.map((d) => ({ ...d }));
+      } else {
+        delete store[surface];
+      }
+      const next = { ...prev.systemSettings, custom_filters: store };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   // Mock parity for PUT /system/settings/vocabulary/{name}. Also used as the
   // in-memory mirror update in BOTH modes: the System Settings editor calls
   // this after a successful save so the controlled dropdowns (which read
@@ -2032,6 +2049,7 @@ export function MockDataProvider({ children }) {
     applyUpdateDisplayFields,
     applyUpdateDisplayLabels,
     applyUpdateFilterFields,
+    applyUpdateCustomFilters,
     applyUpdateVocabulary,
     applyUpdateMongoUrl,
     // Operator-managed closed lists — the single source every controlled

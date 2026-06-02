@@ -140,6 +140,26 @@ export function UIProvider({ children }) {
   }, []);
 
   // -------------------------------------------------------------------------
+  // Admin-defined custom filter values, keyed by surface id
+  // ('phones' | 'operations' | 'entities'). Kept separate from the fixed-shape
+  // built-in filter objects above so arbitrary admin-defined keys can never
+  // collide with a built-in key. Each surface maps { customFilterKey: value }.
+  // Survives tab navigation, exactly like the built-in filters.
+  // -------------------------------------------------------------------------
+  const [customFilterValues, setCustomFilterValues] = useState({});
+
+  const updateCustomFilterValues = useCallback((surface, partial) => {
+    setCustomFilterValues((prev) => ({
+      ...prev,
+      [surface]: { ...(prev[surface] || {}), ...partial },
+    }));
+  }, []);
+
+  const resetCustomFilterValues = useCallback((surface) => {
+    setCustomFilterValues((prev) => ({ ...prev, [surface]: {} }));
+  }, []);
+
+  // -------------------------------------------------------------------------
   // Toast queue
   // -------------------------------------------------------------------------
   const toastIdRef = useRef(0);
@@ -179,6 +199,10 @@ export function UIProvider({ children }) {
     resetTaskFilters,
     seedTaskPhoneFilter,
     seedTaskClientFilter,
+    // Custom (admin-defined) filter values, per surface
+    customFilterValues,
+    updateCustomFilterValues,
+    resetCustomFilterValues,
     // Toasts
     toasts,
     pushToast,

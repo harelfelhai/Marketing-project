@@ -17,10 +17,12 @@
  * arrives (Phase D §6.2 Deliverable 3 rule).
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
+import { resolveCustomFilters, rowMatchesCustom } from '../../config/customFilters';
+import { getSystemSettings } from '../../api/systemApi';
 import TaskRow         from './TaskRow';
 import Skeleton        from '../primitives/Skeleton';
 import {
@@ -78,6 +80,12 @@ export function applyFilters(tasks, filters) {
       ].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
+    // Admin-defined custom filters (incl. extra_data keys) — evaluated against
+    // the task row, mirroring the backend `filters` param (Stage 2B).
+    if (filters.customDescriptors?.length
+        && !rowMatchesCustom(t, filters.customDescriptors, filters.customValues)) {
+      return false;
+    }
     return true;
   });
 }
@@ -90,14 +98,31 @@ export default function TaskTable({
   onToggleAll,
   rootEntityIds,
 }) {
-  const { tasks, loading } = useMockData();
-  const { taskFilters }    = useUI();
+  const mockDb = useMockData();
+  const { tasks, loading } = mockDb;
+  const { taskFilters, customFilterValues } = useUI();
+
+  const [customDescriptors, setCustomDescriptors] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    getSystemSettings(mockDb)
+      .then((s) => { if (alive) setCustomDescriptors(resolveCustomFilters('operations', s.custom_filters || {})); })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Phase AUTH-C — same merge pattern as PhoneTable: the page derives
   // personalization rootEntityIds from useAuth and hands them in here.
+  const customValues = customFilterValues.operations || {};
   const effectiveFilters = useMemo(
-    () => (rootEntityIds?.length ? { ...taskFilters, rootEntityIds } : taskFilters),
-    [taskFilters, rootEntityIds]
+    () => ({
+      ...taskFilters,
+      ...(rootEntityIds?.length ? { rootEntityIds } : {}),
+      customDescriptors,
+      customValues,
+    }),
+    [taskFilters, rootEntityIds, customDescriptors, customValues]
   );
 
   const rows = useMemo(

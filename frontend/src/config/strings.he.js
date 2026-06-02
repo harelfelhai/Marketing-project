@@ -1028,6 +1028,24 @@ export const SYSSET_FILTER_FIELDS_DESC      =
 export const SYSSET_FILTER_FIELDS_TOAST_SAVED  = 'שדות הפילטר נשמרו.';
 export const SYSSET_FILTER_FIELDS_TOAST_ERROR  = (msg) => `שמירת שדות הפילטר נכשלה: ${msg}`;
 
+// Custom (admin-defined) filters — managed within each surface's filter editor.
+export const SYSSET_CUSTOM_FILTERS_HEADING  = 'פילטרים מותאמים';
+export const SYSSET_CUSTOM_FILTERS_HINT     =
+  'הוסף פילטרים משלך, כולל סינון לפי מפתח ב-extra_data (למשל extra_data.region). ' +
+  'התווית והערכים נשמרים בצד הלקוח בלבד.';
+export const SYSSET_CUSTOM_ADD_BTN          = 'הוסף פילטר מותאם';
+export const SYSSET_CUSTOM_LABEL_PH         = 'תווית להצגה';
+export const SYSSET_CUSTOM_FIELD_PH         = 'שדה (למשל extra_data.region)';
+export const SYSSET_CUSTOM_OPTIONS_PH       = 'ערכים לבחירה, מופרדים בפסיק';
+export const SYSSET_CUSTOM_WIDGET_TEXT      = 'טקסט (מכיל)';
+export const SYSSET_CUSTOM_WIDGET_SELECT    = 'בחירה (שווה)';
+export const SYSSET_CUSTOM_REMOVE_ARIA      = 'הסר פילטר מותאם';
+export const SYSSET_CUSTOM_EMPTY            = 'אין פילטרים מותאמים לטאב זה.';
+export const SYSSET_CUSTOM_FIELD_REQUIRED   = 'לכל פילטר מותאם נדרשים תווית ושדה.';
+
+// Generic "all" option shown first in a custom select-widget filter.
+export const CUSTOM_FILTER_ALL              = 'הכל';
+
 export const FILTER_LABEL_SEARCH            = 'חיפוש חופשי';
 export const FILTER_LABEL_CLIENT            = 'לקוח';
 export const FILTER_LABEL_VERIF_STATUS      = 'סטטוס אימות';

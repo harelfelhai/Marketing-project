@@ -147,6 +147,24 @@ export async function updateFilterFields(surface, fields, mockDb) {
 }
 
 /**
+ * updateCustomFilters — set the admin-defined custom filters for one surface.
+ * Returns the full updated settings object.
+ *
+ * @param {string}   surface  Surface id ('phones' | 'operations' | 'entities').
+ * @param {object[]} filters  Ordered descriptors { key, label, field, widget, options? }.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateCustomFilters(surface, filters, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/custom-filters',
+                                         { surface, filters });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateCustomFilters(surface, filters);
+}
+
+/**
  * updateMongoUrl — validate and persist a MongoDB connection URL server-side.
  *
  * The URL is WRITE-ONLY from the frontend's perspective. The response only

@@ -14,6 +14,8 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { getSystemSettings } from '../../api/systemApi';
 import { verificationLabel } from '../../utils/classifyStatus';
 import { resolveActiveFilters, defaultFilterKeys, FILTER_SURFACES } from '../../config/filterFields';
+import { resolveCustomFilters } from '../../config/customFilters';
+import CustomFilterControls from '../filters/CustomFilterControls';
 import {
   FILTER_SEARCH_PLACEHOLDER, FILTER_ALL_CLIENTS, FILTER_ALL_STATUSES,
   FILTER_STATUS_PENDING, FILTER_STATUS_GOOD, FILTER_STATUS_BAD,
@@ -54,7 +56,11 @@ const TEXT_SELECT_KEYS = ['search', 'rootEntityId', 'verificationStatus', 'inges
 export default function PhoneFilterBar() {
   const mockDb = useMockData();
   const { clients, vocabularies } = mockDb;
-  const { phoneFilters, updatePhoneFilters, resetPhoneFilters } = useUI();
+  const {
+    phoneFilters, updatePhoneFilters, resetPhoneFilters,
+    customFilterValues, updateCustomFilterValues, resetCustomFilterValues,
+  } = useUI();
+  const customValues = customFilterValues.phones || {};
 
   // Options sourced from the operator-managed vocabularies (single source of
   // truth). Reactive: editing a list in System Settings updates these live.
@@ -72,16 +78,18 @@ export default function PhoneFilterBar() {
   );
   const PHONE_TYPE_VALUES = vocabularies?.phone_types || [];
 
-  // Load active filter fields from settings.
+  // Load active filter fields + custom filters from settings.
   const [activeFilters, setActiveFilters] = useState(() =>
     resolveActiveFilters('phones', null)
   );
+  const [customFilters, setCustomFilters] = useState([]);
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
       .then((s) => {
         if (!alive) return;
         setActiveFilters(resolveActiveFilters('phones', s.filter_fields || {}));
+        setCustomFilters(resolveCustomFilters('phones', s.custom_filters || {}));
       })
       .catch(() => {});
     return () => { alive = false; };
@@ -103,7 +111,16 @@ export default function PhoneFilterBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKeys]);
 
-  const hasAny = TEXT_SELECT_KEYS.some((k) => phoneFilters[k]);
+  const hasAnyCustom = customFilters.some((d) => {
+    const v = customValues[d.key];
+    return v != null && v !== '';
+  });
+  const hasAny = TEXT_SELECT_KEYS.some((k) => phoneFilters[k]) || hasAnyCustom;
+
+  const clearAll = () => {
+    resetPhoneFilters();
+    resetCustomFilterValues('phones');
+  };
 
   const selectClass =
     'h-9 px-3 text-sm rounded-md border border-slate-300 bg-white text-slate-800 ' +
@@ -200,10 +217,16 @@ export default function PhoneFilterBar() {
         </select>
       )}
 
+      <CustomFilterControls
+        descriptors={customFilters}
+        values={customValues}
+        onChange={(partial) => updateCustomFilterValues('phones', partial)}
+      />
+
       {hasAny && (
         <button
           type="button"
-          onClick={resetPhoneFilters}
+          onClick={clearAll}
           className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
         >
           <X className="w-3.5 h-3.5" />

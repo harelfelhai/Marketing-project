@@ -15,6 +15,8 @@ import { useUI }       from '../../contexts/UIContext';
 import { useMockData } from '../../contexts/MockDataContext';
 import { getSystemSettings } from '../../api/systemApi';
 import { resolveActiveFilters } from '../../config/filterFields';
+import { resolveCustomFilters } from '../../config/customFilters';
+import CustomFilterControls from '../filters/CustomFilterControls';
 import { taskStatusLabel, taskTypeLabel } from '../../utils/classifyStatus';
 import {
   TASK_FILTER_SEARCH_PLACEHOLDER,
@@ -34,7 +36,11 @@ const TEXT_SELECT_KEYS = ['search', 'status', 'taskType', 'rootEntityId'];
 export default function TaskFilterBar() {
   const mockDb = useMockData();
   const { clients, vocabularies } = mockDb;
-  const { taskFilters, updateTaskFilters, resetTaskFilters } = useUI();
+  const {
+    taskFilters, updateTaskFilters, resetTaskFilters,
+    customFilterValues, updateCustomFilterValues, resetCustomFilterValues,
+  } = useUI();
+  const customValues = customFilterValues.operations || {};
 
   // Status / type values from the operator-managed vocabularies (single
   // source of truth). Labels still come from classifyStatus's label maps,
@@ -42,16 +48,18 @@ export default function TaskFilterBar() {
   const STATUS_OPTIONS = vocabularies?.task_statuses || [];
   const TYPE_OPTIONS   = vocabularies?.task_types || [];
 
-  // Load active filter fields from settings.
+  // Load active filter fields + custom filters from settings.
   const [activeFilters, setActiveFilters] = useState(() =>
     resolveActiveFilters('operations', null)
   );
+  const [customFilters, setCustomFilters] = useState([]);
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
       .then((s) => {
         if (!alive) return;
         setActiveFilters(resolveActiveFilters('operations', s.filter_fields || {}));
+        setCustomFilters(resolveCustomFilters('operations', s.custom_filters || {}));
       })
       .catch(() => {});
     return () => { alive = false; };
@@ -72,13 +80,23 @@ export default function TaskFilterBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKeys]);
 
+  const hasAnyCustom = customFilters.some((d) => {
+    const v = customValues[d.key];
+    return v != null && v !== '';
+  });
   const hasAny =
     taskFilters.status   ||
     taskFilters.taskType ||
     taskFilters.search   ||
     taskFilters.phoneId  != null ||
     taskFilters.rootEntityId != null ||
-    taskFilters.openOnly;
+    taskFilters.openOnly ||
+    hasAnyCustom;
+
+  const clearAll = () => {
+    resetTaskFilters();
+    resetCustomFilterValues('operations');
+  };
 
   const selectClass =
     'h-9 px-3 text-sm rounded-md border border-slate-300 bg-white text-slate-800 ' +
@@ -173,10 +191,16 @@ export default function TaskFilterBar() {
         </span>
       )}
 
+      <CustomFilterControls
+        descriptors={customFilters}
+        values={customValues}
+        onChange={(partial) => updateCustomFilterValues('operations', partial)}
+      />
+
       {hasAny && (
         <button
           type="button"
-          onClick={resetTaskFilters}
+          onClick={clearAll}
           className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
         >
           <X className="w-3.5 h-3.5" />

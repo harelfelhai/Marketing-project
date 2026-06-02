@@ -17,6 +17,7 @@ import { useUI }       from '../../contexts/UIContext';
 import PhoneRow        from './PhoneRow';
 import Skeleton        from '../primitives/Skeleton';
 import { resolveVisibleColumns } from '../../config/displayFields';
+import { resolveCustomFilters, rowMatchesCustom } from '../../config/customFilters';
 import { getSystemSettings }     from '../../api/systemApi';
 import {
   TABLE_HEADER_PHONE, TABLE_EMPTY_PHONES, TABLE_SHOWING,
@@ -73,6 +74,12 @@ export function applyFilters(phones, entities, clients, filters) {
       ].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
+    // Admin-defined custom filters (incl. extra_data keys) — evaluated against
+    // the phone row, mirroring the backend `filters` param (Stage 2B).
+    if (filters.customDescriptors?.length
+        && !rowMatchesCustom(phone, filters.customDescriptors, filters.customValues)) {
+      return false;
+    }
     return true;
   });
 
@@ -91,10 +98,11 @@ export function applyFilters(phones, entities, clients, filters) {
 export default function PhoneTable({ selectedId, onSelect, rootEntityIds }) {
   const mockDb = useMockData();
   const { phones, entities, clients, loading } = mockDb;
-  const { phoneFilters } = useUI();
+  const { phoneFilters, customFilterValues } = useUI();
 
   const [displayFields, setDisplayFields] = useState(null);
   const [displayLabels, setDisplayLabels] = useState(null);
+  const [customDescriptors, setCustomDescriptors] = useState([]);
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
@@ -102,6 +110,7 @@ export default function PhoneTable({ selectedId, onSelect, rootEntityIds }) {
         if (!alive) return;
         setDisplayFields(s.display_fields || {});
         setDisplayLabels(s.display_labels || {});
+        setCustomDescriptors(resolveCustomFilters('phones', s.custom_filters || {}));
       })
       .catch(() => { if (alive) { setDisplayFields({}); setDisplayLabels({}); } });
     return () => { alive = false; };
@@ -117,9 +126,15 @@ export default function PhoneTable({ selectedId, onSelect, rootEntityIds }) {
   );
   const colSpan = visibleCols.length + 1;
 
+  const customValues = customFilterValues.phones || {};
   const effectiveFilters = useMemo(
-    () => (rootEntityIds?.length ? { ...phoneFilters, rootEntityIds } : phoneFilters),
-    [phoneFilters, rootEntityIds]
+    () => ({
+      ...phoneFilters,
+      ...(rootEntityIds?.length ? { rootEntityIds } : {}),
+      customDescriptors,
+      customValues,
+    }),
+    [phoneFilters, rootEntityIds, customDescriptors, customValues]
   );
 
   const rows = useMemo(

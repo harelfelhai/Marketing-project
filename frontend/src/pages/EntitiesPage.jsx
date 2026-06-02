@@ -16,8 +16,11 @@ import { listEntities } from '../api/entityApi';
 import { getSystemSettings } from '../api/systemApi';
 import { useMockData } from '../contexts/MockDataContext';
 import { useAuth }     from '../contexts/MockAuthContext';
+import { useUI }       from '../contexts/UIContext';
 import { getClientById } from '../config/clientRegistry';
 import { resolveVisibleColumns } from '../config/displayFields';
+import { resolveCustomFilters, rowMatchesCustom } from '../config/customFilters';
+import CustomFilterControls from '../components/filters/CustomFilterControls';
 import {
   PAGE_ENTITIES_TITLE, PAGE_ENTITIES_SUB,
   ENTITIES_EMPTY,
@@ -92,12 +95,14 @@ function renderEntityCell(key, e, ctx) {
 export default function EntitiesPage() {
   const mockDb = useMockData();
   const { personalizationActive, user } = useAuth();
+  const { customFilterValues, updateCustomFilterValues } = useUI();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [openPhonesFor, setOpenPhonesFor] = useState(null);
   const [displayFields, setDisplayFields] = useState(null);
   const [displayLabels, setDisplayLabels] = useState(null);
+  const [customDescriptors, setCustomDescriptors] = useState([]);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
 
   useEffect(() => {
@@ -107,11 +112,14 @@ export default function EntitiesPage() {
         if (!alive) return;
         setDisplayFields(s.display_fields || {});
         setDisplayLabels(s.display_labels || {});
+        setCustomDescriptors(resolveCustomFilters('entities', s.custom_filters || {}));
       })
       .catch(() => { if (alive) { setDisplayFields({}); setDisplayLabels({}); } });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const customValues = customFilterValues.entities || {};
 
   const columns = useMemo(
     () => resolveVisibleColumns('entities', displayFields, displayLabels),
@@ -162,11 +170,20 @@ export default function EntitiesPage() {
     return map;
   }, [mockDb.phones]);
 
+  // Admin-defined custom filters (incl. extra_data keys), applied client-side
+  // over the fetched entities — mirrors the backend `filters` param (Stage 2B).
+  const filteredItems = useMemo(
+    () => (customDescriptors.length
+      ? items.filter((e) => rowMatchesCustom(e, customDescriptors, customValues))
+      : items),
+    [items, customDescriptors, customValues],
+  );
+
   // Group filtered items by root entity id. Root entity is sorted first
   // within each group.
   const groups = useMemo(() => {
     const map = new Map();
-    for (const e of items) {
+    for (const e of filteredItems) {
       const rootId = e.target_entity_id ?? e.id;
       if (!map.has(rootId)) map.set(rootId, []);
       map.get(rootId).push(e);
@@ -179,7 +196,7 @@ export default function EntitiesPage() {
       });
       return { rootId, members };
     });
-  }, [items]);
+  }, [filteredItems]);
 
   // Total phone count for a root entity group (across ALL its member
   // entities, not just those visible after search filtering).
@@ -217,14 +234,19 @@ export default function EntitiesPage() {
         <p className="text-sm text-slate-500 mt-1">{PAGE_ENTITIES_SUB}</p>
       </header>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-3">
+      <div className="bg-white rounded-lg border border-slate-200 p-3 flex flex-wrap items-center gap-2">
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="חיפוש לפי שם או מזהה…"
           data-testid="entities-search"
-          className="block w-full h-9 px-2 rounded-md border border-slate-300 text-sm"
+          className="grow min-w-[200px] h-9 px-2 rounded-md border border-slate-300 text-sm"
+        />
+        <CustomFilterControls
+          descriptors={customDescriptors}
+          values={customValues}
+          onChange={(partial) => updateCustomFilterValues('entities', partial)}
         />
       </div>
 

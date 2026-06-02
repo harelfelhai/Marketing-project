@@ -13,7 +13,7 @@
  */
 
 import {
-  SURFACE_LABEL_PHONES, SURFACE_LABEL_OPERATIONS,
+  SURFACE_LABEL_PHONES, SURFACE_LABEL_OPERATIONS, SURFACE_LABEL_ENTITIES,
   FILTER_LABEL_SEARCH, FILTER_LABEL_CLIENT,
   FILTER_LABEL_VERIF_STATUS, FILTER_LABEL_SOURCE, FILTER_LABEL_PHONE_TYPE,
   FILTER_LABEL_ENTITY_NAME, FILTER_LABEL_RELATION_TYPE,
@@ -54,6 +54,14 @@ export const FILTER_SURFACES = {
       { key: 'rootEntityId',     label: FILTER_LABEL_CLIENT,        default: false, type: 'clients' },
       { key: 'hideResolved', label: FILTER_LABEL_HIDE_RESOLVED, default: true,  type: 'toggle'  },
     ],
+  },
+  // The entities surface has no built-in catalog filters (EntitiesPage owns
+  // its search box) — it exists here only so admins can attach custom filters
+  // to it from System Settings, including filters on extra_data keys.
+  entities: {
+    id: 'entities',
+    label: SURFACE_LABEL_ENTITIES,
+    filters: [],
   },
 };
 

@@ -402,6 +402,11 @@ export const SEED_SYSTEM_SETTINGS = {
   // catalog defaults (src/config/filterFields.js). Admins edit these from
   // the System Settings tab; they persist via /system/settings/filter-fields.
   filter_fields: {},
+  // Per-surface admin-defined custom filters (beyond the built-in catalog),
+  // including filters on opaque extra_data keys. Shape:
+  //   { surface: [ {key, label, field, widget, options?}, ... ] }
+  // Empty = no custom filters. Persist via /system/settings/custom-filters.
+  custom_filters: {},
   // Whether an admin has stored a MongoDB URL via PUT /settings/mongo-url.
   // The URL itself is never held in the frontend — only this boolean flag.
   mongo_configured: false,
