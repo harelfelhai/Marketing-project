@@ -38,6 +38,12 @@ const _uid = (prefix) => {
 // Real-API hydration helpers — mirror the mock's buildInitialDb shape so
 // downstream consumers see the same fields regardless of the data source.
 //
+// _normalizeDeletedAt: the backend uses a far-future SOFT_DELETE_SENTINEL
+//   (year 9999) to mean "active" — a TRUTHY string. The whole frontend
+//   treats a truthy deleted_at as "this row is deleted" (e.g.
+//   `if (e.deleted_at) continue`). Without normalising it, every active
+//   backend row would be hidden. Collapse the sentinel back to null so
+//   active rows read as active, exactly like the mock seed.
 // _enrichEntities: stamps client_id = target_entity_id ?? id on every row.
 //   Two-level model: a root entity (target_entity_id == null) is its own
 //   client; a member's client_id is the root it points at.
@@ -46,9 +52,18 @@ const _uid = (prefix) => {
 // _clientsFromEntities: builds the clients slice from active root entities,
 //                  with optional display overrides from CLIENT_REGISTRY when
 //                  the entity id matches a registry key.
+function _normalizeDeletedAt(value) {
+  // Active sentinel = year 9999. Anything else (a real past timestamp)
+  // is a genuine soft-delete and stays as-is.
+  if (value == null) return null;
+  if (typeof value === 'string' && value.startsWith('9999')) return null;
+  return value;
+}
+
 function _enrichEntities(entities) {
   return (entities || []).map((e) => ({
     ...e,
+    deleted_at: _normalizeDeletedAt(e.deleted_at),
     client_id: e.target_entity_id != null ? e.target_entity_id : e.id,
   }));
 }
