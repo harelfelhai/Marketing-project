@@ -187,8 +187,12 @@ export function MockDataProvider({ children }) {
     // yet — and made them invisible in the pickers. Switch to a real
     // GET /entities boot fetch so the entities slice is authoritative.
     Promise.allSettled([
-      listPhones({ pageSize: 200 }),
-      listTasks({ pageSize: 500 }),
+      // Single full-dataset boot fetch — no upstream pagination. Every
+      // downstream metric (per-group phone counts, client-hub totals,
+      // pipeline strip) needs the complete picture, and the UI groups
+      // results so display volume isn't a concern.
+      listPhones({ pageSize: 1_000_000 }),
+      listTasks({ pageSize: 1_000_000 }),
       listEntities({}, /* mockDb */ null),
     ])
       .then(([phonesRes, tasksRes, entitiesRes]) => {
@@ -221,7 +225,7 @@ export function MockDataProvider({ children }) {
   // ---------------------------------------------------------------------------
   const refetchPhones = useCallback(async () => {
     if (MOCK_MODE) return;
-    const phonesRaw = await listPhones({ pageSize: 200 });
+    const phonesRaw = await listPhones({ pageSize: 1_000_000 });
     setDb((prev) => ({
       ...prev,
       phones: _enrichPhones(phonesRaw, prev.entities),
@@ -296,7 +300,7 @@ export function MockDataProvider({ children }) {
 
   const refetchTasks = useCallback(async () => {
     if (MOCK_MODE) return;
-    const fresh = await listTasks({ pageSize: 500 });
+    const fresh = await listTasks({ pageSize: 1_000_000 });
     setDb((prev) => ({ ...prev, tasks: fresh }));
   }, []);
 

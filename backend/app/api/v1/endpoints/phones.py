@@ -70,7 +70,7 @@ def list_phones(
     phone_type: Optional[str] = Query(default=None),
     q: Optional[str] = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
+    page_size: int = Query(default=20, ge=1),
     include_deleted: bool = Query(default=False),
     storage=Depends(get_storage),
 ) -> PhoneListResponse:

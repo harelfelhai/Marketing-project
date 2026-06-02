@@ -91,7 +91,7 @@ def list_tasks(
     exclude_terminal: bool = Query(default=False),
     q: Optional[str] = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=500),
+    page_size: int = Query(default=20, ge=1),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskListResponse:
     """
