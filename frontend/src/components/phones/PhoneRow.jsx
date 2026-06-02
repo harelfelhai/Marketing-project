@@ -39,7 +39,14 @@ const TRUTH_STATE_DOT = {
   failed:  'bg-rose-500',
 };
 
-export default function PhoneRow({ phone, entity, client, logs, isSelected, onSelect }) {
+// `visibleKeys` is a Set of keys from the 'phones' display-fields catalog.
+// When absent, every column renders (matches the pre-feature behaviour).
+const _ALL_KEYS = new Set(['association', 'verification', 'actions', 'updated']);
+
+export default function PhoneRow({
+  phone, entity, client, logs, isSelected, onSelect,
+  visibleKeys = _ALL_KEYS,
+}) {
   const rowTooltip = SCORE_ROW_TOOLTIP(
     phone.priority_score,
     phone.confidence_score,
@@ -102,6 +109,7 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
       {/* Column 2 — Client + entity + tier. Envelope rows replace the
           standard entity caption with the diamond glyph + envelope_id so
           "this isn't a named person yet" is unmistakable. */}
+      {visibleKeys.has('association') && (
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col min-w-0 max-w-[180px] gap-1">
           <span
@@ -152,10 +160,12 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
         </div>
       </td>
 
+      )}
       {/* Column 3 — Two-axis truth dots. Vector A shows phone/person;
           Vector B shows network/identity. Identity for envelopes uses
           the diamond glyph (not a dot) to mark "unknown" as a distinct
           state from "pending verification". */}
+      {visibleKeys.has('verification') && (
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col gap-1.5">
           <TruthAxis
@@ -174,12 +184,16 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
         </div>
       </td>
 
+      )}
       {/* Column 4 — Action mini-pipeline */}
+      {visibleKeys.has('actions') && (
       <td className="px-4 py-3 align-middle">
         <ActionMiniPipeline logs={logs} />
       </td>
+      )}
 
       {/* Column 5 — Last updated + source */}
+      {visibleKeys.has('updated') && (
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col">
           <span className="text-sm text-slate-700">{formatRelative(phone.updated_at)}</span>
@@ -188,6 +202,7 @@ export default function PhoneRow({ phone, entity, client, logs, isSelected, onSe
           </span>
         </div>
       </td>
+      )}
     </tr>
   );
 }

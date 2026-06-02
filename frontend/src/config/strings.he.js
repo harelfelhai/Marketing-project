@@ -997,3 +997,14 @@ export const SYSSET_FIELDS_MOVE_DOWN        = 'הזז למטה';
 export const SYSSET_FIELDS_TOAST_SAVED      = 'שדות התצוגה נשמרו.';
 export const SYSSET_FIELDS_TOAST_ERROR      = (msg) => `שמירת שדות התצוגה נכשלה: ${msg}`;
 export const SYSSET_FIELDS_RESET            = 'אפס לברירת מחדל';
+
+// ---------------------------------------------------------------------------
+// Configurable display fields — phone table sections + client card sections
+// ---------------------------------------------------------------------------
+export const SURFACE_LABEL_PHONES           = 'טבלת טלפונים';
+export const SURFACE_LABEL_CLIENTS          = 'כרטיסי לקוח (מרכז לקוחות)';
+
+export const CLIENT_CARD_SECTION_METRICS    = 'גריד מטריקות (כולל / ממתין / נכשל)';
+export const CLIENT_CARD_SECTION_VERDICTS   = 'פירוט החלטות (טוב / רע)';
+export const CLIENT_CARD_SECTION_SLA        = 'רצועת SLA';
+export const CLIENT_CARD_SECTION_TASKS      = 'תג משימות פתוחות';

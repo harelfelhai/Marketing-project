@@ -21,7 +21,11 @@ import {
   ENTITIES_COL_ID, ENTITIES_COL_NAME, ENTITIES_COL_RELATION,
   ENTITIES_COL_CLIENT, ENTITIES_COL_PHONES, ENTITIES_COL_CREATED,
   ENTITIES_COL_STRONG_ID,
-  SURFACE_LABEL_ENTITIES,
+  TABLE_HEADER_ASSOCIATION, TABLE_HEADER_VERIFICATION,
+  TABLE_HEADER_ACTIONS, TABLE_HEADER_UPDATED,
+  CLIENT_CARD_SECTION_METRICS, CLIENT_CARD_SECTION_VERDICTS,
+  CLIENT_CARD_SECTION_SLA, CLIENT_CARD_SECTION_TASKS,
+  SURFACE_LABEL_ENTITIES, SURFACE_LABEL_PHONES, SURFACE_LABEL_CLIENTS,
 } from './strings.he';
 
 
@@ -47,7 +51,31 @@ export const DISPLAY_SURFACES = {
       { key: 'created',           label: ENTITIES_COL_CREATED,   default: true },
     ],
   },
-  // Future surfaces (phone table, client card) plug in here the same way.
+  // Phone table — five columns. The phone column itself (phone_number +
+  // classification + priority) is the row's identity, so it is NOT
+  // toggleable; the other four are.
+  phones: {
+    id: 'phones',
+    label: SURFACE_LABEL_PHONES,
+    columns: [
+      { key: 'association',  label: TABLE_HEADER_ASSOCIATION,  default: true },
+      { key: 'verification', label: TABLE_HEADER_VERIFICATION, default: true },
+      { key: 'actions',      label: TABLE_HEADER_ACTIONS,      default: true },
+      { key: 'updated',      label: TABLE_HEADER_UPDATED,      default: true },
+    ],
+  },
+  // Client Hub card — four sections beneath the always-visible header
+  // (name + alert dot + tier + chevron + open-tasks badge link).
+  clients: {
+    id: 'clients',
+    label: SURFACE_LABEL_CLIENTS,
+    columns: [
+      { key: 'metrics',  label: CLIENT_CARD_SECTION_METRICS,  default: true },
+      { key: 'verdicts', label: CLIENT_CARD_SECTION_VERDICTS, default: true },
+      { key: 'sla',      label: CLIENT_CARD_SECTION_SLA,      default: true },
+      { key: 'tasks',    label: CLIENT_CARD_SECTION_TASKS,    default: true },
+    ],
+  },
 };
 
 

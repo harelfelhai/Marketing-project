@@ -6,16 +6,27 @@
  * mutations propagate instantly.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import PhoneRow        from './PhoneRow';
 import Skeleton        from '../primitives/Skeleton';
+import { resolveVisibleColumns } from '../../config/displayFields';
+import { getSystemSettings }     from '../../api/systemApi';
 import {
-  TABLE_HEADER_PHONE, TABLE_HEADER_ASSOCIATION, TABLE_HEADER_VERIFICATION,
-  TABLE_HEADER_ACTIONS, TABLE_HEADER_UPDATED, TABLE_EMPTY_PHONES, TABLE_SHOWING,
+  TABLE_HEADER_PHONE, TABLE_EMPTY_PHONES, TABLE_SHOWING,
 } from '../../config/strings.he';
+
+// Column-width hints per configurable phone-table key. The phone column
+// (row identity, always shown) gets a fixed 180px; the rest size
+// proportionally to the column count.
+const PHONE_COL_WIDTH = {
+  association:  '200px',
+  verification: '160px',
+  actions:      null,        // flex — fills remaining space
+  updated:      '140px',
+};
 
 const SKELETON_ROW_COUNT = 8;
 
@@ -104,8 +115,30 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
 }
 
 export default function PhoneTable({ selectedId, onSelect, clientIds }) {
-  const { phones, entities, clients, actionLogs, loading } = useMockData();
+  const mockDb = useMockData();
+  const { phones, entities, clients, actionLogs, loading } = mockDb;
   const { phoneFilters } = useUI();
+
+  // Configurable display fields — driven by /system/settings → display_fields.
+  const [displayFields, setDisplayFields] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getSystemSettings(mockDb)
+      .then((s) => { if (alive) setDisplayFields(s.display_fields || {}); })
+      .catch(() => { if (alive) setDisplayFields({}); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const visibleCols = useMemo(
+    () => resolveVisibleColumns('phones', displayFields),
+    [displayFields],
+  );
+  const visibleKeys = useMemo(
+    () => new Set(visibleCols.map((c) => c.key)),
+    [visibleCols],
+  );
+  // colSpan for skeleton / empty rows (phone column + every visible one).
+  const colSpan = visibleCols.length + 1;
 
   // Phase AUTH-C — merge personalization clientIds (from PhoneGridPage,
   // which derives them from useAuth) into the filter shape so the
@@ -126,28 +159,25 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
       <table className="w-full table-fixed">
         <colgroup>
           <col className="w-[180px]" />
-          <col className="w-[200px]" />
-          <col className="w-[160px]" />
-          <col />
-          <col className="w-[140px]" />
+          {visibleCols.map((c) => {
+            const w = PHONE_COL_WIDTH[c.key];
+            return <col key={c.key} className={w ? `w-[${w}]` : ''} />;
+          })}
         </colgroup>
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
             <Th>{TABLE_HEADER_PHONE}</Th>
-            <Th>{TABLE_HEADER_ASSOCIATION}</Th>
-            <Th>{TABLE_HEADER_VERIFICATION}</Th>
-            <Th>{TABLE_HEADER_ACTIONS}</Th>
-            <Th>{TABLE_HEADER_UPDATED}</Th>
+            {visibleCols.map((c) => <Th key={c.key}>{c.label}</Th>)}
           </tr>
         </thead>
         <tbody>
           {loading ? (
             Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
-              <SkeletonRow key={i} />
+              <SkeletonRow key={i} visibleKeys={visibleKeys} />
             ))
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">
+              <td colSpan={colSpan} className="px-4 py-12 text-center text-sm text-slate-400">
                 {TABLE_EMPTY_PHONES}
               </td>
             </tr>
@@ -161,6 +191,7 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
                 logs={logs}
                 isSelected={selectedId === phone.id}
                 onSelect={onSelect}
+                visibleKeys={visibleKeys}
               />
             ))
           )}
@@ -174,7 +205,30 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   );
 }
 
-function SkeletonRow() {
+const SKELETON_CELL_BY_KEY = {
+  association: (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <Skeleton height={12} width="70%" />
+      <Skeleton height={10} width="40%" />
+    </div>
+  ),
+  verification: (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <Skeleton height={14} width={80} rounded="rounded-full" />
+      <Skeleton height={10} width="55%" />
+    </div>
+  ),
+  actions: (
+    <div className="flex items-center gap-2">
+      <Skeleton height={20} width={20} rounded="rounded-full" />
+      <Skeleton height={20} width={20} rounded="rounded-full" />
+      <Skeleton height={20} width={20} rounded="rounded-full" />
+    </div>
+  ),
+  updated: <Skeleton height={10} width="80%" />,
+};
+
+function SkeletonRow({ visibleKeys }) {
   return (
     <tr className="border-b border-slate-100">
       <td className="px-4 py-3">
@@ -183,28 +237,11 @@ function SkeletonRow() {
           <Skeleton height={10} width="50%" />
         </div>
       </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <Skeleton height={12} width="70%" />
-          <Skeleton height={10} width="40%" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <Skeleton height={14} width={80} rounded="rounded-full" />
-          <Skeleton height={10} width="55%" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Skeleton height={20} width={20} rounded="rounded-full" />
-          <Skeleton height={20} width={20} rounded="rounded-full" />
-          <Skeleton height={20} width={20} rounded="rounded-full" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <Skeleton height={10} width="80%" />
-      </td>
+      {['association', 'verification', 'actions', 'updated']
+        .filter((k) => visibleKeys.has(k))
+        .map((k) => (
+          <td key={k} className="px-4 py-3">{SKELETON_CELL_BY_KEY[k]}</td>
+        ))}
     </tr>
   );
 }

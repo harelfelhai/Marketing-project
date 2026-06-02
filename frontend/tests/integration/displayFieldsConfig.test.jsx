@@ -13,7 +13,8 @@ import userEvent from '@testing-library/user-event';
 
 import { renderApp } from './renderApp';
 import {
-  ENTITIES_COL_CLIENT, ENTITIES_COL_NAME, NAV_ENTITIES,
+  ENTITIES_COL_CLIENT, ENTITIES_COL_NAME, NAV_ENTITIES, NAV_PHONE_GRID, NAV_CLIENT_HUB,
+  TABLE_HEADER_ACTIONS, TABLE_HEADER_PHONE, CLIENT_CARD_QUALITY_SLA,
   SYSSET_FIELDS_TOAST_SAVED,
 } from '../../src/config/strings.he';
 
@@ -54,5 +55,40 @@ describe('Configurable display fields', () => {
       expect(screen.queryByText(ENTITIES_COL_CLIENT)).not.toBeInTheDocument()
     );
     expect(screen.getByText(ENTITIES_COL_NAME)).toBeInTheDocument();
+  });
+
+  it('toggling the phone-table actions column off hides it from the table', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/system', as: 'admin' });
+
+    const editor = await screen.findByTestId('display-fields-phones');
+    await user.click(within(editor).getByTestId('field-toggle-phones-actions'));
+    await user.click(screen.getByTestId('display-fields-save-phones'));
+    await screen.findByText(SYSSET_FIELDS_TOAST_SAVED);
+
+    await user.click(screen.getByRole('link', { name: new RegExp(NAV_PHONE_GRID) }));
+
+    // Phone column (row identity) is always shown; Actions column disappears.
+    await waitFor(() =>
+      expect(screen.queryByText(TABLE_HEADER_ACTIONS)).not.toBeInTheDocument()
+    );
+    expect(screen.getByText(TABLE_HEADER_PHONE)).toBeInTheDocument();
+  });
+
+  it('toggling the client-card SLA section off hides it from every card', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/system', as: 'admin' });
+
+    const editor = await screen.findByTestId('display-fields-clients');
+    await user.click(within(editor).getByTestId('field-toggle-clients-sla'));
+    await user.click(screen.getByTestId('display-fields-save-clients'));
+    await screen.findByText(SYSSET_FIELDS_TOAST_SAVED);
+
+    await user.click(screen.getByRole('link', { name: new RegExp(NAV_CLIENT_HUB) }));
+
+    // The SLA strip label disappears from every card.
+    await waitFor(() =>
+      expect(screen.queryByText(CLIENT_CARD_QUALITY_SLA)).not.toBeInTheDocument()
+    );
   });
 });

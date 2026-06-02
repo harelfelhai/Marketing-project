@@ -4,6 +4,7 @@
  * // HOOK FOR ENTERPRISE LABELS — all visible strings are abstract.
  */
 
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, ClipboardList } from 'lucide-react';
 
@@ -12,6 +13,8 @@ import { useUI }       from '../../contexts/UIContext';
 import Badge           from '../primitives/Badge';
 import ProgressBar     from '../primitives/ProgressBar';
 import { tierVariant } from '../../utils/classifyStatus';
+import { resolveVisibleColumns } from '../../config/displayFields';
+import { getSystemSettings }     from '../../api/systemApi';
 import {
   CLIENT_CARD_FAILED_TITLE, CLIENT_CARD_PENDING_TITLE, CLIENT_CARD_OK_TITLE,
   CLIENT_CARD_ACTIVE, CLIENT_CARD_PENDING, CLIENT_CARD_FAILED,
@@ -20,10 +23,30 @@ import {
   SCORE_TIER_VALUE,
 } from '../../config/strings.he';
 
+// Fall back to all sections visible if settings haven't loaded yet — keeps
+// the card layout identical to the pre-feature behaviour during boot.
+const _ALL_SECTIONS = new Set(['metrics', 'verdicts', 'sla', 'tasks']);
+
 export default function ClientCard({ client }) {
-  const { getClientMetrics, phones } = useMockData();
+  const mockDb                       = useMockData();
+  const { getClientMetrics, phones } = mockDb;
   const { seedClientFilter }         = useUI();
   const navigate                     = useNavigate();
+
+  // Configurable card sections — driven by /system/settings → display_fields.
+  const [visibleSections, setVisibleSections] = useState(_ALL_SECTIONS);
+  useEffect(() => {
+    let alive = true;
+    getSystemSettings(mockDb)
+      .then((s) => {
+        if (!alive) return;
+        const cols = resolveVisibleColumns('clients', s.display_fields || {});
+        setVisibleSections(new Set(cols.map((c) => c.key)));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const metrics  = getClientMetrics(client.id);
   const decided  = metrics.good + metrics.bad;
@@ -94,13 +117,16 @@ export default function ClientCard({ client }) {
         </div>
 
         {/* Metric grid */}
+        {visibleSections.has('metrics') && (
         <div className="grid grid-cols-3 gap-3">
           <Metric label={CLIENT_CARD_ACTIVE}  value={metrics.total}   tone="slate" />
           <Metric label={CLIENT_CARD_PENDING} value={metrics.pending} tone={metrics.pending > 0 ? 'amber' : 'slate'} />
           <Metric label={CLIENT_CARD_FAILED}  value={metrics.failed}  tone={metrics.failed  > 0 ? 'rose'  : 'slate'} />
         </div>
+        )}
 
         {/* Verdict breakdown */}
+        {visibleSections.has('verdicts') && (
         <div className="flex items-center justify-between text-xs text-slate-500">
           <span>
             <span className="font-medium text-emerald-700">{metrics.good}</span> {CLIENT_CARD_GOOD}
@@ -109,8 +135,10 @@ export default function ClientCard({ client }) {
           </span>
           <span className="text-slate-400">{CLIENT_CARD_DECIDED(decided)}</span>
         </div>
+        )}
 
         {/* SLA strip */}
+        {visibleSections.has('sla') && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-500">{CLIENT_CARD_QUALITY_SLA}</span>
@@ -120,10 +148,12 @@ export default function ClientCard({ client }) {
           </div>
           <ProgressBar value={slaPct} max={100} warnBelow={client.sla_threshold_pct} />
         </div>
+        )}
       </button>
 
       {/* Open-task badge — sibling button at the top-trailing corner.
           In RTL the trailing corner is top-left; `left-3` is correct here. */}
+      {visibleSections.has('tasks') && (
       <button
         type="button"
         onClick={handleTasksClick}
@@ -137,6 +167,7 @@ export default function ClientCard({ client }) {
         <ClipboardList className="w-3 h-3" />
         {openTasks > 0 ? CLIENT_CARD_OPEN_TASKS(openTasks) : CLIENT_CARD_NO_OPEN_TASKS}
       </button>
+      )}
     </div>
   );
 }
