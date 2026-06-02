@@ -90,18 +90,18 @@ export default function SingleEntityPanel({ active }) {
   const targetsByClient = useMemo(() => {
     const groups = new Map();
     for (const t of rootTargets) {
-      const cid = t.client_id;
+      const cid = t.root_entity_id;
       if (cid == null) continue;
       if (!groups.has(cid)) groups.set(cid, []);
       groups.get(cid).push(t);
     }
-    // Stable order: by client_id ascending so the dropdown is reproducible.
+    // Stable order: by root_entity_id ascending so the dropdown is reproducible.
     return Array.from(groups.entries())
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
       .map(([cid, targets]) => {
         const match = mockDb.clients.find((c) => String(c.id) === String(cid));
         return {
-          clientId:    cid,
+          rootEntityId:    cid,
           clientLabel: match?.name || `Client ${cid}`,
           targets,
         };
@@ -155,7 +155,7 @@ export default function SingleEntityPanel({ active }) {
     openPhoneIngestionWithPreset({
       entityType:     createdEntity.relation_type,
       targetEntityId: createdEntity.target_entity_id,
-      clientId:       createdEntity.client_id,
+      rootEntityId:       createdEntity.root_entity_id,
     });
   };
 
@@ -262,7 +262,7 @@ export default function SingleEntityPanel({ active }) {
       >
         <option value="">{ENTITY_PLACEHOLDER_PICK}</option>
         {targetsByClient.map((group) => (
-          <optgroup key={String(group.clientId)} label={group.clientLabel}>
+          <optgroup key={String(group.rootEntityId)} label={group.clientLabel}>
             {group.targets.map((t) => (
               <option key={t.id} value={t.id}>{`#${t.id}`}</option>
             ))}

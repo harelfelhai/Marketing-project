@@ -62,13 +62,13 @@ export default function ClientCard({ client, rootEntity }) {
 
   const handleClick = () => {
     seedClientFilter(client.id);
-    navigate(`/phones?client_id=${client.id}`);
+    navigate(`/phones?root_entity_id=${client.id}`);
   };
 
   const openTasks = metrics.openTasks ?? 0;
   const handleTasksClick = (e) => {
     e.stopPropagation();
-    navigate(`/operations?client_id=${client.id}&open=true`);
+    navigate(`/operations?root_entity_id=${client.id}&open=true`);
   };
 
   const role       = rootEntity?.extra_data?.role;

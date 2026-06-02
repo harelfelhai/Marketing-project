@@ -27,7 +27,7 @@ import { mockDelay, MOCK_MODE, apiClient } from './client';
  *   - extra_data       (object|null)
  * @param {object} mockDb    MockDataContext instance for parity in mock mode.
  * @returns {Promise<object>} EntitySingleCreateOut-shaped object:
- *   { id, client_id, relation_type, target_entity_id, first_name, last_name, created_at }
+ *   { id, root_entity_id, relation_type, target_entity_id, first_name, last_name, created_at }
  *
  * // HOOK FOR REAL API: wired. Set VITE_USE_REAL_API=true to activate.
  */
@@ -201,13 +201,13 @@ export async function getEntityBulkTemplate() {
 /**
  * listEntities — paginated entities for the view tab + admin tab.
  *
- * filters: { clientId?, clientIds?, entityType?, includeDeleted?, q? }
+ * filters: { rootEntityId?, rootEntityIds?, entityType?, includeDeleted?, q? }
  */
 export async function listEntities(filters = {}, mockDb) {
   if (!MOCK_MODE) {
     const params = {};
-    if (filters.clientId != null && filters.clientId !== '') params.client_id = filters.clientId;
-    if (filters.clientIds?.length)                            params.client_ids = filters.clientIds;
+    if (filters.rootEntityId != null && filters.rootEntityId !== '') params.root_entity_id = filters.rootEntityId;
+    if (filters.rootEntityIds?.length)                            params.root_entity_ids = filters.rootEntityIds;
     if (filters.relationType)                                  params.relation_type = filters.relationType;
     if (filters.includeDeleted)                               params.include_deleted = true;
     if (filters.q)                                            params.q = filters.q;
@@ -269,14 +269,14 @@ export async function restoreEntity(id, mockDb) {
  * entity for the given client. Used by the simplified phone-ingestion
  * form when the operator knows the client but not the named owner.
  */
-export async function createEnvelopeEntity(clientId, mockDb) {
+export async function createEnvelopeEntity(rootEntityId, mockDb) {
   if (!MOCK_MODE) {
-    const { data } = await apiClient.post('/entities/envelope', { client_id: clientId });
+    const { data } = await apiClient.post('/entities/envelope', { root_entity_id: rootEntityId });
     await mockDb.refetchPhones?.(); await mockDb.refetchEntities?.();
     return data;
   }
   await mockDelay(200);
-  return mockDb.applyCreateEnvelope(clientId);
+  return mockDb.applyCreateEnvelope(rootEntityId);
 }
 
 

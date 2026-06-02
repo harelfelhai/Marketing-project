@@ -8,7 +8,7 @@ GET /api/v1/clients
     single request, replacing the per-card JOIN / N+1 derivation.
 
 Read-only; authenticated operators (the Hub is part of normal use). The
-optional `client_ids` query param narrows to a personalization subset.
+optional `root_entity_ids` query param narrows to a personalization subset.
 """
 
 from typing import List, Optional
@@ -34,29 +34,29 @@ router = APIRouter()
     ),
 )
 def list_clients(
-    client_ids: Optional[list[str]] = Query(default=None),
+    root_entity_ids: Optional[list[str]] = Query(default=None),
     include_deleted: bool = Query(default=False),
     _user: User = Depends(require_authenticated_user),
     svc: ClientReadModelService = Depends(get_client_read_model_service),
 ) -> List[ClientAggregateResponse]:
-    return svc.list_clients(client_ids=client_ids, include_deleted=include_deleted)
+    return svc.list_clients(root_entity_ids=root_entity_ids, include_deleted=include_deleted)
 
 
 @router.get(
-    "/{client_id}",
+    "/{root_entity_id}",
     response_model=ClientAggregateResponse,
     summary="One unified client aggregate",
 )
 def get_client(
-    client_id: str,
+    root_entity_id: str,
     include_deleted: bool = Query(default=False),
     _user: User = Depends(require_authenticated_user),
     svc: ClientReadModelService = Depends(get_client_read_model_service),
 ) -> ClientAggregateResponse:
-    view = svc.get_client(client_id, include_deleted=include_deleted)
+    view = svc.get_client(root_entity_id, include_deleted=include_deleted)
     if view is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Client {client_id} not found.",
+            detail=f"Client {root_entity_id} not found.",
         )
     return view

@@ -217,7 +217,7 @@ function PersonsAdmin({ includeDeleted }) {
                 // marker instead of falling back to the row id —
                 // operators were confused by the "#5" lookalike.
                 const fullName = e.full_name;
-                const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
+                const clientName = getClientById(e.root_entity_id)?.name || `Client ${e.root_entity_id}`;
                 const isDeleted = !!e.deleted_at;
                 return (
                   <tr
@@ -388,13 +388,13 @@ function PhonesAdmin({ includeDeleted }) {
               <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">אין טלפונים.</td></tr>
             ) : (
               rows.map((p) => {
-                // UAT round-3 fix: prefer the client_id projected on
+                // UAT round-3 fix: prefer the root_entity_id projected on
                 // the phone row itself by the GET /phones JOIN — the
                 // owning entity may have been soft-deleted and absent
                 // from `mockDb.entities`, but the phone row keeps the
-                // client_id from the join's snapshot.
-                const ownerClientId = p.client_id
-                  ?? entityById.get(p.entity_id)?.client_id;
+                // root_entity_id from the join's snapshot.
+                const ownerClientId = p.root_entity_id
+                  ?? entityById.get(p.entity_id)?.root_entity_id;
                 const clientName = ownerClientId != null
                   ? (getClientById(ownerClientId)?.name || `Client ${ownerClientId}`)
                   : 'לא ידוע';
@@ -495,8 +495,8 @@ function EntityEditModal({ entity, onCancel, onSave }) {
   // surfaced — they're auto-managed.
   const [fullName,       setFullName]       = useState(entity.full_name || '');
   const [relation,       setRelation]       = useState(entity.relation_type || 'family');
-  const [clientId,       setClientId]       = useState(
-    entity.client_id != null ? String(entity.client_id) : '',
+  const [rootEntityId,       setClientId]       = useState(
+    entity.root_entity_id != null ? String(entity.root_entity_id) : '',
   );
   const [targetEntityId, setTargetEntityId] = useState(
     entity.target_entity_id != null ? String(entity.target_entity_id) : '',
@@ -509,7 +509,7 @@ function EntityEditModal({ entity, onCancel, onSave }) {
     onSave({
       full_name:        fullName,
       relation_type:    relation,
-      client_id:        clientId === '' ? null : clientId,
+      root_entity_id:        rootEntityId === '' ? null : rootEntityId,
       target_entity_id: targetEntityId === '' ? null : targetEntityId,
       identifier_1:     identifier1 || null,
       identifier_2:     identifier2 || null,
@@ -523,7 +523,7 @@ function EntityEditModal({ entity, onCancel, onSave }) {
       <LabeledInput label={ADMIN_FIELD_IDENTIFIER_1}    value={identifier1}    onChange={setIdentifier1} />
       <LabeledInput label={ADMIN_FIELD_IDENTIFIER_2}    value={identifier2}    onChange={setIdentifier2} />
       <LabeledInput label={ADMIN_FIELD_ROLE}             value={role}           onChange={setRole} />
-      <LabeledInput label={ADMIN_FIELD_CLIENT_ID}       value={clientId}       onChange={setClientId} />
+      <LabeledInput label={ADMIN_FIELD_CLIENT_ID}       value={rootEntityId}       onChange={setClientId} />
       <LabeledInput label={ADMIN_FIELD_TARGET_ENTITY}   value={targetEntityId} onChange={setTargetEntityId} />
       <ModalActions onCancel={onCancel} onSave={handleSave} />
     </ModalScaffold>

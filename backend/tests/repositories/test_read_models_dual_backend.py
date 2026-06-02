@@ -78,7 +78,7 @@ class TestListClients:
         clients = svc.list_clients()
         assert len(clients) == 1
         c = clients[0]
-        assert c["client_id"] == root.id
+        assert c["root_entity_id"] == root.id
         assert c["root"]["full_name"] == "Alpha"
         assert len(c["members"]) == 2
         # 1 root phone + 2 member phones = 3.
@@ -91,14 +91,14 @@ class TestListClients:
         a, _ = _root(storage, full_name="A", n_members=1)
         b, _ = _root(storage, full_name="B", n_members=0)
         clients = svc.list_clients()
-        ids = {c["client_id"] for c in clients}
+        ids = {c["root_entity_id"] for c in clients}
         assert ids == {a.id, b.id}
 
     def test_client_ids_filter(self, svc, storage):
         a, _ = _root(storage, full_name="A")
         b, _ = _root(storage, full_name="B")
-        out = svc.list_clients(client_ids=[a.id])
-        assert [c["client_id"] for c in out] == [a.id]
+        out = svc.list_clients(root_entity_ids=[a.id])
+        assert [c["root_entity_id"] for c in out] == [a.id]
 
     def test_soft_deleted_excluded_by_default(self, svc, storage):
         root, members = _root(storage, full_name="A", n_members=1)
@@ -118,7 +118,7 @@ class TestGetClient:
         root, _ = _root(storage, full_name="A", n_members=1)
         c = svc.get_client(root.id)
         assert c is not None
-        assert c["client_id"] == root.id
+        assert c["root_entity_id"] == root.id
 
     def test_unknown_client_returns_none(self, svc):
         assert svc.get_client("ent-nope") is None

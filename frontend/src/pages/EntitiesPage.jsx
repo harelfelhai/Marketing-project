@@ -58,7 +58,7 @@ function renderEntityCell(key, e, ctx) {
     case 'relation':
       return <span className="text-slate-700">{e.relation_type}</span>;
     case 'client': {
-      const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
+      const clientName = getClientById(e.root_entity_id)?.name || `Client ${e.root_entity_id}`;
       return <span className="text-slate-700">{clientName}</span>;
     }
     case 'phones': {
@@ -128,7 +128,7 @@ export default function EntitiesPage() {
     try {
       const rows = await listEntities(
         {
-          clientIds: personalizationClientIds || undefined,
+          rootEntityIds: personalizationClientIds || undefined,
           q: q.trim() || undefined,
         },
         mockDb,

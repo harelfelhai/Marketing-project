@@ -2,7 +2,7 @@
  * phoneAdapter — enriches backend PhoneSummary and PhoneDetailsResponse objects
  * with `client_name` resolved from the frontend clientRegistry.
  *
- * The backend stores only the opaque integer client_id. Human-readable display
+ * The backend stores only the opaque integer root_entity_id. Human-readable display
  * names live exclusively in clientRegistry — they never appear in the backend
  * schema or API contracts. This adapter is the single crossing point.
  *
@@ -18,7 +18,7 @@ import { getClientName } from '../../config/clientRegistry';
  * @returns {object}
  */
 export function enrichPhone(phone) {
-  return { ...phone, client_name: getClientName(phone.client_id) };
+  return { ...phone, client_name: getClientName(phone.root_entity_id) };
 }
 
 /**
@@ -31,7 +31,7 @@ export function enrichPhoneDetail(detail) {
   return {
     ...detail,
     entity: detail.entity
-      ? { ...detail.entity, client_name: getClientName(detail.entity.client_id) }
+      ? { ...detail.entity, client_name: getClientName(detail.entity.root_entity_id) }
       : detail.entity,
   };
 }

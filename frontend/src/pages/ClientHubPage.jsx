@@ -25,12 +25,12 @@ export default function ClientHubPage() {
       if (e.deleted_at) continue;
       if (e.relation_type !== 'primary') continue;
       if (e.target_entity_id != null) continue;
-      if (e.client_id != null) set.add(String(e.client_id));
+      if (e.root_entity_id != null) set.add(String(e.root_entity_id));
     }
     return set;
   }, [entities]);
 
-  // Map client_id → root entity for role/identifier display in ClientCard.
+  // Map root_entity_id → root entity for role/identifier display in ClientCard.
   const rootEntityByClientId = useMemo(() => {
     const map = new Map();
     for (const e of entities) {

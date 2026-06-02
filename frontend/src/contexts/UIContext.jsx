@@ -11,7 +11,7 @@ const UIContext = createContext(null);
 
 // Default filter shape — mirrors PhoneFilterBar controls.
 const DEFAULT_FILTERS = {
-  clientId:           '',
+  rootEntityId:           '',
   verificationStatus: '',
   ingestionSource:    '',
   phoneType:          '',
@@ -22,7 +22,7 @@ const DEFAULT_FILTERS = {
 };
 
 // Phase DX — Operations Queue filter shape; mirrors TaskFilterBar controls.
-// `phoneId`, `clientId`, `openOnly` have no dedicated UI control — they are
+// `phoneId`, `rootEntityId`, `openOnly` have no dedicated UI control — they are
 // seeded from URL params (cross-links from PhoneDetailDrawer / ClientCard)
 // and cleared via the reset button. Surfaced visually as chips in
 // TaskFilterBar.
@@ -31,7 +31,7 @@ const DEFAULT_TASK_FILTERS = {
   taskType: '',
   search:   '',
   phoneId:  null,
-  clientId: null,
+  rootEntityId: null,
   openOnly: false,
   // Task Center default-hide for resolved/rejected rows. ON by default
   // so managers land on an "action required now" view; flipping the
@@ -53,7 +53,7 @@ export function UIProvider({ children }) {
   // entity's context here and opens the phone modal. The phone modal's
   // SingleIngestionPanel reads this on mount, pre-fills the matching
   // form fields, then clears it. Shape:
-  //   { entityType: string, targetEntityId: number, clientId: number }
+  //   { entityType: string, targetEntityId: number, rootEntityId: number }
   // Null means "no preset; render blank form".
   const [phoneIngestionPreset, setPhoneIngestionPreset] = useState(null);
 
@@ -104,9 +104,9 @@ export function UIProvider({ children }) {
   }, []);
 
   // Convenience setter for seeding the client filter from a URL param on
-  // first navigation to /phones?client_id=X without overwriting other filters.
-  const seedClientFilter = useCallback((clientId) => {
-    setPhoneFilters((prev) => ({ ...prev, clientId: clientId || '' }));
+  // first navigation to /phones?root_entity_id=X without overwriting other filters.
+  const seedClientFilter = useCallback((rootEntityId) => {
+    setPhoneFilters((prev) => ({ ...prev, rootEntityId: rootEntityId || '' }));
   }, []);
 
   // -------------------------------------------------------------------------
@@ -131,11 +131,11 @@ export function UIProvider({ children }) {
     }));
   }, []);
 
-  // Seed the client_id filter from a URL param (cross-link from ClientCard).
-  const seedTaskClientFilter = useCallback((clientId) => {
+  // Seed the root_entity_id filter from a URL param (cross-link from ClientCard).
+  const seedTaskClientFilter = useCallback((rootEntityId) => {
     setTaskFilters((prev) => ({
       ...prev,
-      clientId: clientId == null || clientId === '' ? null : clientId,
+      rootEntityId: rootEntityId == null || rootEntityId === '' ? null : rootEntityId,
     }));
   }, []);
 

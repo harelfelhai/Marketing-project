@@ -36,18 +36,18 @@ const SKELETON_ROW_COUNT = 8;
  * applyFilters — pure filter function for unit-testability.
  *
  * Exported so DX-T2 tests/unit/TaskTable.applyFilters.test.js can exercise
- * the combinatorial matrix of status × taskType × phoneId × clientId ×
+ * the combinatorial matrix of status × taskType × phoneId × rootEntityId ×
  * openOnly × search without mounting the React tree. Component code
  * imports the default export below; tests import the named export.
  */
 export function applyFilters(tasks, filters) {
   // Phase AUTH-C — multi-value personalization filter, derived in
   // OperationsQueuePage from useAuth().
-  const clientIdsAllowed = filters.clientIds?.length
-    ? new Set(filters.clientIds.map(String))
+  const clientIdsAllowed = filters.rootEntityIds?.length
+    ? new Set(filters.rootEntityIds.map(String))
     : null;
   return tasks.filter((t) => {
-    if (clientIdsAllowed && !clientIdsAllowed.has(String(t.client_id))) return false;
+    if (clientIdsAllowed && !clientIdsAllowed.has(String(t.root_entity_id))) return false;
     if (filters.status   && t.status    !== filters.status)   return false;
     if (filters.taskType && t.task_type !== filters.taskType) return false;
     // phoneId is seeded from the /operations?phone_id=N cross-link from
@@ -55,9 +55,9 @@ export function applyFilters(tasks, filters) {
     if (filters.phoneId != null && String(t.phone_id) !== String(filters.phoneId)) {
       return false;
     }
-    // clientId is seeded from /operations?client_id=N cross-link from
+    // rootEntityId is seeded from /operations?root_entity_id=N cross-link from
     // ClientCard (Phase DX-5). Same String(...) coercion as §5.1.
-    if (filters.clientId != null && String(t.client_id) !== String(filters.clientId)) {
+    if (filters.rootEntityId != null && String(t.root_entity_id) !== String(filters.rootEntityId)) {
       return false;
     }
     // openOnly is seeded from /operations?open=true (ClientCard open-task
@@ -74,7 +74,7 @@ export function applyFilters(tasks, filters) {
       const hay = [
         t.phone_number   || '',
         t.client_name    || '',
-        String(t.client_id ?? ''),
+        String(t.root_entity_id ?? ''),
       ].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
@@ -88,16 +88,16 @@ export default function TaskTable({
   selectedIds,
   onToggleRow,
   onToggleAll,
-  clientIds,
+  rootEntityIds,
 }) {
   const { tasks, loading } = useMockData();
   const { taskFilters }    = useUI();
 
   // Phase AUTH-C — same merge pattern as PhoneTable: the page derives
-  // personalization clientIds from useAuth and hands them in here.
+  // personalization rootEntityIds from useAuth and hands them in here.
   const effectiveFilters = useMemo(
-    () => (clientIds?.length ? { ...taskFilters, clientIds } : taskFilters),
-    [taskFilters, clientIds]
+    () => (rootEntityIds?.length ? { ...taskFilters, rootEntityIds } : taskFilters),
+    [taskFilters, rootEntityIds]
   );
 
   const rows = useMemo(

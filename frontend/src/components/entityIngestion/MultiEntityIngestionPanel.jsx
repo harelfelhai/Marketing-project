@@ -135,16 +135,16 @@ export default function MultiEntityIngestionPanel() {
   const targetsByClient = useMemo(() => {
     const groups = new Map();
     for (const t of rootTargets) {
-      if (t.client_id == null) continue;
-      if (!groups.has(t.client_id)) groups.set(t.client_id, []);
-      groups.get(t.client_id).push(t);
+      if (t.root_entity_id == null) continue;
+      if (!groups.has(t.root_entity_id)) groups.set(t.root_entity_id, []);
+      groups.get(t.root_entity_id).push(t);
     }
     return Array.from(groups.entries())
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
       .map(([cid, targets]) => {
         const match = mockDb.clients.find((c) => String(c.id) === String(cid));
         return {
-          clientId:    cid,
+          rootEntityId:    cid,
           clientLabel: match?.name || `Client ${cid}`,
           targets,
         };
@@ -362,7 +362,7 @@ export default function MultiEntityIngestionPanel() {
             >
               <option value="">{ENTITY_PLACEHOLDER_PICK}</option>
               {targetsByClient.map((group) => (
-                <optgroup key={String(group.clientId)} label={group.clientLabel}>
+                <optgroup key={String(group.rootEntityId)} label={group.clientLabel}>
                   {group.targets.map((t) => (
                     <option key={t.id} value={t.id}>{`#${t.id}`}</option>
                   ))}
@@ -515,7 +515,7 @@ export default function MultiEntityIngestionPanel() {
                     >
                       <option value="">{ENTITY_BULK_GRID_INHERIT}</option>
                       {targetsByClient.map((group) => (
-                        <optgroup key={String(group.clientId)} label={group.clientLabel}>
+                        <optgroup key={String(group.rootEntityId)} label={group.clientLabel}>
                           {group.targets.map((t) => (
                             <option key={t.id} value={t.id}>{`#${t.id}`}</option>
                           ))}

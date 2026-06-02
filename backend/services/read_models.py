@@ -67,7 +67,7 @@ class ClientReadModelService:
     def list_clients(
         self,
         *,
-        client_ids: Optional[list[str]] = None,
+        root_entity_ids: Optional[list[str]] = None,
         include_deleted: bool = False,
     ) -> list[dict]:
         """
@@ -75,17 +75,17 @@ class ClientReadModelService:
         Two repository reads total (all entities + all phones), grouped in memory.
         """
         if settings.read_cache_enabled:
-            ids_key = ",".join(sorted(client_ids)) if client_ids else "*"
+            ids_key = ",".join(sorted(root_entity_ids)) if root_entity_ids else "*"
             key = f"clients:{ids_key}:{include_deleted}"
             return cache.cached(
                 key,
-                lambda: self._compute_clients(client_ids, include_deleted),
+                lambda: self._compute_clients(root_entity_ids, include_deleted),
             )
-        return self._compute_clients(client_ids, include_deleted)
+        return self._compute_clients(root_entity_ids, include_deleted)
 
     def _compute_clients(
         self,
-        client_ids: Optional[list[str]],
+        root_entity_ids: Optional[list[str]],
         include_deleted: bool,
     ) -> list[dict]:
         sentinel = SOFT_DELETE_SENTINEL
@@ -115,7 +115,7 @@ class ClientReadModelService:
         # Only include root entities (target_entity_id IS NULL).
         root_entities = [e for e in entities if e.target_entity_id is None]
 
-        wanted = set(client_ids) if client_ids else None
+        wanted = set(root_entity_ids) if root_entity_ids else None
         out: list[dict] = []
         for root in root_entities:
             if wanted is not None and root.id not in wanted:
@@ -126,23 +126,23 @@ class ClientReadModelService:
                 for (ph, owner) in phones_by_root.get(root.id, [])
             ]
             out.append({
-                "client_id": root.id,  # kept for backward compat
+                "root_entity_id": root.id,
                 "root": _entity_dict(root),
                 "members": [_entity_dict(e) for e in members],
                 "phones": phone_rows,
                 "metrics": _metrics(phone_rows),
             })
-        out.sort(key=lambda c: str(c["client_id"]))
+        out.sort(key=lambda c: str(c["root_entity_id"]))
         return out
 
     def get_client(
         self,
-        client_id: str,
+        root_entity_id: str,
         *,
         include_deleted: bool = False,
     ) -> Optional[dict]:
         """Single root entity aggregate, or None when unknown."""
-        rows = self.list_clients(client_ids=[client_id], include_deleted=include_deleted)
+        rows = self.list_clients(root_entity_ids=[root_entity_id], include_deleted=include_deleted)
         return rows[0] if rows else None
 
 

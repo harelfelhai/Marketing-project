@@ -41,20 +41,20 @@ export function applyFilters(phones, entities, clients, filters) {
 
   const rows = phones.map((phone) => {
     const entity = entityById.get(phone.entity_id);
-    const client = entity ? clientById.get(entity.client_id) : null;
+    const client = entity ? clientById.get(entity.root_entity_id) : null;
     const rootEntityId = entity?.target_entity_id ?? entity?.id;
     const rootEntity = rootEntityId != null ? entityById.get(rootEntityId) : null;
     return { phone, entity, client, rootEntity };
   });
 
-  const clientIdsAllowed = filters.clientIds?.length
-    ? new Set(filters.clientIds.map(Number))
+  const clientIdsAllowed = filters.rootEntityIds?.length
+    ? new Set(filters.rootEntityIds.map(Number))
     : null;
 
   const filtered = rows.filter(({ phone, entity }) => {
     if (phone.deleted_at || entity?.deleted_at)                                                    return false;
-    if (clientIdsAllowed && !clientIdsAllowed.has(entity?.client_id))                              return false;
-    if (filters.clientId && String(entity?.client_id) !== String(filters.clientId))               return false;
+    if (clientIdsAllowed && !clientIdsAllowed.has(entity?.root_entity_id))                              return false;
+    if (filters.rootEntityId && String(entity?.root_entity_id) !== String(filters.rootEntityId))               return false;
     if (filters.verificationStatus && phone.verification_status !== filters.verificationStatus) return false;
     if (filters.ingestionSource    && phone.ingestion_source    !== filters.ingestionSource)    return false;
     if (filters.phoneType          && phone.phone_type          !== filters.phoneType)          return false;
@@ -88,7 +88,7 @@ export function applyFilters(phones, entities, clients, filters) {
   return filtered;
 }
 
-export default function PhoneTable({ selectedId, onSelect, clientIds }) {
+export default function PhoneTable({ selectedId, onSelect, rootEntityIds }) {
   const mockDb = useMockData();
   const { phones, entities, clients, loading } = mockDb;
   const { phoneFilters } = useUI();
@@ -118,8 +118,8 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   const colSpan = visibleCols.length + 1;
 
   const effectiveFilters = useMemo(
-    () => (clientIds?.length ? { ...phoneFilters, clientIds } : phoneFilters),
-    [phoneFilters, clientIds]
+    () => (rootEntityIds?.length ? { ...phoneFilters, rootEntityIds } : phoneFilters),
+    [phoneFilters, rootEntityIds]
   );
 
   const rows = useMemo(

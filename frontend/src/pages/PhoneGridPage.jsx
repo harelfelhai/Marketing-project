@@ -1,7 +1,7 @@
 /**
  * PhoneGridPage — filter bar + table + detail drawer.
  *
- * On mount, reads the ?client_id query param and seeds the persistent
+ * On mount, reads the ?root_entity_id query param and seeds the persistent
  * client filter via UIContext.seedClientFilter — this is what makes the
  * "click a Client Card → land here pre-filtered" flow work.
  *
@@ -26,7 +26,7 @@ export default function PhoneGridPage() {
   const { personalizationActive, user }    = useAuth();
   const [selectedId, setSelectedId]     = useState(null);
 
-  // Phase AUTH-C — derive effective personalization clientIds from
+  // Phase AUTH-C — derive effective personalization rootEntityIds from
   // useAuth(). When the global toggle is ON and the user has managed
   // clients, every list view + export narrows to those clients.
   const personalizationClientIds =
@@ -40,21 +40,21 @@ export default function PhoneGridPage() {
   // captured at render time.
   const getCurrentFilters = useCallback(() => {
     const f = {};
-    if (phoneFilters.clientId !== '' && phoneFilters.clientId != null) f.client_id = phoneFilters.clientId;
+    if (phoneFilters.rootEntityId !== '' && phoneFilters.rootEntityId != null) f.root_entity_id = phoneFilters.rootEntityId;
     if (phoneFilters.verificationStatus)                                f.verification_status = phoneFilters.verificationStatus;
     if (phoneFilters.ingestionSource)                                   f.ingestion_source    = phoneFilters.ingestionSource;
     if (phoneFilters.phoneType)                                          f.phone_type          = phoneFilters.phoneType;
     if (phoneFilters.search)                                            f.q                   = phoneFilters.search.trim();
-    if (personalizationClientIds)                                       f.client_ids          = personalizationClientIds;
+    if (personalizationClientIds)                                       f.root_entity_ids          = personalizationClientIds;
     return f;
   }, [phoneFilters, personalizationClientIds]);
 
-  // Seed the persistent filter from ?client_id on mount (and any subsequent
+  // Seed the persistent filter from ?root_entity_id on mount (and any subsequent
   // change). Filter state lives in UIContext so it survives nav.
   useEffect(() => {
-    const raw = searchParams.get('client_id');
+    const raw = searchParams.get('root_entity_id');
     if (raw) {
-      // client_id is an opaque string id — pass the URL param through as-is.
+      // root_entity_id is an opaque string id — pass the URL param through as-is.
       seedClientFilter(raw);
     }
     // We intentionally do NOT clear the filter when the param is absent —
@@ -102,7 +102,7 @@ export default function PhoneGridPage() {
       <PhoneTable
         selectedId={selectedId}
         onSelect={setSelectedId}
-        clientIds={personalizationClientIds}
+        rootEntityIds={personalizationClientIds}
       />
 
       <PhoneDetailDrawer phoneId={selectedId} onClose={handleCloseDrawer} />

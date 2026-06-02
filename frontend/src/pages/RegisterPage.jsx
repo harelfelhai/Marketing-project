@@ -46,7 +46,7 @@ export default function RegisterPage() {
     password: '',
     confirm:  '',
     displayName: '',
-    clientIds: new Set(),
+    rootEntityIds: new Set(),
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -62,8 +62,8 @@ export default function RegisterPage() {
   };
 
   const updateClientIds = (nextSet) => {
-    setForm((f) => ({ ...f, clientIds: nextSet }));
-    setErrors((e) => ({ ...e, clientIds: '' }));
+    setForm((f) => ({ ...f, rootEntityIds: nextSet }));
+    setErrors((e) => ({ ...e, rootEntityIds: '' }));
   };
 
   const validate = () => {
@@ -92,7 +92,7 @@ export default function RegisterPage() {
       await register({
         username: form.username.trim(),
         password: form.password,
-        managed_client_ids: Array.from(form.clientIds),
+        managed_client_ids: Array.from(form.rootEntityIds),
         display_name: form.displayName.trim() || null,
       });
       pushToast({ variant: 'success', message: AUTH_TOAST_REGISTER_SUCCESS });
@@ -167,13 +167,13 @@ export default function RegisterPage() {
           </label>
           <ClientMultiPicker
             inputId="reg-client-picker"
-            selected={form.clientIds}
+            selected={form.rootEntityIds}
             onChange={updateClientIds}
             disabled={submitting}
             data-testid="reg-client-picker"
           />
-          {errors.clientIds && (
-            <span className="text-xs text-rose-600 mt-1 block">{errors.clientIds}</span>
+          {errors.rootEntityIds && (
+            <span className="text-xs text-rose-600 mt-1 block">{errors.rootEntityIds}</span>
           )}
         </div>
 

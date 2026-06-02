@@ -67,7 +67,7 @@ describe('Phase E1-D — file-upload tab', () => {
     await openModalAndSwitchToFileTab(user);
 
     const csv = makeCsvFile('upload.csv', [
-      'phone_number,client_id,entity_type,ingestion_source',
+      'phone_number,root_entity_id,entity_type,ingestion_source',
       '+14155557001,1,family,manual',
       '+14155557002,1,friend,manual',
       '+14155557003,2,social_envelope,automated',
@@ -92,7 +92,7 @@ describe('Phase E1-D — file-upload tab', () => {
     await openModalAndSwitchToFileTab(user);
 
     const csv = makeCsvFile('mixed.csv', [
-      'phone_number,client_id,entity_type,ingestion_source',
+      'phone_number,root_entity_id,entity_type,ingestion_source',
       '+14155557101,1,family,manual',
       'NOTAPHONE,1,family,manual',
       '+14155557102,1,family,manual',
@@ -116,7 +116,7 @@ describe('Phase E1-D — file-upload tab', () => {
     // Header omits ingestion_source — the mock parser raises and the
     // panel catches it as an upload-level error (toast, not failed_rows).
     const csv = makeCsvFile('bad-header.csv', [
-      'phone_number,client_id,entity_type',
+      'phone_number,root_entity_id,entity_type',
       '+14155557201,1,family',
     ]);
     await user.upload(screen.getByTestId('bulk-file-input'), csv);
@@ -149,7 +149,7 @@ describe('Phase E1-D — file-upload tab', () => {
     await openModalAndSwitchToFileTab(user);
 
     const csv = makeCsvFile('upload.csv', [
-      'phone_number,client_id,entity_type,ingestion_source',
+      'phone_number,root_entity_id,entity_type,ingestion_source',
       '+14155557301,1,family,manual',
     ]);
     await user.upload(screen.getByTestId('bulk-file-input'), csv);

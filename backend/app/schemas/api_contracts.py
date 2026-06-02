@@ -340,7 +340,7 @@ class ClientAggregateResponse(BaseModel):
     One unified client view: the root entity, its member entities, every
     phone across the circle, and the metric roll-up.
     """
-    client_id: str
+    root_entity_id: str
     root: Optional[dict] = None
     members: list[dict] = Field(default_factory=list)
     phones: list[dict] = Field(default_factory=list)

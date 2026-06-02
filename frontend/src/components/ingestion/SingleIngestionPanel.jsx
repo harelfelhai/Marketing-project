@@ -115,7 +115,7 @@ export default function SingleIngestionPanel({ active }) {
     return mockDb.entities.filter((e) => {
       if (e.deleted_at) return false;
       if (personalizationClientIds
-          && !personalizationClientIds.has(String(e.client_id))) {
+          && !personalizationClientIds.has(String(e.root_entity_id))) {
         return false;
       }
       return true;
@@ -135,14 +135,14 @@ export default function SingleIngestionPanel({ active }) {
   const entitiesByClient = useMemo(() => {
     const groups = new Map();
     for (const e of visibleEntities) {
-      if (e.client_id == null) continue;
-      if (!groups.has(e.client_id)) groups.set(e.client_id, []);
-      groups.get(e.client_id).push(e);
+      if (e.root_entity_id == null) continue;
+      if (!groups.has(e.root_entity_id)) groups.set(e.root_entity_id, []);
+      groups.get(e.root_entity_id).push(e);
     }
     return Array.from(groups.entries())
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
       .map(([cid, list]) => ({
-        clientId:   cid,
+        rootEntityId:   cid,
         clientLabel: getClientById(cid)?.name || `Client ${cid}`,
         entities:    list,
       }));
@@ -151,14 +151,14 @@ export default function SingleIngestionPanel({ active }) {
   const targetsByClient = useMemo(() => {
     const groups = new Map();
     for (const t of rootTargets) {
-      if (t.client_id == null) continue;
-      if (!groups.has(t.client_id)) groups.set(t.client_id, []);
-      groups.get(t.client_id).push(t);
+      if (t.root_entity_id == null) continue;
+      if (!groups.has(t.root_entity_id)) groups.set(t.root_entity_id, []);
+      groups.get(t.root_entity_id).push(t);
     }
     return Array.from(groups.entries())
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
       .map(([cid, list]) => ({
-        clientId:   cid,
+        rootEntityId:   cid,
         clientLabel: getClientById(cid)?.name || `Client ${cid}`,
         targets:    list,
       }));
@@ -345,7 +345,7 @@ export default function SingleIngestionPanel({ active }) {
         >
           <option value="">בחר…</option>
           {entitiesByClient.map((group) => (
-            <optgroup key={String(group.clientId)} label={group.clientLabel}>
+            <optgroup key={String(group.rootEntityId)} label={group.clientLabel}>
               {group.entities.map((e) => {
                 const display = e.full_name || `#${e.id} (${e.relation_type})`;
                 return (
@@ -396,7 +396,7 @@ export default function SingleIngestionPanel({ active }) {
           >
             <option value="">בחר…</option>
             {targetsByClient.map((group) => (
-              <optgroup key={String(group.clientId)} label={group.clientLabel}>
+              <optgroup key={String(group.rootEntityId)} label={group.clientLabel}>
                 {group.targets.map((t) => (
                   <option key={t.id} value={t.id}>{`#${t.id}`}</option>
                 ))}

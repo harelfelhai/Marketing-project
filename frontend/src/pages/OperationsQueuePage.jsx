@@ -51,7 +51,7 @@ export default function OperationsQueuePage() {
   } = useUI();
   const { personalizationActive, user } = useAuth();
 
-  // Phase AUTH-C — derive personalization clientIds. Admins typically
+  // Phase AUTH-C — derive personalization rootEntityIds. Admins typically
   // don't have managed_client_ids so this resolves to null and the
   // filter is a no-op for them; non-admin operators are gated out of
   // this page entirely by <RequireRole role="admin">.
@@ -76,7 +76,7 @@ export default function OperationsQueuePage() {
     if (taskFilters.hideResolved || taskFilters.openOnly) {
       f.exclude_terminal = true;
     }
-    if (personalizationClientIds)                 f.client_ids = personalizationClientIds;
+    if (personalizationClientIds)                 f.root_entity_ids = personalizationClientIds;
     return f;
   }, [taskFilters, personalizationClientIds]);
 
@@ -111,16 +111,16 @@ export default function OperationsQueuePage() {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   // Phase DX cross-links — URL is authoritative for the phone_id /
-  // client_id / open filters. Every URL change resets all three
+  // root_entity_id / open filters. Every URL change resets all three
   // (presence → seeded value; absence → cleared). This prevents the
   // "double-stacked filter" bug where navigating to /operations?phone_id=N
-  // would keep a stale client_id filter from a previous cross-link.
+  // would keep a stale root_entity_id filter from a previous cross-link.
   //
   // IDs are opaque strings — URL params pass through as-is (empty → null).
   useEffect(() => {
     const coerceId = (raw) => (raw == null || raw === '' ? null : raw);
     seedTaskPhoneFilter(coerceId(searchParams.get('phone_id')));
-    seedTaskClientFilter(coerceId(searchParams.get('client_id')));
+    seedTaskClientFilter(coerceId(searchParams.get('root_entity_id')));
     updateTaskFilters({ openOnly: searchParams.get('open') === 'true' });
   }, [searchParams, seedTaskPhoneFilter, seedTaskClientFilter, updateTaskFilters]);
 
@@ -153,7 +153,7 @@ export default function OperationsQueuePage() {
           selectedIds={selectedIds}
           onToggleRow={toggleRow}
           onToggleAll={toggleAll}
-          clientIds={personalizationClientIds}
+          rootEntityIds={personalizationClientIds}
         />
 
         <TaskDetailDrawer taskId={selectedId} onClose={() => setSelectedId(null)} />

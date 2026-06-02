@@ -16,7 +16,7 @@
  *
  *   3. OperationsQueuePage filter chips must NOT double-stack across
  *      cross-link navigations. The URL is fully authoritative for
- *      phoneId / clientId / openOnly — every URL change re-seeds all
+ *      phoneId / rootEntityId / openOnly — every URL change re-seeds all
  *      three. Fixed in da2ae37.
  */
 
@@ -32,13 +32,13 @@ import { renderApp } from './renderApp';
 
 describe('Bug 1 regression — ClientCard badge cross-link respects open-only', () => {
   it('renders only pending+assigned tasks when arriving with ?open=true', async () => {
-    renderApp({ route: '/operations?client_id=ent-1&open=true' });
+    renderApp({ route: '/operations?root_entity_id=ent-1&open=true' });
 
     // SEED_TASKS for client 1 (root "Client Alpha"):
-    //   #1 pending  client_id=1   phone +14155550102   ✓ shown
-    //   #2 assigned client_id=9   phone +14155550109   ✗ wrong client
-    //   #4 resolved client_id=24  phone +14155550125   ✗ wrong client
-    //   #5 rejected client_id=ent-33  phone +14155550133   ✗ wrong client
+    //   #1 pending  root_entity_id=1   phone +14155550102   ✓ shown
+    //   #2 assigned root_entity_id=9   phone +14155550109   ✗ wrong client
+    //   #4 resolved root_entity_id=24  phone +14155550125   ✗ wrong client
+    //   #5 rejected root_entity_id=ent-33  phone +14155550133   ✗ wrong client
     // Only task #1 should render.
     expect(await screen.findByText('+14155550102')).toBeInTheDocument();
 
@@ -52,13 +52,13 @@ describe('Bug 1 regression — ClientCard badge cross-link respects open-only', 
   });
 
   it('shows ALL tasks for the client when open=true is absent (after toggling show-resolved)', async () => {
-    // Same client_id, no open=true → resolved/rejected tasks for that
+    // Same root_entity_id, no open=true → resolved/rejected tasks for that
     // client should also appear. The Task Center now hides terminal
     // rows by default (Requirement 1), so the operator must flip
     // "Show resolved" on for them to appear — but the underlying
-    // client_id filter must still let the rejected task through.
+    // root_entity_id filter must still let the rejected task through.
     const user = userEvent.setup();
-    renderApp({ route: '/operations?client_id=ent-33' });
+    renderApp({ route: '/operations?root_entity_id=ent-33' });
 
     // Default-hide is on → terminal rows hidden even with client filter.
     expect(screen.queryByText('+14155550133')).not.toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('Bug 1 regression — ClientCard badge cross-link respects open-only', 
     // Flip the toggle on.
     await user.click(screen.getByLabelText(/הצג משימות שטופלו/));
 
-    // SEED_TASKS[4] is task #5, rejected, client_id=ent-33 (root "Epsilon"), phone +14155550133.
+    // SEED_TASKS[4] is task #5, rejected, root_entity_id=ent-33 (root "Epsilon"), phone +14155550133.
     expect(await screen.findByText('+14155550133')).toBeInTheDocument();
     // Emerald chip NOT visible (open=true was never set).
     expect(screen.queryByText(/משימות פתוחות בלבד/)).not.toBeInTheDocument();
@@ -78,10 +78,10 @@ describe('Bug 1 regression — ClientCard badge cross-link respects open-only', 
 
 
 describe('Bug 3 regression — URL is authoritative for cross-link filters', () => {
-  it('arriving with only ?phone_id=N clears a previously-seeded clientId', async () => {
+  it('arriving with only ?phone_id=N clears a previously-seeded rootEntityId', async () => {
     // Step 1: land on operations filtered by client → both chips active.
     const { rerender } = renderApp({
-      route: '/operations?client_id=alpha&open=true',
+      route: '/operations?root_entity_id=alpha&open=true',
     });
     expect(screen.getByText(/מסונן ללקוח/)).toBeInTheDocument();
     expect(screen.getByText(/משימות פתוחות בלבד/)).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('Bug 3 regression — URL is authoritative for cross-link filters', () 
 
   it('clear-filters button resets every chip at once', async () => {
     const user = userEvent.setup();
-    renderApp({ route: '/operations?client_id=alpha&open=true' });
+    renderApp({ route: '/operations?root_entity_id=alpha&open=true' });
 
     // Two chips visible.
     expect(screen.getByText(/מסונן ללקוח/)).toBeInTheDocument();

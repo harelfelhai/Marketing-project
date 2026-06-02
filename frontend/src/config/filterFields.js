@@ -36,7 +36,7 @@ export const FILTER_SURFACES = {
     label: SURFACE_LABEL_PHONES,
     filters: [
       { key: 'search',             label: FILTER_LABEL_SEARCH,        default: true,  type: 'text'    },
-      { key: 'clientId',           label: FILTER_LABEL_CLIENT,        default: true,  type: 'clients' },
+      { key: 'rootEntityId',           label: FILTER_LABEL_CLIENT,        default: true,  type: 'clients' },
       { key: 'verificationStatus', label: FILTER_LABEL_VERIF_STATUS,  default: true,  type: 'select'  },
       { key: 'ingestionSource',    label: FILTER_LABEL_SOURCE,        default: true,  type: 'select'  },
       { key: 'phoneType',          label: FILTER_LABEL_PHONE_TYPE,    default: true,  type: 'select'  },
@@ -51,7 +51,7 @@ export const FILTER_SURFACES = {
       { key: 'search',       label: FILTER_LABEL_SEARCH,        default: true,  type: 'text'    },
       { key: 'status',       label: FILTER_LABEL_TASK_STATUS,   default: true,  type: 'select'  },
       { key: 'taskType',     label: FILTER_LABEL_TASK_TYPE,     default: true,  type: 'select'  },
-      { key: 'clientId',     label: FILTER_LABEL_CLIENT,        default: false, type: 'clients' },
+      { key: 'rootEntityId',     label: FILTER_LABEL_CLIENT,        default: false, type: 'clients' },
       { key: 'hideResolved', label: FILTER_LABEL_HIDE_RESOLVED, default: true,  type: 'toggle'  },
     ],
   },

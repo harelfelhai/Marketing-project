@@ -14,14 +14,14 @@ import { enrichPhone, enrichPhoneDetail }    from './adapters/phoneAdapter';
 export async function listPhones(filters = {}, mockDb) {
   if (!MOCK_MODE) {
     const params = { page_size: filters.pageSize || 200 };
-    if (filters.clientId)           params.client_id           = filters.clientId;
+    if (filters.rootEntityId)           params.root_entity_id           = filters.rootEntityId;
     if (filters.verificationStatus) params.verification_status = filters.verificationStatus;
     if (filters.ingestionSource)    params.ingestion_source    = filters.ingestionSource;
     if (filters.phoneType)           params.phone_type           = filters.phoneType;
     // Phase AUTH-C — multi-value personalization filter. Frontend
     // builds this from the operator's managed_client_ids when
     // personalizationActive is true.
-    if (filters.clientIds?.length)  params.client_ids          = filters.clientIds;
+    if (filters.rootEntityIds?.length)  params.root_entity_ids          = filters.rootEntityIds;
     // UAT round-3 — surface soft-deleted rows for the data-admin tab.
     if (filters.includeDeleted)     params.include_deleted     = true;
     // Phase DY — sort_by toggles between 'priority' (default, the
@@ -56,7 +56,7 @@ export async function listPhones(filters = {}, mockDb) {
     : mockDb.phones.filter((p) => !p.deleted_at);
   let results = phonePool.map((phone) => {
     const entity = mockDb.entities.find((e) => e.id === phone.entity_id) || {};
-    const client = mockDb.clients.find((c) => c.id === entity.client_id) || {};
+    const client = mockDb.clients.find((c) => c.id === entity.root_entity_id) || {};
     // Phase DY — customer_tier is a flat JOIN convenience field on the
     // response. Mock mode mirrors the backend's server-side traversal by
     // reading it directly from the owning entity's extra_data (every
@@ -65,15 +65,15 @@ export async function listPhones(filters = {}, mockDb) {
     return {
       ...phone,
       relation_type: entity.relation_type,
-      client_id:     entity.client_id,
+      root_entity_id:     entity.root_entity_id,
       client_name:   client.name,
     };
   });
 
-  if (filters.clientId)           results = results.filter((p) => p.client_id === filters.clientId);
-  if (filters.clientIds?.length) {
-    const allowed = new Set(filters.clientIds.map(String));
-    results = results.filter((p) => allowed.has(String(p.client_id)));
+  if (filters.rootEntityId)           results = results.filter((p) => p.root_entity_id === filters.rootEntityId);
+  if (filters.rootEntityIds?.length) {
+    const allowed = new Set(filters.rootEntityIds.map(String));
+    results = results.filter((p) => allowed.has(String(p.root_entity_id)));
   }
   if (filters.verificationStatus) results = results.filter((p) => p.verification_status === filters.verificationStatus);
   if (filters.ingestionSource)    results = results.filter((p) => p.ingestion_source    === filters.ingestionSource);
@@ -115,7 +115,7 @@ export async function getPhoneDetail(id, mockDb) {
   const phone  = mockDb.phones.find((p) => p.id === id);
   if (!phone) throw new Error(`Phone ${id} not found`);
   const entity = mockDb.entities.find((e) => e.id === phone.entity_id) || {};
-  const client = mockDb.clients.find((c) => c.id === entity.client_id) || {};
+  const client = mockDb.clients.find((c) => c.id === entity.root_entity_id) || {};
   return {
     ...phone,
     entity: { ...entity, client_name: client.name },

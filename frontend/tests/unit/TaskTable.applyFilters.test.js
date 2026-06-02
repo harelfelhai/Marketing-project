@@ -4,7 +4,7 @@
  * This is the highest-value unit test in the DX-T2 batch because
  * applyFilters has the most filter combinations and was the source of
  * two of the three regressions caught in the smoke test:
- *   - clientId comparison string-coercion edge case (fixed in §5.1 pattern)
+ *   - rootEntityId comparison string-coercion edge case (fixed in §5.1 pattern)
  *   - openOnly was missing entirely (added in da2ae37)
  */
 
@@ -16,23 +16,23 @@ import { applyFilters } from '../../src/components/ops/TaskTable';
 function fixtures() {
   return [
     { id: 1, status: 'pending',  task_type: 'remediation_failure',
-      phone_id: 10, client_id: 1, phone_number: '+1-aaa',
+      phone_id: 10, root_entity_id: 1, phone_number: '+1-aaa',
       requested_by: 'automation:retry_engine', resolved_by: null,
       client_name: 'Client Alpha' },
     { id: 2, status: 'assigned', task_type: 'remediation_failure',
-      phone_id: 20, client_id: 2, phone_number: '+1-bbb',
+      phone_id: 20, root_entity_id: 2, phone_number: '+1-bbb',
       requested_by: 'automation:retry_engine', resolved_by: null,
       client_name: 'Client Beta' },
     { id: 3, status: 'pending',  task_type: 'approval_required',
-      phone_id: 30, client_id: 1, phone_number: '+1-ccc',
+      phone_id: 30, root_entity_id: 1, phone_number: '+1-ccc',
       requested_by: 'mock_operator_02', resolved_by: null,
       client_name: 'Client Alpha' },
     { id: 4, status: 'resolved', task_type: 'manual_recommendation',
-      phone_id: 10, client_id: 1, phone_number: '+1-aaa',
+      phone_id: 10, root_entity_id: 1, phone_number: '+1-aaa',
       requested_by: 'automation:verification_engine', resolved_by: 'mock_admin_01',
       client_name: 'Client Alpha' },
     { id: 5, status: 'rejected', task_type: 'approval_required',
-      phone_id: 40, client_id: 3, phone_number: '+1-ddd',
+      phone_id: 40, root_entity_id: 3, phone_number: '+1-ddd',
       requested_by: 'mock_operator_02', resolved_by: 'mock_admin_01',
       client_name: 'Client Gamma' },
   ];
@@ -40,7 +40,7 @@ function fixtures() {
 
 const ALL_DEFAULT = {
   status: '', taskType: '', search: '',
-  phoneId: null, clientId: null, openOnly: false,
+  phoneId: null, rootEntityId: null, openOnly: false,
 };
 
 
@@ -94,14 +94,14 @@ describe('applyFilters — phoneId', () => {
 });
 
 
-describe('applyFilters — clientId', () => {
-  it('filters by integer client_id', () => {
-    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, clientId: 1 });
+describe('applyFilters — rootEntityId', () => {
+  it('filters by integer root_entity_id', () => {
+    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, rootEntityId: 1 });
     expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4]);
   });
 
   it('string coercion (URL param case)', () => {
-    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, clientId: '3' });
+    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, rootEntityId: '3' });
     expect(result.map((t) => t.id)).toEqual([5]);
   });
 });
@@ -145,8 +145,8 @@ describe('applyFilters — search (client-side substring)', () => {
     expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4]);
   });
 
-  it('matches stringified client_id', () => {
-    // The hay-stack includes `String(client_id)` so numeric search works.
+  it('matches stringified root_entity_id', () => {
+    // The hay-stack includes `String(root_entity_id)` so numeric search works.
     const result = applyFilters(fixtures(), { ...ALL_DEFAULT, search: '3' });
     expect(result.map((t) => t.id)).toEqual([5]);
   });
@@ -164,16 +164,16 @@ describe('applyFilters — combinatorial (all filters together)', () => {
       ...ALL_DEFAULT,
       status:   'pending',
       taskType: 'remediation_failure',
-      clientId: 1,
+      rootEntityId: 1,
     });
     expect(result.map((t) => t.id)).toEqual([1]);
   });
 
-  it('openOnly + clientId narrows to that client pending+assigned', () => {
-    // ClientCard cross-link case: ?client_id=1&open=true → ids 1, 3.
+  it('openOnly + rootEntityId narrows to that client pending+assigned', () => {
+    // ClientCard cross-link case: ?root_entity_id=1&open=true → ids 1, 3.
     const result = applyFilters(fixtures(), {
       ...ALL_DEFAULT,
-      clientId: 1,
+      rootEntityId: 1,
       openOnly: true,
     });
     expect(result.map((t) => t.id).sort()).toEqual([1, 3]);
@@ -194,7 +194,7 @@ describe('applyFilters — combinatorial (all filters together)', () => {
     const result = applyFilters(fixtures(), {
       ...ALL_DEFAULT,
       status:   'resolved',  // task 4 only
-      clientId: 3,           // task 5 only — disjoint
+      rootEntityId: 3,           // task 5 only — disjoint
     });
     expect(result).toEqual([]);
   });
@@ -232,38 +232,38 @@ describe('applyFilters — hideResolved (Task Center default-hide)', () => {
 });
 
 
-describe('applyFilters — Phase AUTH-C clientIds personalization', () => {
-  it('omitted clientIds → no filter', () => {
+describe('applyFilters — Phase AUTH-C rootEntityIds personalization', () => {
+  it('omitted rootEntityIds → no filter', () => {
     expect(applyFilters(fixtures(), ALL_DEFAULT)).toHaveLength(5);
   });
 
-  it('clientIds=[1] narrows to tasks for that client only', () => {
-    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, clientIds: [1] });
+  it('rootEntityIds=[1] narrows to tasks for that client only', () => {
+    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, rootEntityIds: [1] });
     expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4]);
   });
 
-  it('clientIds=[1,3] narrows to the union of those clients', () => {
-    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, clientIds: [1, 3] });
+  it('rootEntityIds=[1,3] narrows to the union of those clients', () => {
+    const result = applyFilters(fixtures(), { ...ALL_DEFAULT, rootEntityIds: [1, 3] });
     expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4, 5]);
   });
 
-  it('empty clientIds array is a no-op (toggle off)', () => {
-    expect(applyFilters(fixtures(), { ...ALL_DEFAULT, clientIds: [] })).toHaveLength(5);
+  it('empty rootEntityIds array is a no-op (toggle off)', () => {
+    expect(applyFilters(fixtures(), { ...ALL_DEFAULT, rootEntityIds: [] })).toHaveLength(5);
   });
 
-  it('clientIds AND-composes with status and openOnly', () => {
+  it('rootEntityIds AND-composes with status and openOnly', () => {
     const result = applyFilters(fixtures(), {
       ...ALL_DEFAULT,
-      clientIds: [1, 3],
+      rootEntityIds: [1, 3],
       openOnly:  true,
     });
     // Open (pending|assigned) AND client in {1,3} → tasks 1, 3.
     expect(result.map((t) => t.id).sort()).toEqual([1, 3]);
   });
 
-  it('clientIds string-coercion: works for both integer and string client_id values', () => {
-    const stringy = fixtures().map((t) => ({ ...t, client_id: String(t.client_id) }));
-    const result = applyFilters(stringy, { ...ALL_DEFAULT, clientIds: [1, 3] });
+  it('rootEntityIds string-coercion: works for both integer and string root_entity_id values', () => {
+    const stringy = fixtures().map((t) => ({ ...t, root_entity_id: String(t.root_entity_id) }));
+    const result = applyFilters(stringy, { ...ALL_DEFAULT, rootEntityIds: [1, 3] });
     expect(result.map((t) => t.id).sort()).toEqual([1, 3, 4, 5]);
   });
 });

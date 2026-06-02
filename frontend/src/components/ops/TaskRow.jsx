@@ -4,7 +4,7 @@
  * Five strictly-sized columns per §4.4 layout discipline:
  *   1. task_type badge + created_at caption
  *   2. phone_number + entity caption
- *   3. client_name + client_id caption
+ *   3. client_name + root_entity_id caption
  *   4. status badge + requested_by + (if resolved) resolved_by
  *   5. updated_at (tabular-nums)
  *
@@ -93,7 +93,7 @@ export default function TaskRow({ task, isSelected, onSelect, isChecked, onToggl
         </div>
       </td>
 
-      {/* Column 3 — client_name + client_id caption */}
+      {/* Column 3 — client_name + root_entity_id caption */}
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col min-w-0 max-w-[170px]">
           <span
@@ -103,7 +103,7 @@ export default function TaskRow({ task, isSelected, onSelect, isChecked, onToggl
             {task.client_name || '—'}
           </span>
           <span className="text-[11px] text-slate-400 uppercase tracking-wide">
-            #{task.client_id ?? '—'}
+            #{task.root_entity_id ?? '—'}
           </span>
         </div>
       </td>

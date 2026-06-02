@@ -44,10 +44,10 @@ const _uid = (prefix) => {
 //   `if (e.deleted_at) continue`). Without normalising it, every active
 //   backend row would be hidden. Collapse the sentinel back to null so
 //   active rows read as active, exactly like the mock seed.
-// _enrichEntities: stamps client_id = target_entity_id ?? id on every row.
+// _enrichEntities: stamps root_entity_id = target_entity_id ?? id on every row.
 //   Two-level model: a root entity (target_entity_id == null) is its own
-//   client; a member's client_id is the root it points at.
-// _enrichPhones:   stamps client_id + relation_type onto every phone from
+//   client; a member's root_entity_id is the root it points at.
+// _enrichPhones:   stamps root_entity_id + relation_type onto every phone from
 //                  its owning entity (so phone filters / client lookups work).
 // _clientsFromEntities: builds the clients slice from active root entities,
 //                  with optional display overrides from CLIENT_REGISTRY when
@@ -64,7 +64,7 @@ function _enrichEntities(entities) {
   return (entities || []).map((e) => ({
     ...e,
     deleted_at: _normalizeDeletedAt(e.deleted_at),
-    client_id: e.target_entity_id != null ? e.target_entity_id : e.id,
+    root_entity_id: e.target_entity_id != null ? e.target_entity_id : e.id,
   }));
 }
 
@@ -74,7 +74,7 @@ function _enrichPhones(phones, entities) {
     const ent = entityById.get(p.entity_id);
     return {
       ...p,
-      client_id:     ent?.client_id ?? null,
+      root_entity_id:     ent?.root_entity_id ?? null,
       relation_type: ent?.relation_type ?? p.relation_type ?? null,
     };
   });
@@ -103,20 +103,20 @@ function _clientsFromEntities(entities) {
 }
 
 // _enrichTasks: the backend task response carries entity_id + full_name but
-//   NOT client_id/client_name. The OperationsQueue's client column and the
-//   taskAdapter both expect client_id. Resolve it through the owning entity
-//   (task.entity_id → entity.client_id) and stamp client_id + client_name so
+//   NOT root_entity_id/client_name. The OperationsQueue's client column and the
+//   taskAdapter both expect root_entity_id. Resolve it through the owning entity
+//   (task.entity_id → entity.root_entity_id) and stamp root_entity_id + client_name so
 //   "who does this task belong to" renders instead of "Unassigned".
 function _enrichTasks(tasks, entities, clients) {
   const entityById = new Map((entities || []).map((e) => [e.id, e]));
   const clientById = new Map((clients || []).map((c) => [c.id, c]));
   return (tasks || []).map((t) => {
     const ent      = entityById.get(t.entity_id);
-    const clientId = ent?.client_id ?? null;
-    const client   = clientId != null ? clientById.get(clientId) : null;
+    const rootEntityId = ent?.root_entity_id ?? null;
+    const client   = rootEntityId != null ? clientById.get(rootEntityId) : null;
     return {
       ...t,
-      client_id:   clientId,
+      root_entity_id:   rootEntityId,
       client_name: client?.name ?? ent?.full_name ?? t.client_name ?? null,
     };
   });
@@ -293,7 +293,7 @@ export function MockDataProvider({ children }) {
     const { entity, ...rest } = detail;
     const flat = {
       ...rest,
-      client_id:   entity?.client_id,
+      root_entity_id:   entity?.root_entity_id,
       client_name: entity?.client_name,
     };
     mergePhoneById(flat);
@@ -341,7 +341,7 @@ export function MockDataProvider({ children }) {
       ...prev,
       entities,
       clients,
-      // Re-enrich phones so client_id stamps reflect any
+      // Re-enrich phones so root_entity_id stamps reflect any
       // relationship moves (rare but possible via PATCH /entities).
       phones: _enrichPhones(prev.phones, entities),
     }));
@@ -365,7 +365,7 @@ export function MockDataProvider({ children }) {
       const newEntity = {
         id:            nextEntityId,
         relation_type: 'primary',
-        client_id:     payload.client_id || null,
+        root_entity_id:     payload.root_entity_id || null,
         extra_data:    payload.entity_extra || {},
       };
 
@@ -393,7 +393,7 @@ export function MockDataProvider({ children }) {
   //
   // Mirrors EntityIngestionService.create_single on the backend:
   //   - validate target exists AND is a root (target_entity_id IS NULL)
-  //   - inherit client_id from the target
+  //   - inherit root_entity_id from the target
   //   - merge first_name / last_name into extra_data (Secrets-Free Mandate)
   //   - create exactly one new Entity row
   //
@@ -421,7 +421,7 @@ export function MockDataProvider({ children }) {
 
       const newEntity = {
         id:               nextId,
-        client_id:        target.client_id,
+        root_entity_id:        target.root_entity_id,
         relation_type:    payload.relation_type,
         target_entity_id: target.id,
         full_name:        fullName,
@@ -430,7 +430,7 @@ export function MockDataProvider({ children }) {
 
       result = {
         id:               newEntity.id,
-        client_id:        newEntity.client_id,
+        root_entity_id:        newEntity.root_entity_id,
         relation_type:    newEntity.relation_type,
         target_entity_id: newEntity.target_entity_id,
         full_name:        fullName,
@@ -541,7 +541,7 @@ export function MockDataProvider({ children }) {
         if (c.rowToken) extra.row_token = c.rowToken;
         const ent = {
           id:               _uid('ent'),
-          client_id:        c.target.client_id,
+          root_entity_id:        c.target.root_entity_id,
           relation_type:    c.relation,
           target_entity_id: c.target.id,
           full_name:        c.fullName || null,
@@ -676,7 +676,7 @@ export function MockDataProvider({ children }) {
       const newEntities = candidates.map((c) => {
         const ent = {
           id:               _uid('ent'),
-          client_id:        c.target.client_id,
+          root_entity_id:        c.target.root_entity_id,
           relation_type:    c.relation,
           target_entity_id: c.target.id,
           full_name:        c.fullName || null,
@@ -777,7 +777,7 @@ export function MockDataProvider({ children }) {
       const newEntity = {
         id:               nextEntityId,
         relation_type:    payload.relation_type === 'primary' ? 'primary' : 'associated',
-        client_id:        payload.client_id ?? null,
+        root_entity_id:        payload.root_entity_id ?? null,
         target_entity_id: payload.target_entity_id ?? null,
         extra_data: {
           ...(payload.entity_extra || {}),
@@ -826,7 +826,7 @@ export function MockDataProvider({ children }) {
   //
   // Mirrors BulkIngestionService.ingest_bulk_upload on the backend:
   //   - parse CSV text (header row required; required columns must be present)
-  //   - per-row validation: phone format, client_id int, required fields,
+  //   - per-row validation: phone format, root_entity_id int, required fields,
   //     optional target_entity_id integer, within-batch dedup
   //   - one Entity per surviving row (NOT one shared envelope — different
   //     from bulk-text)
@@ -837,7 +837,7 @@ export function MockDataProvider({ children }) {
   // The caller (bulkIngestUpload) surfaces these as endpoint-level errors.
   // -------------------------------------------------------------------------
   const applyBulkUploadCsv = useCallback((csvText) => {
-    const REQUIRED = ['phone_number', 'client_id', 'relation_type', 'ingestion_source'];
+    const REQUIRED = ['phone_number', 'root_entity_id', 'relation_type', 'ingestion_source'];
     const PHONE_CLEAN = /[^\d+]/g;
     const PHONE_REGEX = /^\+?\d{7,15}$/;
     const INPUT_CAP   = 200;
@@ -902,8 +902,8 @@ export function MockDataProvider({ children }) {
         return;
       }
       const missingFields = ['relation_type', 'ingestion_source'].filter((c) => !row[c]);
-      // client_id may legitimately be "0" — treat presence-of-value as the test.
-      if (row.client_id === '' || row.client_id == null) missingFields.unshift('client_id');
+      // root_entity_id may legitimately be "0" — treat presence-of-value as the test.
+      if (row.root_entity_id === '' || row.root_entity_id == null) missingFields.unshift('root_entity_id');
       if (missingFields.length) {
         failedRows.push({
           row: rowIdx,
@@ -913,7 +913,7 @@ export function MockDataProvider({ children }) {
         return;
       }
       // Ids are opaque strings — normalise to a trimmed string id.
-      row.client_id = String(row.client_id).trim();
+      row.root_entity_id = String(row.root_entity_id).trim();
       if (row.target_entity_id !== '' && row.target_entity_id != null) {
         row.target_entity_id = String(row.target_entity_id).trim();
       } else {
@@ -971,7 +971,7 @@ export function MockDataProvider({ children }) {
         newEntities.push({
           id:               entityId,
           relation_type:    row.relation_type === 'primary' ? 'primary' : 'associated',
-          client_id:        row.client_id,
+          root_entity_id:        row.root_entity_id,
           target_entity_id: row.target_entity_id,
           extra_data:       { bulk_submission_id: submissionId },
         });
@@ -1134,7 +1134,7 @@ export function MockDataProvider({ children }) {
   // applyOpenTask  (mock-mode only; the real path uses refetchTasks)
   //
   // Synthesises a new pending task from the openTask payload. JOIN fields
-  // (phone_number, entity_id, entity_type, client_id) are filled by looking
+  // (phone_number, entity_id, entity_type, root_entity_id) are filled by looking
   // up the related phone/entity in the current cache so the mock shape
   // matches the real-API JOIN exactly.
   // -------------------------------------------------------------------------
@@ -1153,7 +1153,7 @@ export function MockDataProvider({ children }) {
         extra_data:   payload.extra_data ?? null,
         phone_number: phone?.phone_number ?? null,
         entity_id:    phone?.entity_id    ?? null,
-        client_id:    entity?.client_id   ?? null,
+        root_entity_id:    entity?.root_entity_id   ?? null,
       };
       return { ...prev, tasks: [...prev.tasks, newTask] };
     });
@@ -1559,7 +1559,7 @@ export function MockDataProvider({ children }) {
   const _entityToView = useCallback((e) => {
     return {
       id:               e.id,
-      client_id:        e.client_id,
+      root_entity_id:        e.root_entity_id,
       relation_type:    e.relation_type,
       target_entity_id: e.target_entity_id,
       full_name:        e.full_name ?? null,
@@ -1573,12 +1573,12 @@ export function MockDataProvider({ children }) {
   const applyListEntities = useCallback((filters = {}) => {
     let rows = (db.entities || []).slice();
     if (!filters.includeDeleted) rows = rows.filter((e) => !e.deleted_at);
-    if (filters.clientId != null && filters.clientId !== '') {
-      rows = rows.filter((e) => String(e.client_id) === String(filters.clientId));
+    if (filters.rootEntityId != null && filters.rootEntityId !== '') {
+      rows = rows.filter((e) => String(e.root_entity_id) === String(filters.rootEntityId));
     }
-    if (filters.clientIds?.length) {
-      const set = new Set(filters.clientIds.map(String));
-      rows = rows.filter((e) => set.has(String(e.client_id)));
+    if (filters.rootEntityIds?.length) {
+      const set = new Set(filters.rootEntityIds.map(String));
+      rows = rows.filter((e) => set.has(String(e.root_entity_id)));
     }
     if (filters.relationType) {
       rows = rows.filter((e) => e.relation_type === filters.relationType);
@@ -1614,7 +1614,7 @@ export function MockDataProvider({ children }) {
         identifier_1:     body.identifier_1     ?? existing.identifier_1,
         identifier_2:     body.identifier_2     ?? existing.identifier_2,
         target_entity_id: body.target_entity_id ?? existing.target_entity_id,
-        client_id:        body.client_id        ?? existing.client_id,
+        root_entity_id:        body.root_entity_id        ?? existing.root_entity_id,
         extra_data:       { ...(existing.extra_data || {}), ...(body.extra_data || {}) },
       };
       snapshot = next;
@@ -1766,16 +1766,16 @@ export function MockDataProvider({ children }) {
   }, []);
 
   // UAT round-3 — quick-attach + envelope creation mock parity.
-  const applyCreateEnvelope = useCallback((clientId) => {
+  const applyCreateEnvelope = useCallback((rootEntityId) => {
     let snapshot;
     setDb((prev) => {
       const nextId = _uid('ent');
       const now = new Date().toISOString();
       const ent = {
         id:               nextId,
-        client_id:        clientId,
+        root_entity_id:        rootEntityId,
         relation_type:    'associated',
-        target_entity_id: clientId,
+        target_entity_id: rootEntityId,
         extra_data:       {},
         deleted_at:       null,
       };
@@ -1812,7 +1812,7 @@ export function MockDataProvider({ children }) {
           score:               null,
           deleted_at:          null,
           extra_data:          {},
-          client_id:           ent.client_id,
+          root_entity_id:           ent.root_entity_id,
         };
         resolve(ph);
         return { ...prev, phones: [...prev.phones, ph] };
@@ -1853,7 +1853,7 @@ export function MockDataProvider({ children }) {
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
-    (clientId) => deriveClientMetrics(clientId, phones, entities, tasks),
+    (rootEntityId) => deriveClientMetrics(rootEntityId, phones, entities, tasks),
     [phones, entities, tasks]
   );
 
@@ -1873,7 +1873,7 @@ export function MockDataProvider({ children }) {
       if (!phone) return null;
       const entity = entities.find((e) => e.id === phone.entity_id);
       if (!entity) return null;
-      return clients.find((c) => c.id === entity.client_id) || null;
+      return clients.find((c) => c.id === entity.root_entity_id) || null;
     },
     [phones, entities, clients]
   );
@@ -2054,10 +2054,10 @@ export function useMockData() {
 
 function _mockFilterPhones(db, f) {
   let rows = (db.phones || []).slice();
-  // Materialize each row with the client_id JOIN field.
+  // Materialize each row with the root_entity_id JOIN field.
   rows = rows.map((p) => {
     const ent = db.entities.find((e) => e.id === p.entity_id);
-    return { ...p, client_id: p.client_id ?? ent?.client_id ?? null };
+    return { ...p, root_entity_id: p.root_entity_id ?? ent?.root_entity_id ?? null };
   });
 
   if (f.verification_status) {
@@ -2069,12 +2069,12 @@ function _mockFilterPhones(db, f) {
   if (f.phone_type) {
     rows = rows.filter((r) => r.phone_type === f.phone_type);
   }
-  if (f.client_id != null && f.client_id !== '') {
-    rows = rows.filter((r) => String(r.client_id) === String(f.client_id));
+  if (f.root_entity_id != null && f.root_entity_id !== '') {
+    rows = rows.filter((r) => String(r.root_entity_id) === String(f.root_entity_id));
   }
-  if (f.client_ids?.length) {
-    const allowed = new Set(f.client_ids.map(String));
-    rows = rows.filter((r) => allowed.has(String(r.client_id)));
+  if (f.root_entity_ids?.length) {
+    const allowed = new Set(f.root_entity_ids.map(String));
+    rows = rows.filter((r) => allowed.has(String(r.root_entity_id)));
   }
   if (f.q) {
     const needle = String(f.q).toLowerCase();
@@ -2082,7 +2082,7 @@ function _mockFilterPhones(db, f) {
       const hay = [
         r.phone_number || '',
         String(r.entity_id ?? ''),
-        String(r.client_id ?? ''),
+        String(r.root_entity_id ?? ''),
       ].join(' ').toLowerCase();
       return hay.includes(needle);
     });
@@ -2104,9 +2104,9 @@ function _mockFilterTasks(db, f) {
     rows = rows.filter((r) => String(r.phone_id) === String(f.phone_id));
   }
   // Phase AUTH-C — multi-value personalization filter parity.
-  if (f.client_ids?.length) {
-    const allowed = new Set(f.client_ids.map(String));
-    rows = rows.filter((r) => allowed.has(String(r.client_id)));
+  if (f.root_entity_ids?.length) {
+    const allowed = new Set(f.root_entity_ids.map(String));
+    rows = rows.filter((r) => allowed.has(String(r.root_entity_id)));
   }
   if (f.exclude_terminal && !f.status) {
     rows = rows.filter((r) => r.status !== 'done' && r.status !== 'rejected');
@@ -2116,7 +2116,7 @@ function _mockFilterTasks(db, f) {
     rows = rows.filter((r) => {
       const hay = [
         r.phone_number || '',
-        String(r.client_id ?? ''),
+        String(r.root_entity_id ?? ''),
       ].join(' ').toLowerCase();
       return hay.includes(needle);
     });

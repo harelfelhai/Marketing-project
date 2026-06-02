@@ -33,7 +33,7 @@ export default function ProfilePage() {
   const { pushToast } = useUI();
 
   const [displayName, setDisplayName] = useState(user?.display_name || '');
-  const [clientIds, setClientIds]     = useState(
+  const [rootEntityIds, setClientIds]     = useState(
     () => new Set(user?.managed_client_ids || []),
   );
   const [submitting, setSubmitting]   = useState(false);
@@ -59,7 +59,7 @@ export default function ProfilePage() {
     try {
       await patchMe({
         display_name:       displayName.trim() || null,
-        managed_client_ids: Array.from(clientIds),
+        managed_client_ids: Array.from(rootEntityIds),
       });
       pushToast({ variant: 'success', message: PROFILE_TOAST_SAVED });
     } catch (err) {
@@ -108,7 +108,7 @@ export default function ProfilePage() {
             {PROFILE_FIELD_MANAGED_CLIENTS}
           </label>
           <ClientMultiPicker
-            selected={clientIds}
+            selected={rootEntityIds}
             onChange={setClientIds}
             disabled={submitting}
             data-testid="profile-client-picker"

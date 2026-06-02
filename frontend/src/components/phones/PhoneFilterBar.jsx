@@ -52,7 +52,7 @@ const RELATION_TYPE_OPTIONS = [
 ];
 
 // All keys that map to a '' default (text/select filters). Used for auto-clear.
-const TEXT_SELECT_KEYS = ['search', 'clientId', 'verificationStatus', 'ingestionSource', 'phoneType', 'entityName', 'relationType'];
+const TEXT_SELECT_KEYS = ['search', 'rootEntityId', 'verificationStatus', 'ingestionSource', 'phoneType', 'entityName', 'relationType'];
 
 export default function PhoneFilterBar() {
   const mockDb = useMockData();
@@ -125,10 +125,10 @@ export default function PhoneFilterBar() {
         </div>
       )}
 
-      {activeKeys.has('clientId') && (
+      {activeKeys.has('rootEntityId') && (
         <select
-          value={phoneFilters.clientId}
-          onChange={(e) => updatePhoneFilters({ clientId: e.target.value })}
+          value={phoneFilters.rootEntityId}
+          onChange={(e) => updatePhoneFilters({ rootEntityId: e.target.value })}
           className={selectClass}
         >
           <option value="">{FILTER_ALL_CLIENTS}</option>

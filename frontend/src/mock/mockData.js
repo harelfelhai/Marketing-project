@@ -133,7 +133,7 @@ function _generateSeedData() {
       entity_id:    `ent-${entityNum}`,
       task_type:    pick(_TTYPES),
       status:       pick(_TSTATS),
-      client_id:    `ent-${rootNum}`,
+      root_entity_id:    `ent-${rootNum}`,
       extra_data:   {},
     };
   });
@@ -224,7 +224,7 @@ export const SEED_FORM_SCHEMA = {
       help_text: 'Optional context for why this number is being ingested.',
     },
     {
-      name: 'client_id',
+      name: 'root_entity_id',
       label: 'Client',       // HOOK FOR ENTERPRISE LABELS
       type: 'select',
       required: true,
@@ -276,18 +276,18 @@ export const DEFAULT_ENGINE_STATES = {
 // ---------------------------------------------------------------------------
 
 export function deriveClientMetrics(
-  clientId,
+  rootEntityId,
   phones,
   _actionLogs,
   entities = SEED_ENTITIES,
   tasks    = [],
 ) {
   const clientPhones = phones.filter((p) => {
-    if (p.client_id != null) return String(p.client_id) === String(clientId);
+    if (p.root_entity_id != null) return String(p.root_entity_id) === String(rootEntityId);
     const entity = entities.find((e) => e.id === p.entity_id);
     if (!entity) return false;
-    const eClientId = entity.client_id ?? entity.target_entity_id ?? entity.id;
-    return String(eClientId) === String(clientId);
+    const eClientId = entity.root_entity_id ?? entity.target_entity_id ?? entity.id;
+    return String(eClientId) === String(rootEntityId);
   });
 
   const total    = clientPhones.length;
@@ -296,7 +296,7 @@ export function deriveClientMetrics(
   const bad      = clientPhones.filter((p) => p.verification_status === 'rejected').length;
 
   const openTasks = tasks.filter(
-    (t) => t.status === 'pending' && String(t.client_id) === String(clientId),
+    (t) => t.status === 'pending' && String(t.root_entity_id) === String(rootEntityId),
   ).length;
 
   return { total, pending, good, bad, failed: 0, openTasks };
@@ -314,16 +314,16 @@ export function buildInitialDb() {
   // so the table above stays scannable and the tier mapping is the
   // single source of truth (CLIENT_TIER_MAP).
   const entities = structuredClone(SEED_ENTITIES).map((e) => {
-    // Two-level model: client_id is DERIVED. A root (target_entity_id null)
-    // is its own client; a member's client_id is the root it points at.
-    const clientId = e.target_entity_id != null ? e.target_entity_id : e.id;
+    // Two-level model: root_entity_id is DERIVED. A root (target_entity_id null)
+    // is its own client; a member's root_entity_id is the root it points at.
+    const rootEntityId = e.target_entity_id != null ? e.target_entity_id : e.id;
     return {
       ...e,
-      client_id: clientId,
+      root_entity_id: rootEntityId,
       extra_data: {
         ...(e.extra_data || {}),
         // Tier keyed by the heading root's id — members inherit it.
-        customer_tier: CLIENT_TIER_MAP[clientId] ?? null,
+        customer_tier: CLIENT_TIER_MAP[rootEntityId] ?? null,
       },
     };
   });
@@ -333,7 +333,7 @@ export function buildInitialDb() {
     const entity = entityById.get(p.entity_id);
     return {
       ...p,
-      client_id:    entity?.client_id ?? null,
+      root_entity_id:    entity?.root_entity_id ?? null,
       relation_type: entity?.relation_type ?? null,
     };
   });

@@ -32,7 +32,7 @@ const STATUS_OPTIONS = ['pending', 'done', 'rejected'];
 const TYPE_OPTIONS   = ['remediation_failure', 'approval_required', 'manual_recommendation'];
 
 // Text/select keys that should be cleared (to '') when deactivated.
-const TEXT_SELECT_KEYS = ['search', 'status', 'taskType', 'clientId'];
+const TEXT_SELECT_KEYS = ['search', 'status', 'taskType', 'rootEntityId'];
 
 export default function TaskFilterBar() {
   const mockDb = useMockData();
@@ -74,7 +74,7 @@ export default function TaskFilterBar() {
     taskFilters.taskType ||
     taskFilters.search   ||
     taskFilters.phoneId  != null ||
-    taskFilters.clientId != null ||
+    taskFilters.rootEntityId != null ||
     taskFilters.openOnly;
 
   const selectClass =
@@ -123,10 +123,10 @@ export default function TaskFilterBar() {
         </select>
       )}
 
-      {activeKeys.has('clientId') && (
+      {activeKeys.has('rootEntityId') && (
         <select
-          value={taskFilters.clientId ?? ''}
-          onChange={(e) => updateTaskFilters({ clientId: e.target.value || null })}
+          value={taskFilters.rootEntityId ?? ''}
+          onChange={(e) => updateTaskFilters({ rootEntityId: e.target.value || null })}
           className={selectClass}
         >
           <option value="">{FILTER_ALL_CLIENTS}</option>
@@ -159,9 +159,9 @@ export default function TaskFilterBar() {
           {TASK_FILTER_PHONE_CHIP(taskFilters.phoneId)}
         </span>
       )}
-      {taskFilters.clientId != null && !activeKeys.has('clientId') && (
+      {taskFilters.rootEntityId != null && !activeKeys.has('rootEntityId') && (
         <span className="inline-flex items-center gap-1 h-9 px-2.5 text-xs rounded-md border border-sky-200 bg-sky-50 text-sky-800">
-          {TASK_FILTER_CLIENT_CHIP(taskFilters.clientId)}
+          {TASK_FILTER_CLIENT_CHIP(taskFilters.rootEntityId)}
         </span>
       )}
       {taskFilters.openOnly && (

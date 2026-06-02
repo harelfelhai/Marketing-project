@@ -1,8 +1,8 @@
 /**
- * clientRegistry.js — maps string client_id values to UI display metadata.
+ * clientRegistry.js — maps string root_entity_id values to UI display metadata.
  *
  * Two-level model: a "client" IS a root entity (target_entity_id IS NULL),
- * and client_id is the DERIVED value target_entity_id ?? id. The keys here are
+ * and root_entity_id is the DERIVED value target_entity_id ?? id. The keys here are
  * therefore the ids of the root entities that head each client's envelope.
  * Human-readable client names live here — exclusively in the frontend config
  * layer — and (aside from the seed's extra_data names) never appear in the
@@ -73,7 +73,7 @@ export const CLIENT_REGISTRY = [
 ];
 
 /**
- * Fast lookup by string client_id. Returns undefined for unknown ids.
+ * Fast lookup by string root_entity_id. Returns undefined for unknown ids.
  * @param {number|null|undefined} id
  * @returns {ClientConfig|undefined}
  */
@@ -82,7 +82,7 @@ export function getClientById(id) {
 }
 
 /**
- * Display name for a client_id, with fallback for unassigned/unknown ids.
+ * Display name for a root_entity_id, with fallback for unassigned/unknown ids.
  * @param {number|null|undefined} id
  * @returns {string}
  */

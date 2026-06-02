@@ -12,14 +12,14 @@ import { getClientName } from '../../src/config/clientRegistry';
 
 describe('enrichPhone', () => {
   it('attaches client_name to a PhoneSummary', () => {
-    const phone = { id: 1, client_id: 2, phone_number: '+1-x' };
+    const phone = { id: 1, root_entity_id: 2, phone_number: '+1-x' };
     const result = enrichPhone(phone);
     expect(result.client_name).toBe(getClientName(2));
     expect(result.phone_number).toBe('+1-x');
   });
 
   it('does not mutate the input', () => {
-    const phone = { id: 1, client_id: 1 };
+    const phone = { id: 1, root_entity_id: 1 };
     enrichPhone(phone);
     expect('client_name' in phone).toBe(false);
   });
@@ -31,7 +31,7 @@ describe('enrichPhoneDetail', () => {
     const detail = {
       id: 1,
       phone_number: '+1-x',
-      entity: { id: 5, entity_type: 'target', client_id: 3 },
+      entity: { id: 5, entity_type: 'target', root_entity_id: 3 },
       action_timeline: [],
     };
     const result = enrichPhoneDetail(detail);

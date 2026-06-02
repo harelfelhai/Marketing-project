@@ -39,7 +39,7 @@ export default function PhoneDetailDrawer({ phoneId, onClose }) {
   if (!phone) return null;
 
   const entity = entities.find((e) => e.id === phone.entity_id) || null;
-  const client = entity ? clients.find((c) => c.id === entity.client_id) || null : null;
+  const client = entity ? clients.find((c) => c.id === entity.root_entity_id) || null : null;
   // Phase DX cross-link — tasks attached to this phone (any status).
   const taskCount = tasks.filter((t) => t.phone_id === phoneId).length;
 

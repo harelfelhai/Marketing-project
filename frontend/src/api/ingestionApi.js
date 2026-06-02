@@ -55,7 +55,7 @@ export async function ingestCircleMember(payload, mockDb) {
  *
  * @param {object} payload   Matches BulkTextIngestRequest:
  *   - phone_numbers_raw (string, required)
- *   - client_id         (number, required)
+ *   - root_entity_id         (number, required)
  *   - entity_type       (string, required)
  *   - ingestion_source  (string, required)
  *   - target_entity_id  (number, optional)
@@ -179,7 +179,7 @@ export async function getBulkTemplate() {
     // CSV mirror of the backend template's "data" sheet: header + 3 examples.
     // Operators ingest a populated copy of this file via the upload tab.
     const csvLines = [
-      'phone_number,client_id,relation_type,ingestion_source,target_entity_id',
+      'phone_number,root_entity_id,relation_type,ingestion_source,target_entity_id',
       '+14155551111,1,family,manual,',
       '+14155551112,1,friend,manual,',
       '+14155551113,2,associated,automated,',
