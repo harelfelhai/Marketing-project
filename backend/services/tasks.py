@@ -157,12 +157,17 @@ class PipelineTaskService:
         q: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
+        custom_where: Optional[dict] = None,
     ) -> Tuple[List[TaskJoinRow], int]:
         """
         Paginated PipelineTask listing with entity JOIN for full_name + identifiers.
         Hides soft-deleted tasks. Returns (rows, total).
+
+        `custom_where` carries already-validated admin-defined filter clauses
+        (see services/generic_filters.py), merged straight into the DSL query.
         """
-        where: dict = {"deleted_at": SOFT_DELETE_SENTINEL}
+        where: dict = dict(custom_where or {})
+        where["deleted_at"] = SOFT_DELETE_SENTINEL
         if status_filter is not None:
             where["status"] = status_filter
         if task_type_filter is not None:

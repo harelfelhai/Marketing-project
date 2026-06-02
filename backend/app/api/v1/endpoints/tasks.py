@@ -35,8 +35,10 @@ from exceptions import (
     PipelineTaskNotFoundError,
     TaskStateTransitionError,
 )
+from models.pipeline_task import PipelineTask
 from models.types import SOFT_DELETE_SENTINEL
 from services.export import ExportService
+from services.generic_filters import parse_filters, row_matches
 from services.read_model.manager import read_model_manager
 from services.tasks import PipelineTaskService, TaskJoinRow
 
@@ -90,6 +92,7 @@ def list_tasks(
     phone_id: Optional[str] = Query(default=None),
     exclude_terminal: bool = Query(default=False),
     q: Optional[str] = Query(default=None, max_length=200),
+    filters: Optional[str] = Query(default=None, max_length=4000),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
@@ -98,6 +101,7 @@ def list_tasks(
     Fast path (production): served from the in-memory ReadModelStore.
     Fallback path (tests / startup failure): DB queries via PipelineTaskService.
     """
+    custom_where = parse_filters(filters, PipelineTask)
     mgr = read_model_manager
     if mgr.started:
         # ── Memory path ──────────────────────────────────────────────
@@ -112,6 +116,8 @@ def list_tasks(
             tasks = [t for t in tasks if t.phone_id == phone_id]
         if exclude_terminal and status_filter is None:
             tasks = [t for t in tasks if t.status not in _TERMINAL_STATUSES]
+        if custom_where:
+            tasks = [t for t in tasks if row_matches(t, custom_where)]
 
         needle = q.strip().lower() if q else None
         rows: list[TaskJoinRow] = []
@@ -146,6 +152,7 @@ def list_tasks(
             q=q,
             page=page,
             page_size=page_size,
+            custom_where=custom_where,
         )
 
     return PipelineTaskListResponse(

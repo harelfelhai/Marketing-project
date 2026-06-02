@@ -48,6 +48,7 @@ from models.phone_number import PhoneNumber
 from models.types import SOFT_DELETE_SENTINEL
 from services.bulk_ingestion import BulkIngestionService
 from services.export import ExportService
+from services.generic_filters import parse_filters, row_matches
 from services.ingestion import IngestionService
 from services.read_model.manager import read_model_manager
 
@@ -69,6 +70,7 @@ def list_phones(
     ingestion_source: Optional[str] = Query(default=None),
     phone_type: Optional[str] = Query(default=None),
     q: Optional[str] = Query(default=None, max_length=200),
+    filters: Optional[str] = Query(default=None, max_length=4000),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1),
     include_deleted: bool = Query(default=False),
@@ -81,6 +83,7 @@ def list_phones(
     zero DB queries per request.
     Fallback path (tests / startup failure): two DB queries as before.
     """
+    custom_where = parse_filters(filters, PhoneNumber)
     mgr = read_model_manager
     if mgr.started:
         # ── Memory path ──────────────────────────────────────────────
@@ -99,9 +102,11 @@ def list_phones(
             phones = [p for p in phones if p.ingestion_source == ingestion_source]
         if phone_type is not None:
             phones = [p for p in phones if p.phone_type == phone_type]
+        if custom_where:
+            phones = [p for p in phones if row_matches(p, custom_where)]
     else:
         # ── DB fallback ───────────────────────────────────────────────
-        phone_where: dict = {}
+        phone_where: dict = dict(custom_where)
         if not include_deleted:
             phone_where["deleted_at"] = SOFT_DELETE_SENTINEL
         if verification_status is not None:

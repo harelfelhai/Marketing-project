@@ -183,6 +183,64 @@ class TestListPhones:
         assert body["items"] == []
 
 
+    def test_custom_extra_data_filter(self, client):
+        """The opaque `filters` param filters on an extra_data key."""
+        tc, session = client
+        ent = Entity(relation_type="primary", deleted_at=not_deleted())
+        session.add(ent)
+        session.flush()
+        session.add(PhoneNumber(
+            entity_id=ent.id, phone_number="+15550000001",
+            ingestion_source="manual", score=0.0, deleted_at=not_deleted(),
+            extra_data={"region": "north"},
+        ))
+        session.add(PhoneNumber(
+            entity_id=ent.id, phone_number="+15550000002",
+            ingestion_source="manual", score=0.0, deleted_at=not_deleted(),
+            extra_data={"region": "south"},
+        ))
+        session.commit()
+
+        r = tc.get("/api/v1/phones",
+                   params={"filters": '{"extra_data.region": "north"}'})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["total"] == 1
+        assert body["items"][0]["phone_number"] == "+15550000001"
+
+    def test_custom_filter_contains(self, client):
+        tc, session = client
+        ent = Entity(relation_type="primary", deleted_at=not_deleted())
+        session.add(ent)
+        session.flush()
+        session.add(PhoneNumber(
+            entity_id=ent.id, phone_number="+15550000003",
+            ingestion_source="manual", score=0.0, deleted_at=not_deleted(),
+            extra_data={"batch": "Q3-2026"},
+        ))
+        session.commit()
+        r = tc.get("/api/v1/phones",
+                   params={"filters": '{"extra_data.batch": {"contains": "Q3"}}'})
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_malformed_filters_param_ignored(self, client):
+        """A junk `filters` payload is dropped, not a 500."""
+        tc, session = client
+        _seed_entity_and_phone(session)
+        r = tc.get("/api/v1/phones", params={"filters": "{not-json"})
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_disallowed_filter_field_ignored(self, client):
+        """An unknown field in `filters` is silently dropped (no filtering)."""
+        tc, session = client
+        _seed_entity_and_phone(session)
+        r = tc.get("/api/v1/phones", params={"filters": '{"bogus_col": "x"}'})
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+
 # ===========================================================================
 # Phones — GET detail
 # ===========================================================================

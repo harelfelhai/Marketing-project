@@ -78,6 +78,7 @@ class DataAdminService:
         target_entity_id: Optional[str] = None,
         include_deleted: bool = False,
         q: Optional[str] = None,
+        custom_where: Optional[dict] = None,
     ) -> list[Entity]:
         """
         Read-side query for the Entities view tab.
@@ -87,8 +88,11 @@ class DataAdminService:
           - include_deleted   →  default False, hides tombstones
           - q                 →  substring match on full_name, identifier_1,
                                    identifier_2
+          - custom_where      →  already-validated admin-defined filter clauses
+                                   (see services/generic_filters.py), merged
+                                   straight into the DSL query
         """
-        where: dict = {}
+        where: dict = dict(custom_where or {})
         if not include_deleted:
             where["deleted_at"] = SOFT_DELETE_SENTINEL
         if target_entity_id is not None:

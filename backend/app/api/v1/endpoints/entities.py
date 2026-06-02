@@ -34,7 +34,9 @@ from schemas.entity_ingestion import (
 )
 from services.data_admin import DataAdminService
 from services.entity_ingestion import EntityIngestionService
+from services.generic_filters import parse_filters, row_matches
 from services.read_model.manager import read_model_manager
+from models.entity import Entity
 from models.types import SOFT_DELETE_SENTINEL
 
 router = APIRouter()
@@ -204,6 +206,7 @@ def list_entities(
     root_entity_ids: Optional[List[str]] = Query(default=None),
     include_deleted: bool = Query(default=False),
     q: Optional[str] = Query(default=None),
+    filters: Optional[str] = Query(default=None, max_length=4000),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     """
@@ -214,6 +217,7 @@ def list_entities(
     personalization view). An entity's root is its own id (for a root entity)
     or its target_entity_id (for a member).
     """
+    custom_where = parse_filters(filters, Entity)
     mgr = read_model_manager
     if mgr.started:
         # ── Memory path ──────────────────────────────────────────────
@@ -222,6 +226,8 @@ def list_entities(
             rows = [e for e in rows if e.deleted_at == SOFT_DELETE_SENTINEL]
         if target_entity_id is not None:
             rows = [e for e in rows if e.target_entity_id == target_entity_id]
+        if custom_where:
+            rows = [e for e in rows if row_matches(e, custom_where)]
         if q:
             needle = q.strip().lower()
             def _hay(e) -> str:
@@ -237,6 +243,7 @@ def list_entities(
             target_entity_id=target_entity_id,
             include_deleted=include_deleted,
             q=q,
+            custom_where=custom_where,
         )
 
     # Root scoping applies to both paths. Derive each entity's root id
