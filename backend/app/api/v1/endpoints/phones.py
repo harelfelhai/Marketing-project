@@ -49,6 +49,7 @@ from models.types import SOFT_DELETE_SENTINEL
 from services.bulk_ingestion import BulkIngestionService
 from services.export import ExportService
 from services.ingestion import IngestionService
+from services.read_model.manager import read_model_manager
 
 router = APIRouter()
 
@@ -75,31 +76,54 @@ def list_phones(
 ) -> PhoneListResponse:
     """
     Paginated phone number listing joined with owning Entity.
+
+    Fast path (production): served from the in-memory ReadModelStore,
+    zero DB queries per request.
+    Fallback path (tests / startup failure): two DB queries as before.
     """
-    phone_where: dict = {}
-    if not include_deleted:
-        phone_where["deleted_at"] = SOFT_DELETE_SENTINEL
-    if verification_status is not None:
-        phone_where["verification_status"] = verification_status
-    if ingestion_source is not None:
-        phone_where["ingestion_source"] = ingestion_source
-    if phone_type is not None:
-        phone_where["phone_type"] = phone_type
+    mgr = read_model_manager
+    if mgr.started:
+        # ── Memory path ──────────────────────────────────────────────
+        phones   = list(mgr.store.all_phones)
+        entities = mgr.store.entities_by_id
+        if not include_deleted:
+            phones = [
+                p for p in phones
+                if p.deleted_at == SOFT_DELETE_SENTINEL
+                and entities.get(p.entity_id) is not None
+                and entities[p.entity_id].deleted_at == SOFT_DELETE_SENTINEL
+            ]
+        if verification_status is not None:
+            phones = [p for p in phones if p.verification_status == verification_status]
+        if ingestion_source is not None:
+            phones = [p for p in phones if p.ingestion_source == ingestion_source]
+        if phone_type is not None:
+            phones = [p for p in phones if p.phone_type == phone_type]
+    else:
+        # ── DB fallback ───────────────────────────────────────────────
+        phone_where: dict = {}
+        if not include_deleted:
+            phone_where["deleted_at"] = SOFT_DELETE_SENTINEL
+        if verification_status is not None:
+            phone_where["verification_status"] = verification_status
+        if ingestion_source is not None:
+            phone_where["ingestion_source"] = ingestion_source
+        if phone_type is not None:
+            phone_where["phone_type"] = phone_type
+        phones = storage.phones.list(phone_where)
+        entity_ids = list({p.entity_id for p in phones})
+        entities: dict = {}
+        if entity_ids:
+            ent_rows = storage.entities.list({"id": {"in": entity_ids}})
+            entities = {e.id: e for e in ent_rows}
+        if not include_deleted:
+            phones = [
+                p for p in phones
+                if entities.get(p.entity_id) is not None
+                and entities[p.entity_id].deleted_at == SOFT_DELETE_SENTINEL
+            ]
 
-    phones = storage.phones.list(phone_where)
-
-    # Build entity lookup
-    entity_ids = list({p.entity_id for p in phones})
-    entities: dict = {}
-    if entity_ids:
-        ent_rows = storage.entities.list({"id": {"in": entity_ids}})
-        entities = {e.id: e for e in ent_rows}
-
-    if not include_deleted:
-        phones = [p for p in phones if entities.get(p.entity_id) is not None
-                  and entities[p.entity_id].deleted_at == SOFT_DELETE_SENTINEL]
-
-    # Free-text filter
+    # ── Common: free-text, sort, paginate, build items ────────────────
     if q:
         needle = q.strip().lower()
         def _hay(ph):
@@ -111,15 +135,12 @@ def list_phones(
             ])).lower()
         phones = [p for p in phones if needle in _hay(p)]
 
-    # Sort by score desc, then id desc
     phones.sort(key=lambda p: (p.score, p.id), reverse=True)
 
-    total = len(phones)
+    total  = len(phones)
     offset = (page - 1) * page_size
-    page_phones = phones[offset: offset + page_size]
-
-    items = []
-    for phone in page_phones:
+    items  = []
+    for phone in phones[offset: offset + page_size]:
         ent = entities.get(phone.entity_id)
         items.append(
             PhoneSummary(
@@ -256,6 +277,7 @@ def bulk_text_ingest(
         )
     except TargetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    read_model_manager.reload()
     return BulkIngestSummary.model_validate(summary)
 
 
@@ -290,6 +312,7 @@ async def bulk_upload_ingest(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    read_model_manager.reload()
     return BulkIngestSummary.model_validate(summary)
 
 
@@ -342,6 +365,7 @@ def admin_patch_phone(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
     return _phone_to_dict(ph)
 
 
@@ -357,6 +381,7 @@ def soft_delete_phone(
         ph = admin.soft_delete_phone(phone_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
     return _phone_to_dict(ph)
 
 
@@ -372,6 +397,7 @@ def restore_phone(
         ph = admin.restore_phone(phone_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
     return _phone_to_dict(ph)
 
 
@@ -404,4 +430,5 @@ def quick_attach_phone(
         )
     except TargetNotFoundError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    read_model_manager.reload()
     return _phone_to_dict(ph)

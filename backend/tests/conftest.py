@@ -42,6 +42,22 @@ def _reset_read_cache():
     cache.reset()
 
 
+@pytest.fixture(autouse=True)
+def _disable_read_model_manager():
+    """
+    The ReadModelManager is a process-wide singleton that loads data from the
+    production DB at startup.  Disabling it per-test ensures the manager never
+    reads from the wrong DB; list endpoints fall back to the DB path, which
+    respects FastAPI dependency overrides pointing at the test's in-memory DB.
+    """
+    from services.read_model.manager import read_model_manager
+    read_model_manager.disable_for_tests()
+    yield
+    # Leave disabled — each test gets a fresh disable call; production code
+    # is never affected since tests don't call start() after disable_for_tests().
+    read_model_manager.disable_for_tests()
+
+
 @pytest.fixture()
 def engine():
     """

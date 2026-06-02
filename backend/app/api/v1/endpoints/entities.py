@@ -34,6 +34,8 @@ from schemas.entity_ingestion import (
 )
 from services.data_admin import DataAdminService
 from services.entity_ingestion import EntityIngestionService
+from services.read_model.manager import read_model_manager
+from models.types import SOFT_DELETE_SENTINEL
 
 router = APIRouter()
 
@@ -88,6 +90,7 @@ def create_single_entity(
             detail=str(exc),
         ) from exc
 
+    read_model_manager.reload()
     return EntitySingleCreateOut(
         id=new_entity.id,
         relation_type=new_entity.relation_type,
@@ -131,6 +134,7 @@ def bulk_text_ingest(
             detail=str(exc),
         ) from exc
 
+    read_model_manager.reload()
     return BulkIngestSummary.model_validate(summary)
 
 
@@ -160,6 +164,7 @@ async def bulk_upload_ingest(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+    read_model_manager.reload()
     return BulkIngestSummary.model_validate(summary)
 
 
@@ -200,11 +205,35 @@ def list_entities(
     q: Optional[str] = Query(default=None),
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
-    rows = admin.list_entities(
-        target_entity_id=target_entity_id,
-        include_deleted=include_deleted,
-        q=q,
-    )
+    """
+    Fast path (production): served from the in-memory ReadModelStore.
+    Fallback path (tests / startup failure): one DB query via DataAdminService.
+    """
+    mgr = read_model_manager
+    if mgr.started:
+        # ── Memory path ──────────────────────────────────────────────
+        rows = list(mgr.store.all_entities)
+        if not include_deleted:
+            rows = [e for e in rows if e.deleted_at == SOFT_DELETE_SENTINEL]
+        if target_entity_id is not None:
+            rows = [e for e in rows if e.target_entity_id == target_entity_id]
+        if q:
+            needle = q.strip().lower()
+            def _hay(e) -> str:
+                return " ".join(filter(None, [
+                    e.full_name or "", e.identifier_1 or "",
+                    e.identifier_2 or "", e.id,
+                ])).lower()
+            rows = [e for e in rows if needle in _hay(e)]
+        rows.sort(key=lambda e: e.id, reverse=True)
+    else:
+        # ── DB fallback ───────────────────────────────────────────────
+        rows = admin.list_entities(
+            target_entity_id=target_entity_id,
+            include_deleted=include_deleted,
+            q=q,
+        )
+
     return {"items": [_entity_to_dict(r) for r in rows], "total": len(rows)}
 
 
@@ -244,6 +273,7 @@ def patch_entity(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
     return _entity_to_dict(ent)
 
 
@@ -256,9 +286,11 @@ def soft_delete_entity(
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
-        return admin.soft_delete_entity(entity_id)
+        result = admin.soft_delete_entity(entity_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
+    return result
 
 
 @router.post(
@@ -270,6 +302,8 @@ def restore_entity(
     admin: DataAdminService = Depends(get_data_admin_service),
 ) -> dict:
     try:
-        return admin.restore_entity(entity_id)
+        result = admin.restore_entity(entity_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
+    return result

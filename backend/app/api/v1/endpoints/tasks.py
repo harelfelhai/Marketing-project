@@ -35,8 +35,12 @@ from exceptions import (
     PipelineTaskNotFoundError,
     TaskStateTransitionError,
 )
+from models.types import SOFT_DELETE_SENTINEL
 from services.export import ExportService
+from services.read_model.manager import read_model_manager
 from services.tasks import PipelineTaskService, TaskJoinRow
+
+_TERMINAL_STATUSES = frozenset({"done", "rejected"})
 
 
 _XLSX_MEDIA_TYPE = (
@@ -90,17 +94,62 @@ def list_tasks(
     page_size: int = Query(default=20, ge=1, le=500),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskListResponse:
-    rows, total = service.list_tasks_with_join(
-        status_filter=status_filter,
-        task_type_filter=task_type,
-        phone_id_filter=phone_id,
-        exclude_terminal=exclude_terminal,
-        q=q,
-        page=page,
-        page_size=page_size,
-    )
+    """
+    Fast path (production): served from the in-memory ReadModelStore.
+    Fallback path (tests / startup failure): DB queries via PipelineTaskService.
+    """
+    mgr = read_model_manager
+    if mgr.started:
+        # ── Memory path ──────────────────────────────────────────────
+        tasks    = [t for t in mgr.store.all_tasks if t.deleted_at == SOFT_DELETE_SENTINEL]
+        entities = mgr.store.entities_by_id
+
+        if status_filter is not None:
+            tasks = [t for t in tasks if t.status == status_filter]
+        if task_type is not None:
+            tasks = [t for t in tasks if t.task_type == task_type]
+        if phone_id is not None:
+            tasks = [t for t in tasks if t.phone_id == phone_id]
+        if exclude_terminal and status_filter is None:
+            tasks = [t for t in tasks if t.status not in _TERMINAL_STATUSES]
+
+        needle = q.strip().lower() if q else None
+        rows: list[TaskJoinRow] = []
+        for task in tasks:
+            entity = entities.get(task.entity_id)
+            if needle is not None:
+                hay = " ".join(str(x or "") for x in (
+                    task.phone_number, task.entity_id,
+                    entity.full_name if entity else None,
+                    entity.identifier_1 if entity else None,
+                )).lower()
+                if needle not in hay:
+                    continue
+            rows.append((
+                task,
+                entity.full_name if entity else None,
+                entity.identifier_1 if entity else None,
+                entity.identifier_2 if entity else None,
+            ))
+
+        rows.sort(key=lambda r: r[0].id, reverse=True)
+        total  = len(rows)
+        offset = (page - 1) * page_size
+        page_rows = rows[offset: offset + page_size]
+    else:
+        # ── DB fallback ───────────────────────────────────────────────
+        page_rows, total = service.list_tasks_with_join(
+            status_filter=status_filter,
+            task_type_filter=task_type,
+            phone_id_filter=phone_id,
+            exclude_terminal=exclude_terminal,
+            q=q,
+            page=page,
+            page_size=page_size,
+        )
+
     return PipelineTaskListResponse(
-        items=[_row_to_response(r) for r in rows],
+        items=[_row_to_response(r) for r in page_rows],
         total=total,
         page=page,
         page_size=page_size,
@@ -146,6 +195,7 @@ def open_task(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
+    read_model_manager.reload()
     return _row_to_response(service.get_task_with_join(task_id=task.id))
 
 
@@ -191,6 +241,7 @@ def bulk_resolve_tasks(
         outcome=body.outcome,
         resolution_note=body.resolution_note,
     )
+    read_model_manager.reload()
     return BulkResolveTaskResponse.model_validate(summary)
 
 
@@ -217,4 +268,5 @@ def resolve_task(
     except TaskStateTransitionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
+    read_model_manager.reload()
     return _row_to_response(service.get_task_with_join(task_id=task_id))

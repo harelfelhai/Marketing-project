@@ -97,6 +97,17 @@ def on_startup() -> None:
     finally:
         db.close()
 
+    # Phase RM — start the in-memory ReadModelStore.
+    # Three table scans execute synchronously so the first request is already
+    # served from memory.  Background polling (every 120 s) keeps the store
+    # fresh for external changes.  Best-effort: a failure here never blocks
+    # startup.
+    try:
+        from services.read_model.manager import read_model_manager
+        read_model_manager.start()
+    except Exception:  # noqa: BLE001
+        pass
+
 # ------------------------------------------------------------------
 # Routers — Milestone 4: v1 API
 # ------------------------------------------------------------------
