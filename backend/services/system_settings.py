@@ -126,6 +126,29 @@ class SystemSettingsService:
                 out[surface] = [f for f in fields if isinstance(f, str)]
         return out
 
+    def _read_display_labels(self) -> dict:
+        """
+        Return the persisted per-surface column-label overrides.
+
+        Shape: { "<surface>": { "<field_key>": "<label>", ... }, ... }.
+        Opaque to the backend — it stores whatever the frontend sends and
+        never interprets the labels. A missing surface / key means the
+        frontend uses its default label for that column.
+        """
+        raw = self._read_all().get("display_labels", {})
+        if not isinstance(raw, dict):
+            return {}
+        out: dict = {}
+        for surface, labels in raw.items():
+            if isinstance(surface, str) and isinstance(labels, dict):
+                clean = {
+                    k: v for k, v in labels.items()
+                    if isinstance(k, str) and isinstance(v, str)
+                }
+                if clean:
+                    out[surface] = clean
+        return out
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -148,6 +171,7 @@ class SystemSettingsService:
                 for b in KNOWN_BACKENDS
             ],
             "display_fields": self._read_display_fields(),
+            "display_labels": self._read_display_labels(),
             "vocabularies": self._read_vocabularies(),
             "mongo_configured": self._read_mongo_url() is not None,
             "applies_on_restart": True,
@@ -199,6 +223,38 @@ class SystemSettingsService:
             display = {}
         display[surface.strip()] = list(fields)
         data["display_fields"] = display
+        self._write_all(data)
+        return self.get()
+
+    def set_display_labels(self, surface: str, labels: dict) -> dict:
+        """
+        Persist column-label overrides for one surface.
+
+        Like display_fields, the backend stays opaque: it validates only the
+        shape (non-empty surface, a dict of str->str) and stores it verbatim.
+        An empty dict clears the surface's overrides entirely so columns
+        revert to their frontend default labels.
+
+        Raises:
+            ValueError: malformed surface name or labels map.
+        """
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError("surface must be a non-empty string.")
+        if not isinstance(labels, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in labels.items()
+        ):
+            raise ValueError("labels must be a map of string keys to string values.")
+        data = self._read_all()
+        store = data.get("display_labels")
+        if not isinstance(store, dict):
+            store = {}
+        cleaned = {k: v for k, v in labels.items() if v.strip()}
+        if cleaned:
+            store[surface.strip()] = cleaned
+        else:
+            # Empty / all-blank overrides → drop the surface entry entirely.
+            store.pop(surface.strip(), None)
+        data["display_labels"] = store
         self._write_all(data)
         return self.get()
 

@@ -101,6 +101,19 @@ export function defaultFieldKeys(surfaceId) {
 
 
 /**
+ * The effective label for a column: an admin override (from
+ * settings.display_labels) wins over the catalog default.
+ *
+ * @param {DisplayColumn} col
+ * @param {Record<string,string>|undefined} surfaceLabels  overrides for this surface
+ * @returns {DisplayColumn} the column with its label resolved
+ */
+function _withLabel(col, surfaceLabels) {
+  const override = surfaceLabels && surfaceLabels[col.key];
+  return override && override.trim() ? { ...col, label: override } : col;
+}
+
+/**
  * Resolve the ordered, visible columns for a surface given the persisted
  * per-surface selection (from system settings).
  *
@@ -108,20 +121,26 @@ export function defaultFieldKeys(surfaceId) {
  *   keys the current catalog still knows (graceful catalog drift).
  * - No saved selection (or it filtered down to nothing) → the catalog
  *   defaults, so behaviour is identical to before any configuration.
+ * - Per-column label overrides (settings.display_labels) are applied on top,
+ *   so admins can rename columns without a code change.
  *
  * @param {string} surfaceId
  * @param {Record<string,string[]>|null|undefined} displayFields  settings.display_fields
+ * @param {Record<string,Record<string,string>>|null|undefined} displayLabels settings.display_labels
  * @returns {DisplayColumn[]}
  */
-export function resolveVisibleColumns(surfaceId, displayFields) {
+export function resolveVisibleColumns(surfaceId, displayFields, displayLabels) {
   const surface = DISPLAY_SURFACES[surfaceId];
   if (!surface) return [];
   const byKey = new Map(surface.columns.map((c) => [c.key, c]));
+  const surfaceLabels = displayLabels && displayLabels[surfaceId];
 
   const selected = displayFields && displayFields[surfaceId];
   if (Array.isArray(selected)) {
     const cols = selected.map((k) => byKey.get(k)).filter(Boolean);
-    if (cols.length) return cols;
+    if (cols.length) return cols.map((c) => _withLabel(c, surfaceLabels));
   }
-  return surface.columns.filter((c) => c.default);
+  return surface.columns
+    .filter((c) => c.default)
+    .map((c) => _withLabel(c, surfaceLabels));
 }

@@ -1003,8 +1003,9 @@ export const SYSSET_MONGO_UPDATE_PROMPT      = 'עדכון כתובת חיבור
 export const SURFACE_LABEL_ENTITIES         = 'טבלת ישויות';
 export const SYSSET_FIELDS_TITLE            = 'שדות תצוגה';
 export const SYSSET_FIELDS_DESC             =
-  'בחר אילו שדות יוצגו בכל טבלה, וסדר אותם. השינוי נשמר ומשפיע מיד על התצוגה.';
+  'בחר אילו שדות יוצגו בכל טבלה, סדר אותם, ושנה את שמות העמודות. השינוי נשמר ומשפיע מיד על התצוגה.';
 export const SYSSET_FIELDS_VISIBLE          = 'מוצג';
+export const SYSSET_FIELDS_LABEL_PLACEHOLDER = (name) => `שם ברירת מחדל: ${name}`;
 export const SYSSET_FIELDS_MOVE_UP          = 'הזז למעלה';
 export const SYSSET_FIELDS_MOVE_DOWN        = 'הזז למטה';
 export const SYSSET_FIELDS_TOAST_SAVED      = 'שדות התצוגה נשמרו.';

@@ -254,6 +254,14 @@ class SystemSettingsResponse(BaseModel):
         default_factory=dict,
         description="Per-surface visible-field selections.",
     )
+    display_labels: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-surface column-label overrides: { surface: { field_key: label } }. "
+            "Opaque to the backend; the frontend applies these over its default "
+            "labels so admins can rename columns without a code change."
+        ),
+    )
     vocabularies: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Current vocabulary lists keyed by vocabulary name.",
@@ -296,6 +304,21 @@ class DisplayFieldsUpdate(BaseModel):
     )
     fields: list[str] = Field(
         ..., description="Ordered list of visible field keys for the surface."
+    )
+
+
+class DisplayLabelsUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings/display-labels."""
+
+    surface: str = Field(
+        ..., description="Surface id whose column labels are being overridden (e.g. 'entities')."
+    )
+    labels: dict[str, str] = Field(
+        ...,
+        description=(
+            "Map of field_key -> custom label. Keys absent from this map keep "
+            "their frontend default label. An empty map clears all overrides."
+        ),
     )
 
 

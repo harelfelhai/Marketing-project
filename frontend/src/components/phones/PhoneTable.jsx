@@ -94,17 +94,22 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   const { phoneFilters } = useUI();
 
   const [displayFields, setDisplayFields] = useState(null);
+  const [displayLabels, setDisplayLabels] = useState(null);
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
-      .then((s) => { if (alive) setDisplayFields(s.display_fields || {}); })
-      .catch(() => { if (alive) setDisplayFields({}); });
+      .then((s) => {
+        if (!alive) return;
+        setDisplayFields(s.display_fields || {});
+        setDisplayLabels(s.display_labels || {});
+      })
+      .catch(() => { if (alive) { setDisplayFields({}); setDisplayLabels({}); } });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const visibleCols = useMemo(
-    () => resolveVisibleColumns('phones', displayFields),
-    [displayFields],
+    () => resolveVisibleColumns('phones', displayFields, displayLabels),
+    [displayFields, displayLabels],
   );
   const visibleKeys = useMemo(
     () => new Set(visibleCols.map((c) => c.key)),

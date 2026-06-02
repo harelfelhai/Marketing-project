@@ -109,6 +109,26 @@ export async function updateDisplayFields(surface, fields, mockDb) {
 }
 
 /**
+ * updateDisplayLabels — override the column labels for one surface
+ * (e.g. 'entities'). Returns the full updated settings object.
+ *
+ * @param {string}                 surface  Surface id.
+ * @param {Record<string,string>}  labels   field_key -> custom label. Empty
+ *                                           map (or all-blank values) clears
+ *                                           the surface's overrides.
+ * @param {object}                 mockDb   MockDataContext instance.
+ */
+export async function updateDisplayLabels(surface, labels, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/display-labels',
+                                         { surface, labels });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateDisplayLabels(surface, labels);
+}
+
+/**
  * updateFilterFields — set the ordered active-filter selection for one
  * surface (e.g. 'phones'). Returns the full updated settings object.
  *

@@ -377,6 +377,10 @@ export const SEED_SYSTEM_SETTINGS = {
   // catalog defaults (src/config/displayFields.js). Admins edit these from
   // the System Settings tab; they persist via /system/settings/display-fields.
   display_fields: {},
+  // Per-surface column-label overrides: { surface: { field_key: label } }.
+  // Empty = each surface uses its catalog default labels. Admins edit these
+  // from the System Settings tab; they persist via /settings/display-labels.
+  display_labels: {},
   // Per-surface active filter selections. Empty = each surface uses its
   // catalog defaults (src/config/filterFields.js). Admins edit these from
   // the System Settings tab; they persist via /system/settings/filter-fields.

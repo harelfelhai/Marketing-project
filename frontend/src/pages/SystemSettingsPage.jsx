@@ -23,7 +23,7 @@ import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
 import {
   getSystemSettings, updateSystemSettings, updateDisplayFields,
-  updateFilterFields, updateMongoUrl,
+  updateDisplayLabels, updateFilterFields, updateMongoUrl,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
@@ -36,7 +36,7 @@ import {
   SYSSET_TOAST_SAVED, SYSSET_TOAST_ERROR,
   SYSSET_FIELDS_TITLE, SYSSET_FIELDS_DESC, SYSSET_FIELDS_MOVE_UP,
   SYSSET_FIELDS_MOVE_DOWN, SYSSET_FIELDS_TOAST_SAVED, SYSSET_FIELDS_TOAST_ERROR,
-  SYSSET_FIELDS_RESET,
+  SYSSET_FIELDS_RESET, SYSSET_FIELDS_LABEL_PLACEHOLDER,
   SYSSET_MONGO_TITLE, SYSSET_MONGO_DESC, SYSSET_MONGO_URL_LABEL,
   SYSSET_MONGO_URL_PLACEHOLDER, SYSSET_MONGO_CONFIGURED_BADGE,
   SYSSET_MONGO_NOT_CONFIGURED, SYSSET_MONGO_BTN_TEST, SYSSET_MONGO_BTN_TESTING,
@@ -209,6 +209,7 @@ export default function SystemSettingsPage() {
               key={surface.id}
               surface={surface}
               initialSelection={settings.display_fields?.[surface.id]}
+              initialLabels={settings.display_labels?.[surface.id]}
               mockDb={mockDb}
               pushToast={pushToast}
             />
@@ -380,7 +381,7 @@ function MongoUrlEditor({ initialConfigured, mockDb, pushToast, onSaved }) {
  * Pure config (catalog keys + labels); the selection persists via
  * updateDisplayFields and takes effect on the surface immediately.
  */
-function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
+function DisplayFieldsEditor({ surface, initialSelection, initialLabels, mockDb, pushToast }) {
   const catalogKeys = surface.columns.map((c) => c.key);
   const labelOf = useMemo(
     () => Object.fromEntries(surface.columns.map((c) => [c.key, c.label])),
@@ -401,7 +402,20 @@ function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
     };
   };
 
+  // Custom labels: key -> override string. Seeded from persisted overrides,
+  // filtered to keys the catalog still knows. Empty string = use the default.
+  const _initialLabels = () => {
+    const out = {};
+    if (initialLabels && typeof initialLabels === 'object') {
+      for (const k of catalogKeys) {
+        if (typeof initialLabels[k] === 'string') out[k] = initialLabels[k];
+      }
+    }
+    return out;
+  };
+
   const [{ order, visible }, setState] = useState(_initial);
+  const [labels, setLabels] = useState(_initialLabels);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -425,12 +439,25 @@ function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
     setDirty(true);
   };
 
+  const rename = (key, value) => {
+    setLabels((m) => ({ ...m, [key]: value }));
+    setDirty(true);
+  };
+
   async function save() {
     if (saving) return;
     setSaving(true);
     try {
       const fields = order.filter((k) => visible.has(k));
+      // Persist visibility/order and label overrides. Only non-blank,
+      // non-default overrides are sent; the rest fall back to catalog labels.
+      const cleanLabels = {};
+      for (const [k, v] of Object.entries(labels)) {
+        const t = (v || '').trim();
+        if (t && t !== labelOf[k]) cleanLabels[k] = t;
+      }
       await updateDisplayFields(surface.id, fields, mockDb);
+      await updateDisplayLabels(surface.id, cleanLabels, mockDb);
       pushToast({ variant: 'success', message: SYSSET_FIELDS_TOAST_SAVED });
       setDirty(false);
     } catch (err) {
@@ -444,6 +471,7 @@ function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
   function reset() {
     const defaults = defaultFieldKeys(surface.id);
     setState({ order: [...catalogKeys], visible: new Set(defaults) });
+    setLabels({});
     setDirty(true);
   }
 
@@ -471,7 +499,17 @@ function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
               data-testid={`field-toggle-${surface.id}-${key}`}
               className="accent-slate-900"
             />
-            <span className="text-sm text-slate-800 flex-1">{labelOf[key]}</span>
+            <input
+              type="text"
+              value={labels[key] ?? ''}
+              onChange={(e) => rename(key, e.target.value)}
+              placeholder={SYSSET_FIELDS_LABEL_PLACEHOLDER(labelOf[key])}
+              title={labelOf[key]}
+              data-testid={`field-label-${surface.id}-${key}`}
+              className="flex-1 min-w-0 text-sm text-slate-800 bg-transparent border border-transparent
+                         hover:border-slate-200 focus:border-slate-400 focus:bg-white
+                         rounded px-2 py-1 outline-none placeholder:text-slate-300"
+            />
             <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
                     aria-label={SYSSET_FIELDS_MOVE_UP}
                     className="text-slate-400 hover:text-slate-800 disabled:opacity-30">

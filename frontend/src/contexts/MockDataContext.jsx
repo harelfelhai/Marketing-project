@@ -1919,6 +1919,23 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  const applyUpdateDisplayLabels = useCallback((surface, labels) => {
+    let snapshot;
+    setDb((prev) => {
+      const store = { ...(prev.systemSettings.display_labels || {}) };
+      // Drop blank values; an empty map clears the surface's overrides.
+      const cleaned = Object.fromEntries(
+        Object.entries(labels).filter(([, v]) => v && v.trim()),
+      );
+      if (Object.keys(cleaned).length) store[surface] = cleaned;
+      else delete store[surface];
+      const next = { ...prev.systemSettings, display_labels: store };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   const applyUpdateFilterFields = useCallback((surface, fields) => {
     let snapshot;
     setDb((prev) => {
@@ -1988,6 +2005,7 @@ export function MockDataProvider({ children }) {
     applyGetSystemSettings,
     applyUpdateSystemSettings,
     applyUpdateDisplayFields,
+    applyUpdateDisplayLabels,
     applyUpdateFilterFields,
     applyUpdateMongoUrl,
     // Phase NOTIF

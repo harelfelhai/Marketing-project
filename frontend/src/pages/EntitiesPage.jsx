@@ -97,20 +97,25 @@ export default function EntitiesPage() {
   const [q, setQ] = useState('');
   const [openPhonesFor, setOpenPhonesFor] = useState(null);
   const [displayFields, setDisplayFields] = useState(null);
+  const [displayLabels, setDisplayLabels] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState(new Set());
 
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
-      .then((s) => { if (alive) setDisplayFields(s.display_fields || {}); })
-      .catch(() => { if (alive) setDisplayFields({}); });
+      .then((s) => {
+        if (!alive) return;
+        setDisplayFields(s.display_fields || {});
+        setDisplayLabels(s.display_labels || {});
+      })
+      .catch(() => { if (alive) { setDisplayFields({}); setDisplayLabels({}); } });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const columns = useMemo(
-    () => resolveVisibleColumns('entities', displayFields),
-    [displayFields],
+    () => resolveVisibleColumns('entities', displayFields, displayLabels),
+    [displayFields, displayLabels],
   );
 
   const personalizationClientIds =
