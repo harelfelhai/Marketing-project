@@ -30,8 +30,29 @@ class SqlRepository(Repository[T]):
     # Filter translation
     # ------------------------------------------------------------------
 
+    def _resolve(self, field: str):
+        """
+        Resolve a DSL field name to a SQLAlchemy comparison target.
+
+        A bare name (`"verification_status"`) is a stored column. A dotted
+        name (`"extra_data.region"`) addresses a key *inside* a JSON column:
+        the first segment is the JSON column, the rest is the path into it.
+        We compare on the JSON value's textual form (`.as_string()`) so eq /
+        ne / in / contains behave like they do on a normal string column and
+        render through `JSON_EXTRACT` on SQLite / `->>'…'` on Postgres. This
+        is what lets admins filter on opaque extra_data keys without those
+        keys ever becoming structured columns (Secrets-Free Mandate).
+        """
+        if "." not in field:
+            return getattr(self.model, field)
+        base, *path = field.split(".")
+        expr = getattr(self.model, base)
+        for key in path:
+            expr = expr[key]
+        return expr.as_string()
+
     def _condition(self, field: str, op: str, operand):
-        col = getattr(self.model, field)
+        col = self._resolve(field)
         if op == "eq":
             return col.is_(None) if operand is None else col == operand
         if op == "ne":

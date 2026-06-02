@@ -22,6 +22,19 @@ Multiple keys are AND-ed together. The same dict is translated to SQLAlchemy
 conditions by SqlRepository and to a Mongo query document by MongoRepository,
 so a query written once behaves identically on both backends.
 
+Dotted (JSON) field paths
+-------------------------
+A field name may address a key inside a JSON column using dot notation:
+
+    {"extra_data.region": "north"}             # extra_data->>'region' == 'north'
+    {"extra_data.bulk_submission_id": {"contains": "Q3"}}
+
+The first segment is the stored JSON column; the rest is the path into it.
+SqlRepository compares on the value's textual form (JSON_EXTRACT / ->>);
+MongoRepository passes the dotted path straight through (native dot-path).
+Filtering this way keeps opaque extra_data keys queryable without ever
+promoting them to structured columns (Secrets-Free Mandate).
+
 Derived fields
 --------------
 A model may expose a derived attribute that is not a stored column (e.g.

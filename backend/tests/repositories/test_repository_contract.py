@@ -139,3 +139,49 @@ class TestFilters:
         repo.add(m2)
         out = repo.list({"target_entity_id": root.id})
         assert {e.id for e in out} == {m1.id, m2.id}
+
+
+# ---------------------------------------------------------------------------
+# Filter DSL — dotted JSON (extra_data) paths
+# ---------------------------------------------------------------------------
+
+
+class TestExtraDataFilters:
+    """A dotted field addresses a key inside the extra_data JSON column.
+
+    These must behave identically on SQL (JSON_EXTRACT) and Mongo (native
+    dot-path), which is the whole point of routing them through the DSL.
+    """
+
+    def test_eq_on_extra_data_key(self, repo):
+        north = _root(region="north")
+        south = _root(region="south")
+        repo.add(north)
+        repo.add(south)
+        out = repo.list({"extra_data.region": "north"})
+        assert {e.id for e in out} == {north.id}
+
+    def test_contains_on_extra_data_key(self, repo):
+        a = _root(batch="Q3-2026-export")
+        b = _root(batch="Q4-2026-export")
+        repo.add(a)
+        repo.add(b)
+        out = repo.list({"extra_data.batch": {"contains": "Q3"}})
+        assert {e.id for e in out} == {a.id}
+
+    def test_in_on_extra_data_key(self, repo):
+        a = _root(tier="gold")
+        b = _root(tier="silver")
+        c = _root(tier="bronze")
+        for e in (a, b, c):
+            repo.add(e)
+        out = repo.list({"extra_data.tier": {"in": ["gold", "bronze"]}})
+        assert {e.id for e in out} == {a.id, c.id}
+
+    def test_missing_key_does_not_match(self, repo):
+        has = _root(region="north")
+        missing = _root(other="x")
+        repo.add(has)
+        repo.add(missing)
+        out = repo.list({"extra_data.region": "north"})
+        assert {e.id for e in out} == {has.id}
