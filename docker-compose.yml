@@ -1,0 +1,44 @@
+services:
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"          # optional: remove if you don't need direct API access
+    volumes:
+      - app_data:/app/data   # SQLite DB + system_settings.json survive rebuilds
+      # To customise admins, create admins.json next to this file and uncomment:
+      # - ./admins.json:/app/data/admins.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"              # open http://localhost in your browser
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # One-shot large-scale seed (100 clients · 1000 entities · 2500 phones · 200 tasks).
+  # Run once after first `docker compose up --build`:
+  #   docker compose run --rm seed
+  # Re-seed (wipe + re-insert):
+  #   docker compose run --rm seed python scripts/seed_large.py --reset
+  seed:
+    build: ./backend
+    command: python scripts/seed_large.py
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - seed                 # not started by default; requires --profile seed
+
+volumes:
+  app_data:
