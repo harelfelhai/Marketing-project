@@ -804,6 +804,14 @@ class SystemSettingsResponse(BaseModel):
             "live in the frontend. Empty/missing = use the surface's defaults."
         ),
     )
+    mongo_configured: bool = Field(
+        default=False,
+        description=(
+            "True when an admin has stored a MongoDB connection URL via "
+            "PUT /settings/mongo-url. The URL itself is never returned — "
+            "only this boolean flag (Secrets-Free Mandate)."
+        ),
+    )
     applies_on_restart: bool = Field(
         ...,
         description="When True, a change is saved but takes effect on next restart.",
@@ -815,6 +823,20 @@ class SystemSettingsUpdate(BaseModel):
 
     storage_backend: str = Field(
         ..., description="Backend id to activate. Must be a known, available backend."
+    )
+
+
+class MongoUrlUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings/mongo-url."""
+
+    url: str = Field(
+        ...,
+        description=(
+            "MongoDB connection string (e.g. mongodb://user:pass@host:27017). "
+            "The URL is validated by attempting a live connection before being "
+            "stored. It is persisted server-side only — never returned to the "
+            "client (Secrets-Free Mandate)."
+        ),
     )
 
 

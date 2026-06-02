@@ -112,3 +112,26 @@ export async function updateDisplayFields(surface, fields, mockDb) {
   await mockDelay(200);
   return mockDb.applyUpdateDisplayFields(surface, fields);
 }
+
+/**
+ * updateMongoUrl — validate and persist a MongoDB connection URL server-side.
+ *
+ * The URL is WRITE-ONLY from the frontend's perspective. The response only
+ * carries the boolean `mongo_configured` flag (never the URL itself).
+ *
+ * MOCK_MODE = false → PUT /system/settings/mongo-url
+ * MOCK_MODE = true  → MockDataContext.applyUpdateMongoUrl() — always succeeds
+ *                     (simulates a 600 ms connection probe).
+ *
+ * @param {string} url    MongoDB connection string.
+ * @param {object} mockDb MockDataContext instance.
+ * @returns {Promise<object>} The full updated settings object.
+ */
+export async function updateMongoUrl(url, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/mongo-url', { url });
+    return data;
+  }
+  await mockDelay(600);
+  return mockDb.applyUpdateMongoUrl(url);
+}

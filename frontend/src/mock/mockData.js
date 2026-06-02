@@ -1084,6 +1084,9 @@ export const SEED_SYSTEM_SETTINGS = {
   // catalog defaults (src/config/displayFields.js). Admins edit these from
   // the System Settings tab; they persist via /system/settings/display-fields.
   display_fields: {},
+  // Whether an admin has stored a MongoDB URL via PUT /settings/mongo-url.
+  // The URL itself is never held in the frontend — only this boolean flag.
+  mongo_configured: false,
   applies_on_restart: true,
 };
 

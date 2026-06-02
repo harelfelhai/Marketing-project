@@ -37,6 +37,7 @@ from app.api.deps import (
 )
 from app.schemas.api_contracts import (
     DisplayFieldsUpdate,
+    MongoUrlUpdate,
     SystemSettingsResponse,
     SystemSettingsUpdate,
     WorkerRunResponse,
@@ -196,6 +197,34 @@ def update_display_fields(
 ) -> SystemSettingsResponse:
     try:
         return SystemSettingsResponse(**svc.set_display_fields(body.surface, body.fields))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+
+@router.put(
+    "/settings/mongo-url",
+    response_model=SystemSettingsResponse,
+    summary="Configure the MongoDB connection URL",
+    description=(
+        "Validates and persists a MongoDB connection URL server-side. "
+        "The URL is tested by opening a real connection before it is stored; "
+        "an unreachable host or wrong credentials returns 422. "
+        "The URL is write-only — the response only reflects the boolean "
+        "`mongo_configured` flag, never the URL itself (Secrets-Free Mandate). "
+        "Takes effect immediately: the existing connection singleton is reset "
+        "so the next MongoDB operation uses the new URL. Admin-only."
+    ),
+)
+def update_mongo_url(
+    body: MongoUrlUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_mongo_url(body.url))
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

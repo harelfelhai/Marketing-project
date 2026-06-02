@@ -16,12 +16,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   Loader2, Save, ArrowLeft, Database, AlertCircle,
   Columns3, ChevronUp, ChevronDown, RotateCcw,
+  Link2, CheckCircle2, Eye, EyeOff,
 } from 'lucide-react';
 
 import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
 import {
-  getSystemSettings, updateSystemSettings, updateDisplayFields,
+  getSystemSettings, updateSystemSettings, updateDisplayFields, updateMongoUrl,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
@@ -34,6 +35,10 @@ import {
   SYSSET_FIELDS_TITLE, SYSSET_FIELDS_DESC, SYSSET_FIELDS_MOVE_UP,
   SYSSET_FIELDS_MOVE_DOWN, SYSSET_FIELDS_TOAST_SAVED, SYSSET_FIELDS_TOAST_ERROR,
   SYSSET_FIELDS_RESET,
+  SYSSET_MONGO_TITLE, SYSSET_MONGO_DESC, SYSSET_MONGO_URL_LABEL,
+  SYSSET_MONGO_URL_PLACEHOLDER, SYSSET_MONGO_CONFIGURED_BADGE,
+  SYSSET_MONGO_NOT_CONFIGURED, SYSSET_MONGO_BTN_TEST, SYSSET_MONGO_BTN_TESTING,
+  SYSSET_MONGO_TOAST_OK, SYSSET_MONGO_TOAST_ERROR, SYSSET_MONGO_UPDATE_PROMPT,
 } from '../config/strings.he';
 
 
@@ -178,6 +183,14 @@ export default function SystemSettingsPage() {
         </div>
       </section>
 
+      {/* MongoDB connection URL section */}
+      <MongoUrlEditor
+        initialConfigured={settings.mongo_configured ?? false}
+        mockDb={mockDb}
+        pushToast={pushToast}
+        onSaved={(updated) => setSettings((prev) => ({ ...prev, ...updated }))}
+      />
+
       {/* Display-fields section — one editor per configurable surface. */}
       <section className="rounded-lg border border-slate-200 bg-white p-5 mt-6">
         <div className="flex items-center gap-2 mb-1">
@@ -199,6 +212,140 @@ export default function SystemSettingsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+
+/**
+ * MongoUrlEditor — write-only MongoDB connection URL input.
+ *
+ * The URL is submitted to the backend, which connection-tests it before
+ * storing. The frontend never reads the URL back — only the boolean
+ * `mongo_configured` flag is returned (Secrets-Free Mandate).
+ *
+ * Props:
+ *   initialConfigured  bool   Whether a URL is already stored server-side.
+ *   mockDb             object MockDataContext instance.
+ *   pushToast          fn     UIContext.pushToast.
+ *   onSaved            fn     Called with the updated settings after success.
+ */
+function MongoUrlEditor({ initialConfigured, mockDb, pushToast, onSaved }) {
+  const [configured, setConfigured] = useState(initialConfigured);
+  const [url, setUrl]               = useState('');
+  const [showUrl, setShowUrl]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  // Show the input either when not yet configured or after the admin
+  // explicitly clicks "update".
+  const [editing, setEditing]       = useState(!initialConfigured);
+
+  async function handleSave() {
+    if (!url.trim() || saving) return;
+    setSaving(true);
+    try {
+      const updated = await updateMongoUrl(url.trim(), mockDb);
+      setConfigured(true);
+      setUrl('');
+      setEditing(false);
+      onSaved(updated);
+      pushToast({ variant: 'success', message: SYSSET_MONGO_TOAST_OK });
+    } catch (err) {
+      const { message } = normalizeError(err);
+      pushToast({ variant: 'error', message: SYSSET_MONGO_TOAST_ERROR(message) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-5 mt-6"
+      data-testid="mongo-url-editor"
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <Link2 className="w-4 h-4 text-slate-700" />
+        <h2 className="text-sm font-semibold text-slate-900">{SYSSET_MONGO_TITLE}</h2>
+        {configured && (
+          <span className="ms-auto inline-flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {SYSSET_MONGO_CONFIGURED_BADGE}
+          </span>
+        )}
+        {!configured && (
+          <span className="ms-auto text-[11px] text-slate-400">
+            {SYSSET_MONGO_NOT_CONFIGURED}
+          </span>
+        )}
+      </div>
+      <p className="text-[13px] text-slate-500 mb-4">{SYSSET_MONGO_DESC}</p>
+
+      {configured && !editing && (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-[13px] text-slate-500 underline hover:text-slate-900"
+        >
+          {SYSSET_MONGO_UPDATE_PROMPT}
+        </button>
+      )}
+
+      {editing && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[13px] text-slate-700 mb-1">
+              {SYSSET_MONGO_URL_LABEL}
+            </label>
+            <div className="relative">
+              <input
+                type={showUrl ? 'text' : 'password'}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder={SYSSET_MONGO_URL_PLACEHOLDER}
+                data-testid="mongo-url-input"
+                autoComplete="off"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono text-slate-900 pe-10 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowUrl((v) => !v)}
+                className="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-700"
+                aria-label={showUrl ? 'הסתר' : 'הצג'}
+              >
+                {showUrl ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            {configured && (
+              <button
+                type="button"
+                onClick={() => { setEditing(false); setUrl(''); }}
+                className="text-[13px] text-slate-500 hover:text-slate-900"
+              >
+                {SYSSET_BTN_BACK}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!url.trim() || saving}
+              data-testid="mongo-url-save"
+              className={[
+                'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium',
+                !url.trim() || saving
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-slate-900 text-white hover:bg-slate-800',
+              ].join(' ')}
+            >
+              {saving
+                ? <><Loader2 className="w-4 h-4 animate-spin" />{SYSSET_MONGO_BTN_TESTING}</>
+                : <><Link2 className="w-4 h-4" />{SYSSET_MONGO_BTN_TEST}</>}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

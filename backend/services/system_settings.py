@@ -100,11 +100,16 @@ class SystemSettingsService:
     # Public API
     # ------------------------------------------------------------------
 
+    def _read_mongo_url(self) -> str | None:
+        """Return the admin-configured MongoDB URL, or None if not yet set."""
+        return self._read_all().get("mongo_url") or None
+
     def get(self) -> dict:
         """
         Return the full settings view: the active backend, the catalog of
-        known backends (with an `available` flag), and the per-surface
-        display-field selections.
+        known backends (with an `available` flag), the per-surface
+        display-field selections, and whether a MongoDB URL has been
+        configured (never the URL itself — secrets stay server-side).
         """
         return {
             "storage_backend": self._read_backend(),
@@ -113,6 +118,7 @@ class SystemSettingsService:
                 for b in KNOWN_BACKENDS
             ],
             "display_fields": self._read_display_fields(),
+            "mongo_configured": self._read_mongo_url() is not None,
             "applies_on_restart": True,
         }
 
@@ -163,4 +169,34 @@ class SystemSettingsService:
         display[surface.strip()] = list(fields)
         data["display_fields"] = display
         self._write_all(data)
+        return self.get()
+
+    def set_mongo_url(self, url: str) -> dict:
+        """
+        Validate connectivity to a MongoDB URL and persist it server-side.
+
+        The URL is stored in system_settings.json and NEVER returned to the
+        frontend — callers only see the boolean `mongo_configured` flag in
+        the settings response (Secrets-Free Mandate).
+
+        Raises:
+            ValueError: URL is empty or the connection test fails.
+        """
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError("MongoDB URL must be a non-empty string.")
+        url = url.strip()
+
+        from repositories.mongo_connection import test_mongo_url, reset_mongo_connection
+        ok, err = test_mongo_url(url)
+        if not ok:
+            raise ValueError(f"Cannot connect to MongoDB: {err}")
+
+        data = self._read_all()
+        data["mongo_url"] = url
+        self._write_all(data)
+
+        # Reset the process-wide singleton so the next request uses the
+        # new URL rather than the stale one from the previous build.
+        reset_mongo_connection()
+
         return self.get()

@@ -985,6 +985,22 @@ export const SYSSET_BACKEND_LABELS          = {
 };
 
 // ---------------------------------------------------------------------------
+// System Settings — MongoDB connection URL (feature 3)
+// ---------------------------------------------------------------------------
+export const SYSSET_MONGO_TITLE              = 'חיבור MongoDB';
+export const SYSSET_MONGO_DESC               =
+  'הזן כתובת חיבור (connection string) ל-MongoDB. הכתובת נשמרת בשרת בלבד ולעולם לא חוזרת ללקוח.';
+export const SYSSET_MONGO_URL_LABEL          = 'כתובת חיבור (Connection String)';
+export const SYSSET_MONGO_URL_PLACEHOLDER    = 'mongodb://user:password@host:27017';
+export const SYSSET_MONGO_CONFIGURED_BADGE   = 'מוגדר';
+export const SYSSET_MONGO_NOT_CONFIGURED     = 'לא מוגדר';
+export const SYSSET_MONGO_BTN_TEST           = 'שמור ובדוק חיבור';
+export const SYSSET_MONGO_BTN_TESTING        = 'בודק חיבור…';
+export const SYSSET_MONGO_TOAST_OK           = 'חיבור ל-MongoDB נבדק בהצלחה ונשמר.';
+export const SYSSET_MONGO_TOAST_ERROR        = (msg) => `שמירת כתובת MongoDB נכשלה: ${msg}`;
+export const SYSSET_MONGO_UPDATE_PROMPT      = 'עדכון כתובת חיבור';
+
+// ---------------------------------------------------------------------------
 // System Settings — configurable display fields (feature 2)
 // ---------------------------------------------------------------------------
 export const SURFACE_LABEL_ENTITIES         = 'טבלת ישויות';
