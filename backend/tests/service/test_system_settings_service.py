@@ -116,3 +116,78 @@ class TestDisplayFields:
             svc.set_display_fields("entities", "not-a-list")
         with pytest.raises(ValueError):
             svc.set_display_fields("entities", [1, 2, 3])
+
+
+class TestFilterFields:
+    def test_default_is_empty(self, svc):
+        assert svc.get()["filter_fields"] == {}
+
+    def test_set_and_read_back(self, svc, tmp_path):
+        out = svc.set_filter_fields("phones", ["search", "phoneType"])
+        assert out["filter_fields"]["phones"] == ["search", "phoneType"]
+        again = SystemSettingsService(path=str(tmp_path / "system_settings.json"))
+        assert again.get()["filter_fields"]["phones"] == ["search", "phoneType"]
+
+    def test_empty_list_allowed(self, svc):
+        out = svc.set_filter_fields("phones", [])
+        assert out["filter_fields"]["phones"] == []
+
+    def test_bad_inputs_raise(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_filter_fields("", ["search"])
+        with pytest.raises(ValueError):
+            svc.set_filter_fields("phones", [1, 2])
+
+
+class TestCustomFilters:
+    def test_default_is_empty(self, svc):
+        assert svc.get()["custom_filters"] == {}
+
+    def test_set_and_read_back(self, svc, tmp_path):
+        defs = [
+            {"key": "region", "label": "אזור",
+             "field": "extra_data.region", "widget": "text"},
+        ]
+        out = svc.set_custom_filters("phones", defs)
+        assert out["custom_filters"]["phones"] == defs
+        again = SystemSettingsService(path=str(tmp_path / "system_settings.json"))
+        assert again.get()["custom_filters"]["phones"] == defs
+
+    def test_empty_list_clears(self, svc):
+        svc.set_custom_filters("phones", [{"key": "r", "field": "extra_data.r"}])
+        out = svc.set_custom_filters("phones", [])
+        assert out["custom_filters"].get("phones", []) == []
+
+    def test_multiple_surfaces_coexist(self, svc):
+        svc.set_custom_filters("phones", [{"key": "a", "field": "extra_data.a"}])
+        svc.set_custom_filters("operations", [{"key": "b", "field": "extra_data.b"}])
+        cf = svc.get()["custom_filters"]
+        assert cf["phones"][0]["field"] == "extra_data.a"
+        assert cf["operations"][0]["field"] == "extra_data.b"
+
+    def test_entry_missing_key_or_field_raises(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_custom_filters("phones", [{"label": "no key/field"}])
+        with pytest.raises(ValueError):
+            svc.set_custom_filters("phones", [{"key": "x"}])  # missing field
+        with pytest.raises(ValueError):
+            svc.set_custom_filters("phones", [{"field": "extra_data.x"}])  # missing key
+
+    def test_bad_surface_or_type_raises(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_custom_filters("", [])
+        with pytest.raises(ValueError):
+            svc.set_custom_filters("phones", "not-a-list")
+
+    def test_malformed_persisted_entries_dropped_on_read(self, tmp_path):
+        p = tmp_path / "system_settings.json"
+        p.write_text(json.dumps({"custom_filters": {
+            "phones": [
+                {"key": "ok", "field": "extra_data.ok"},
+                {"key": "missing-field"},
+                "not-a-dict",
+            ]
+        }}), encoding="utf-8")
+        svc = SystemSettingsService(path=str(p))
+        out = svc.get()["custom_filters"]["phones"]
+        assert out == [{"key": "ok", "field": "extra_data.ok"}]

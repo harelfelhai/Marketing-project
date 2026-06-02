@@ -269,6 +269,15 @@ class SystemSettingsResponse(BaseModel):
             "Same opaque-to-backend contract as display_fields."
         ),
     )
+    custom_filters: dict[str, list[dict]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-surface admin-defined filters beyond the built-in catalog: "
+            "{ surface: [ {key, label, field, widget, ...}, ... ] }. `field` is "
+            "the backend filter path (a column name or a dotted extra_data key). "
+            "Stored opaquely; labels/options are interpreted only client-side."
+        ),
+    )
     vocabularies: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Current vocabulary lists keyed by vocabulary name.",
@@ -337,6 +346,21 @@ class FilterFieldsUpdate(BaseModel):
     )
     fields: list[str] = Field(
         ..., description="Ordered list of active filter keys for the surface."
+    )
+
+
+class CustomFiltersUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings/custom-filters."""
+
+    surface: str = Field(
+        ..., description="Surface id whose custom filters are being set (e.g. 'phones')."
+    )
+    filters: list[dict] = Field(
+        ...,
+        description=(
+            "Ordered list of custom filter descriptors. Each must carry at "
+            "least a string `key` and `field`; label/widget/options are opaque."
+        ),
     )
 
 

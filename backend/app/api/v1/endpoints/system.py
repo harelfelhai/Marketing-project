@@ -7,6 +7,7 @@ Endpoints:
     PUT  /api/v1/system/settings/display-fields     — Set visible fields for a surface
     PUT  /api/v1/system/settings/display-labels      — Override column labels for a surface
     PUT  /api/v1/system/settings/filter-fields      — Set active filters for a surface
+    PUT  /api/v1/system/settings/custom-filters     — Set admin-defined custom filters
     PUT  /api/v1/system/settings/mongo-url          — Configure MongoDB URL
     GET  /api/v1/system/settings/vocabulary/{name}  — Get vocabulary list
     PUT  /api/v1/system/settings/vocabulary/{name}  — Update vocabulary list
@@ -19,6 +20,7 @@ from app.api.deps import (
     require_admin,
 )
 from app.schemas.api_contracts import (
+    CustomFiltersUpdate,
     DisplayFieldsUpdate,
     DisplayLabelsUpdate,
     FilterFieldsUpdate,
@@ -111,6 +113,22 @@ def update_filter_fields(
 ) -> SystemSettingsResponse:
     try:
         return SystemSettingsResponse(**svc.set_filter_fields(body.surface, body.fields))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/custom-filters",
+    response_model=SystemSettingsResponse,
+    summary="Set the admin-defined custom filters for a surface",
+)
+def update_custom_filters(
+    body: CustomFiltersUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_custom_filters(body.surface, body.filters))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 

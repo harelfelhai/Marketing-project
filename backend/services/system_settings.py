@@ -182,6 +182,35 @@ class SystemSettingsService:
                 out[surface] = [f for f in fields if isinstance(f, str)]
         return out
 
+    def _read_custom_filters(self) -> dict:
+        """
+        Return the persisted per-surface admin-defined ("custom") filters.
+
+        Shape: { "<surface>": [ {"key","label","field","widget", ...}, ... ] }.
+        These are the filters an admin adds beyond the built-in catalog —
+        including filters on opaque extra_data keys (the descriptor's `field`
+        is a dotted path like "extra_data.region"). Stored opaquely: the
+        backend keeps only well-formed descriptor dicts and never interprets
+        the labels/options (Secrets-Free Mandate — the human-readable parts
+        live client-side, exactly like display_labels).
+        """
+        raw = self._read_all().get("custom_filters", {})
+        if not isinstance(raw, dict):
+            return {}
+        out: dict = {}
+        for surface, defs in raw.items():
+            if not (isinstance(surface, str) and isinstance(defs, list)):
+                continue
+            clean = [
+                d for d in defs
+                if isinstance(d, dict)
+                and isinstance(d.get("key"), str)
+                and isinstance(d.get("field"), str)
+            ]
+            if clean:
+                out[surface] = clean
+        return out
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -206,6 +235,7 @@ class SystemSettingsService:
             "display_fields": self._read_display_fields(),
             "display_labels": self._read_display_labels(),
             "filter_fields":  self._read_filter_fields(),
+            "custom_filters": self._read_custom_filters(),
             "vocabularies": self._read_vocabularies(),
             "mongo_configured": self._read_mongo_url() is not None,
             "applies_on_restart": True,
@@ -281,6 +311,38 @@ class SystemSettingsService:
             store = {}
         store[surface.strip()] = list(fields)
         data["filter_fields"] = store
+        self._write_all(data)
+        return self.get()
+
+    def set_custom_filters(self, surface: str, filters: list) -> dict:
+        """
+        Persist the admin-defined custom filters for one surface.
+
+        Each entry must be a dict carrying at least a string `key` and a
+        string `field` (the backend filter path, e.g. "extra_data.region").
+        Other keys (label, widget, options) are stored opaquely. An empty
+        list clears the surface's custom filters.
+
+        Raises:
+            ValueError: malformed surface name, or an entry missing key/field.
+        """
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError("surface must be a non-empty string.")
+        if not isinstance(filters, list):
+            raise ValueError("filters must be a list.")
+        for d in filters:
+            if not (isinstance(d, dict)
+                    and isinstance(d.get("key"), str) and d["key"].strip()
+                    and isinstance(d.get("field"), str) and d["field"].strip()):
+                raise ValueError(
+                    "each custom filter must have a non-empty 'key' and 'field'."
+                )
+        data = self._read_all()
+        store = data.get("custom_filters")
+        if not isinstance(store, dict):
+            store = {}
+        store[surface.strip()] = list(filters)
+        data["custom_filters"] = store
         self._write_all(data)
         return self.get()
 
