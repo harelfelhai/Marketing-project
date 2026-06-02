@@ -16,6 +16,8 @@ const DEFAULT_FILTERS = {
   ingestionSource:    '',
   phoneType:          '',
   search:             '',
+  entityName:         '',
+  relationType:       '',
   sortBy:             'score',
 };
 

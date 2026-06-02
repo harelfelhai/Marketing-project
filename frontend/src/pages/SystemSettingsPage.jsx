@@ -16,16 +16,18 @@ import { useNavigate } from 'react-router-dom';
 import {
   Loader2, Save, ArrowLeft, Database, AlertCircle,
   Columns3, ChevronUp, ChevronDown, RotateCcw,
-  Link2, CheckCircle2, Eye, EyeOff,
+  Link2, CheckCircle2, Eye, EyeOff, Search,
 } from 'lucide-react';
 
 import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
 import {
-  getSystemSettings, updateSystemSettings, updateDisplayFields, updateMongoUrl,
+  getSystemSettings, updateSystemSettings, updateDisplayFields,
+  updateFilterFields, updateMongoUrl,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
+import { FILTER_SURFACES, defaultFilterKeys } from '../config/filterFields';
 import {
   SYSSET_TITLE, SYSSET_SUB, SYSSET_LOADING,
   SYSSET_DB_TITLE, SYSSET_DB_DESC, SYSSET_APPLIES_ON_RESTART,
@@ -39,6 +41,8 @@ import {
   SYSSET_MONGO_URL_PLACEHOLDER, SYSSET_MONGO_CONFIGURED_BADGE,
   SYSSET_MONGO_NOT_CONFIGURED, SYSSET_MONGO_BTN_TEST, SYSSET_MONGO_BTN_TESTING,
   SYSSET_MONGO_TOAST_OK, SYSSET_MONGO_TOAST_ERROR, SYSSET_MONGO_UPDATE_PROMPT,
+  SYSSET_FILTER_FIELDS_TITLE, SYSSET_FILTER_FIELDS_DESC,
+  SYSSET_FILTER_FIELDS_TOAST_SAVED, SYSSET_FILTER_FIELDS_TOAST_ERROR,
 } from '../config/strings.he';
 
 
@@ -205,6 +209,27 @@ export default function SystemSettingsPage() {
               key={surface.id}
               surface={surface}
               initialSelection={settings.display_fields?.[surface.id]}
+              mockDb={mockDb}
+              pushToast={pushToast}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Filter-fields section — one editor per filterable surface. */}
+      <section className="rounded-lg border border-slate-200 bg-white p-5 mt-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Search className="w-4 h-4 text-slate-700" />
+          <h2 className="text-sm font-semibold text-slate-900">{SYSSET_FILTER_FIELDS_TITLE}</h2>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-4">{SYSSET_FILTER_FIELDS_DESC}</p>
+
+        <div className="space-y-6">
+          {Object.values(FILTER_SURFACES).map((surface) => (
+            <FilterFieldsEditor
+              key={surface.id}
+              surface={surface}
+              initialSelection={settings.filter_fields?.[surface.id]}
               mockDb={mockDb}
               pushToast={pushToast}
             />
@@ -467,6 +492,112 @@ function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
           onClick={save}
           disabled={!dirty || saving}
           data-testid={`display-fields-save-${surface.id}`}
+          className={[
+            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium',
+            !dirty || saving
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-slate-900 text-white hover:bg-slate-800',
+          ].join(' ')}
+        >
+          {saving
+            ? <><Loader2 className="w-4 h-4 animate-spin" />{SYSSET_BTN_SAVING}</>
+            : <><Save className="w-4 h-4" />{SYSSET_BTN_SAVE}</>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * FilterFieldsEditor — toggle which filter controls are visible on a surface.
+ * Simpler than DisplayFieldsEditor (no reordering — filter bar order is fixed
+ * by the catalog).
+ */
+function FilterFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
+  const catalogKeys = surface.filters.map((f) => f.key);
+  const labelOf = useMemo(
+    () => Object.fromEntries(surface.filters.map((f) => [f.key, f.label])),
+    [surface],
+  );
+
+  const _initial = () => {
+    const known = Array.isArray(initialSelection)
+      ? initialSelection.filter((k) => catalogKeys.includes(k))
+      : null;
+    if (known && known.length) return new Set(known);
+    return new Set(surface.filters.filter((f) => f.default).map((f) => f.key));
+  };
+
+  const [visible, setVisible] = useState(_initial);
+  const [dirty, setDirty]     = useState(false);
+  const [saving, setSaving]   = useState(false);
+
+  const toggle = (key) => {
+    setVisible((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+    setDirty(true);
+  };
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const fields = catalogKeys.filter((k) => visible.has(k));
+      await updateFilterFields(surface.id, fields, mockDb);
+      pushToast({ variant: 'success', message: SYSSET_FILTER_FIELDS_TOAST_SAVED });
+      setDirty(false);
+    } catch (err) {
+      const { message } = normalizeError(err);
+      pushToast({ variant: 'error', message: SYSSET_FILTER_FIELDS_TOAST_ERROR(message) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function reset() {
+    setVisible(new Set(defaultFilterKeys(surface.id)));
+    setDirty(true);
+  }
+
+  return (
+    <div data-testid={`filter-fields-${surface.id}`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[13px] font-semibold text-slate-700">{surface.label}</h3>
+        <button
+          type="button"
+          onClick={reset}
+          className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-700"
+        >
+          <RotateCcw className="w-3 h-3" />{SYSSET_FIELDS_RESET}
+        </button>
+      </div>
+
+      <ul className="divide-y divide-slate-100 border border-slate-200 rounded-md">
+        {catalogKeys.map((key) => (
+          <li key={key} className="flex items-center gap-3 px-3 py-2"
+              data-testid={`filter-row-${surface.id}-${key}`}>
+            <input
+              type="checkbox"
+              checked={visible.has(key)}
+              onChange={() => toggle(key)}
+              data-testid={`filter-toggle-${surface.id}-${key}`}
+              className="accent-slate-900"
+            />
+            <span className="text-sm text-slate-800 flex-1">{labelOf[key]}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid={`filter-fields-save-${surface.id}`}
           className={[
             'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium',
             !dirty || saving

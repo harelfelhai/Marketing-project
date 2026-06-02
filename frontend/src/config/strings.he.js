@@ -1016,6 +1016,30 @@ export const SYSSET_FIELDS_RESET            = 'אפס לברירת מחדל';
 // ---------------------------------------------------------------------------
 export const SURFACE_LABEL_PHONES           = 'טבלת טלפונים';
 export const SURFACE_LABEL_CLIENTS          = 'כרטיסי לקוח (מרכז לקוחות)';
+export const SURFACE_LABEL_OPERATIONS       = 'תור משימות';
+
+// ---------------------------------------------------------------------------
+// Configurable filter fields — System Settings filter editor
+// ---------------------------------------------------------------------------
+export const SYSSET_FILTER_FIELDS_TITLE     = 'שדות פילטר';
+export const SYSSET_FILTER_FIELDS_DESC      =
+  'בחר אילו פקדי פילטר יוצגו בכל טאב. כיבוי שדה מנקה את ערכו ומסיר אותו מסרגל הפילטרים.';
+export const SYSSET_FILTER_FIELDS_TOAST_SAVED  = 'שדות הפילטר נשמרו.';
+export const SYSSET_FILTER_FIELDS_TOAST_ERROR  = (msg) => `שמירת שדות הפילטר נכשלה: ${msg}`;
+
+export const FILTER_LABEL_SEARCH            = 'חיפוש חופשי';
+export const FILTER_LABEL_CLIENT            = 'לקוח';
+export const FILTER_LABEL_VERIF_STATUS      = 'סטטוס אימות';
+export const FILTER_LABEL_SOURCE            = 'מקור קליטה';
+export const FILTER_LABEL_PHONE_TYPE        = 'סוג טלפון';
+export const FILTER_LABEL_ENTITY_NAME       = 'שם ישות';
+export const FILTER_LABEL_RELATION_TYPE     = 'סוג קרבה';
+export const FILTER_LABEL_TASK_STATUS       = 'סטטוס משימה';
+export const FILTER_LABEL_TASK_TYPE         = 'סוג משימה';
+export const FILTER_LABEL_HIDE_RESOLVED     = 'הסתר משימות שטופלו';
+
+export const FILTER_ENTITY_NAME_PLACEHOLDER = 'חפש לפי שם ישות…';
+export const FILTER_ALL_RELATION_TYPES      = 'כל סוגי הקרבה';
 
 export const CLIENT_CARD_SECTION_METRICS    = 'גריד מטריקות (כולל / ממתין / נכשל)';
 export const CLIENT_CARD_SECTION_VERDICTS   = 'פירוט החלטות (טוב / רע)';

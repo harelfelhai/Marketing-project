@@ -1808,6 +1808,17 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  const applyUpdateFilterFields = useCallback((surface, fields) => {
+    let snapshot;
+    setDb((prev) => {
+      const nextFilter = { ...(prev.systemSettings.filter_fields || {}), [surface]: [...fields] };
+      const next = { ...prev.systemSettings, filter_fields: nextFilter };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   // Mock parity for PUT /system/settings/mongo-url.
   // In mock mode the connection "always succeeds" — we just flip the flag.
   // The URL itself is intentionally not stored in mock state (Secrets-Free).
@@ -1866,6 +1877,7 @@ export function MockDataProvider({ children }) {
     applyGetSystemSettings,
     applyUpdateSystemSettings,
     applyUpdateDisplayFields,
+    applyUpdateFilterFields,
     applyUpdateMongoUrl,
     // Phase NOTIF
     listNotificationSubscriptions,

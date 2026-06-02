@@ -659,6 +659,10 @@ export const SEED_SYSTEM_SETTINGS = {
   // catalog defaults (src/config/displayFields.js). Admins edit these from
   // the System Settings tab; they persist via /system/settings/display-fields.
   display_fields: {},
+  // Per-surface active filter selections. Empty = each surface uses its
+  // catalog defaults (src/config/filterFields.js). Admins edit these from
+  // the System Settings tab; they persist via /system/settings/filter-fields.
+  filter_fields: {},
   // Whether an admin has stored a MongoDB URL via PUT /settings/mongo-url.
   // The URL itself is never held in the frontend — only this boolean flag.
   mongo_configured: false,

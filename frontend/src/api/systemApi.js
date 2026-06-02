@@ -109,6 +109,24 @@ export async function updateDisplayFields(surface, fields, mockDb) {
 }
 
 /**
+ * updateFilterFields — set the ordered active-filter selection for one
+ * surface (e.g. 'phones'). Returns the full updated settings object.
+ *
+ * @param {string}   surface  Surface id.
+ * @param {string[]} fields   Ordered active filter field keys.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateFilterFields(surface, fields, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/filter-fields',
+                                         { surface, fields });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateFilterFields(surface, fields);
+}
+
+/**
  * updateMongoUrl — validate and persist a MongoDB connection URL server-side.
  *
  * The URL is WRITE-ONLY from the frontend's perspective. The response only

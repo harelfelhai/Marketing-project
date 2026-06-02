@@ -69,6 +69,11 @@ export function applyFilters(phones, entities, clients, filters) {
     if (filters.verificationStatus && phone.verification_status !== filters.verificationStatus) return false;
     if (filters.ingestionSource    && phone.ingestion_source    !== filters.ingestionSource)    return false;
     if (filters.phoneType          && phone.phone_type          !== filters.phoneType)          return false;
+    if (filters.relationType       && entity?.relation_type     !== filters.relationType)       return false;
+    if (filters.entityName) {
+      const q = filters.entityName.toLowerCase().trim();
+      if (!entity?.full_name?.toLowerCase().includes(q)) return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [
