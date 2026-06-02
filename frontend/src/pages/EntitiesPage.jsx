@@ -225,16 +225,6 @@ export default function EntitiesPage() {
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600 text-[11px] uppercase">
-            <tr>
-              {columns.map((col) => (
-                <th key={col.key} className="text-start px-3 py-2 font-medium">
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-
           {loading ? (
             <tbody>
               <tr>
@@ -283,6 +273,17 @@ export default function EntitiesPage() {
                       </div>
                     </td>
                   </tr>
+
+                  {/* Column headers — repeated inside each opened group */}
+                  {isExpanded && (
+                    <tr className="bg-slate-100/60 text-slate-600 text-[11px] uppercase">
+                      {columns.map((col) => (
+                        <th key={col.key} className="text-start px-3 py-2 font-medium">
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  )}
 
                   {/* Entity rows — shown when expanded */}
                   {isExpanded && members.map((e) => (

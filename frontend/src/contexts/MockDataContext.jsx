@@ -35,6 +35,58 @@ const _uid = (prefix) => {
   return `${prefix}-${rand}`;
 };
 
+// Real-API hydration helpers — mirror the mock's buildInitialDb shape so
+// downstream consumers see the same fields regardless of the data source.
+//
+// _enrichEntities: stamps client_id = target_entity_id ?? id on every row.
+//   Two-level model: a root entity (target_entity_id == null) is its own
+//   client; a member's client_id is the root it points at.
+// _enrichPhones:   stamps client_id + relation_type onto every phone from
+//                  its owning entity (so phone filters / client lookups work).
+// _clientsFromEntities: builds the clients slice from active root entities,
+//                  with optional display overrides from CLIENT_REGISTRY when
+//                  the entity id matches a registry key.
+function _enrichEntities(entities) {
+  return (entities || []).map((e) => ({
+    ...e,
+    client_id: e.target_entity_id != null ? e.target_entity_id : e.id,
+  }));
+}
+
+function _enrichPhones(phones, entities) {
+  const entityById = new Map((entities || []).map((e) => [e.id, e]));
+  return (phones || []).map((p) => {
+    const ent = entityById.get(p.entity_id);
+    return {
+      ...p,
+      client_id:     ent?.client_id ?? null,
+      relation_type: ent?.relation_type ?? p.relation_type ?? null,
+    };
+  });
+}
+
+function _clientsFromEntities(entities) {
+  const overrides = new Map(CLIENT_REGISTRY.map((c) => [c.id, c]));
+  return (entities || [])
+    .filter(
+      (e) =>
+        e.relation_type === 'primary' &&
+        e.target_entity_id == null &&
+        !e.deleted_at,
+    )
+    .map((e) => {
+      const ov = overrides.get(e.id);
+      return {
+        id:                e.id,
+        name:              e.full_name || ov?.name || e.id,
+        shortName:         ov?.shortName,
+        sla_hours:         e.extra_data?.sla_hours ?? ov?.slaHours ?? null,
+        sla_threshold_pct: e.extra_data?.sla_threshold_pct ?? ov?.slaTargetPct ?? null,
+        color:             ov?.color,
+      };
+    });
+}
+
 // Minimal empty db used as the real-mode boot state while the API hydrates.
 const EMPTY_DB = {
   clients:    [],
@@ -125,16 +177,20 @@ export function MockDataProvider({ children }) {
       listEntities({}, /* mockDb */ null),
     ])
       .then(([phonesRes, tasksRes, entitiesRes]) => {
-        const phonesData   = phonesRes.status   === 'fulfilled' ? phonesRes.value   : [];
+        const phonesRaw    = phonesRes.status   === 'fulfilled' ? phonesRes.value   : [];
         const tasksData    = tasksRes.status    === 'fulfilled' ? tasksRes.value    : [];
-        const entitiesData = entitiesRes.status === 'fulfilled' ? entitiesRes.value : [];
+        const entitiesRaw  = entitiesRes.status === 'fulfilled' ? entitiesRes.value : [];
+
+        const entitiesData = _enrichEntities(entitiesRaw);
+        const phonesData   = _enrichPhones(phonesRaw, entitiesData);
+        const clientsData  = _clientsFromEntities(entitiesData);
 
         setDb((prev) => ({
           ...prev,
           phones:   phonesData,
           tasks:    tasksData,
           entities: entitiesData,
-          clients:  CLIENT_REGISTRY,
+          clients:  clientsData,
         }));
       })
       .finally(() => setLoading(false));
@@ -150,8 +206,11 @@ export function MockDataProvider({ children }) {
   // ---------------------------------------------------------------------------
   const refetchPhones = useCallback(async () => {
     if (MOCK_MODE) return;
-    const phonesData = await listPhones({ pageSize: 200 });
-    setDb((prev) => ({ ...prev, phones: phonesData }));
+    const phonesRaw = await listPhones({ pageSize: 200 });
+    setDb((prev) => ({
+      ...prev,
+      phones: _enrichPhones(phonesRaw, prev.entities),
+    }));
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -232,8 +291,17 @@ export function MockDataProvider({ children }) {
   // freshly-minted row without a page reload.
   const refetchEntities = useCallback(async () => {
     if (MOCK_MODE) return;
-    const fresh = await listEntities({}, null);
-    setDb((prev) => ({ ...prev, entities: fresh }));
+    const freshRaw = await listEntities({}, null);
+    const entities = _enrichEntities(freshRaw);
+    const clients  = _clientsFromEntities(entities);
+    setDb((prev) => ({
+      ...prev,
+      entities,
+      clients,
+      // Re-enrich phones so client_id stamps reflect any
+      // relationship moves (rare but possible via PATCH /entities).
+      phones: _enrichPhones(prev.phones, entities),
+    }));
   }, []);
 
   const refetchTaskById = useCallback(async (id) => {

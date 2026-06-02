@@ -28,6 +28,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 
 import { CLIENT_REGISTRY } from '../../config/clientRegistry';
+import { useMockData } from '../../contexts/MockDataContext';
 import {
   AUTH_CLIENT_PICKER_PLACEHOLDER,
   AUTH_CLIENT_PICKER_EMPTY,
@@ -51,19 +52,26 @@ export default function ClientMultiPicker({
   const wrapperRef = useRef(null);
   const inputRef   = useRef(null);
 
+  // Source of truth for selectable clients = the live clients slice
+  // (derived from root entities by MockDataContext). Falls back to
+  // CLIENT_REGISTRY when the context isn't mounted (e.g. unit tests
+  // that render this component in isolation).
+  const ctx = useMockData();
+  const registry = ctx?.clients?.length ? ctx.clients : CLIENT_REGISTRY;
+
   // Filter the registry: exclude already-selected ids, then substring
   // match on name + shortName. Sorted by registry order for stability.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const out = [];
-    for (const c of CLIENT_REGISTRY) {
+    for (const c of registry) {
       if (selected.has(c.id)) continue;
       if (!q) { out.push(c); continue; }
       const hay = `${c.name} ${c.shortName || ''}`.toLowerCase();
       if (hay.includes(q)) out.push(c);
     }
     return out.slice(0, MAX_VISIBLE_RESULTS);
-  }, [query, selected]);
+  }, [query, selected, registry]);
 
   // Keep the highlighted index in-range when the result set shrinks.
   useEffect(() => {
@@ -83,8 +91,8 @@ export default function ClientMultiPicker({
   }, [open]);
 
   const selectedClients = useMemo(
-    () => CLIENT_REGISTRY.filter((c) => selected.has(c.id)),
-    [selected]
+    () => registry.filter((c) => selected.has(c.id)),
+    [selected, registry]
   );
 
   const addClient = (id) => {

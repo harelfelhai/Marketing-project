@@ -38,7 +38,7 @@ from database import engine, create_db_and_tables  # noqa: E402
 from models.entity import Entity  # noqa: E402
 from models.phone_number import PhoneNumber  # noqa: E402
 from models.pipeline_task import PipelineTask  # noqa: E402
-from models.types import SOFT_DELETE_SENTINEL, new_id  # noqa: E402
+from models.types import SOFT_DELETE_SENTINEL  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -134,13 +134,16 @@ def seed(reset: bool = False) -> None:
             _wipe(session)
 
         # ── Root entities (100) ──────────────────────────────────────
+        # Predictable string ids (ent-1 … ent-100) so the frontend's
+        # CLIENT_REGISTRY references and mock-mode entity ids line up
+        # with the real-API rows.
         print("  seeding 100 root entities…")
         root_ids: list[str] = []
         for i in range(1, 101):
             company = _company_of(i - 1)
             tier    = (i % 3) + 1
             sla_hrs = _SLA_HRS[i % 4]
-            eid     = new_id()
+            eid     = f"ent-{i}"
             root_ids.append(eid)
             session.add(Entity(
                 id=eid,
@@ -172,7 +175,7 @@ def seed(reset: bool = False) -> None:
                 e_num = 100 + (r - 1) * 9 + m + 1
                 has_id1 = rng() > 0.6
                 has_id2 = rng() > 0.8
-                eid = new_id()
+                eid = f"ent-{e_num}"
                 entity_id_by_num[e_num] = eid
                 session.add(Entity(
                     id=eid,
@@ -196,7 +199,7 @@ def seed(reset: bool = False) -> None:
             i            = idx + 1
             entity_num   = ((i - 1) % 1000) + 1
             entity_db_id = entity_id_by_num[entity_num]
-            pid = new_id()
+            pid = f"ph-{i}"
             phone_id_by_num[i] = pid
             session.add(PhoneNumber(
                 id=pid,
@@ -221,6 +224,7 @@ def seed(reset: bool = False) -> None:
             entity_db_id = entity_id_by_num[entity_num]
             phone_db_id  = phone_id_by_num[i]
             session.add(PipelineTask(
+                id=f"task-{i}",
                 phone_id=phone_db_id,
                 phone_number=f"+1555{str(i).zfill(7)}",
                 entity_id=entity_db_id,
