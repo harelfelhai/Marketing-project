@@ -1813,12 +1813,12 @@ export function MockDataProvider({ children }) {
           id:                  nextId,
           entity_id:           body.entity_id,
           phone_number:        String(body.phone_number || '').trim(),
-          phone_type:          null,
+          phone_type:          body.phone_type || null,
           ingestion_source:    'manual',
           verification_status: 'pending',
           score:               null,
           deleted_at:          null,
-          extra_data:          {},
+          extra_data:          body.extra_data || {},
           root_entity_id:           ent.root_entity_id,
         };
         resolve(ph);

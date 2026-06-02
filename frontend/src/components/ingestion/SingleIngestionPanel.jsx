@@ -40,7 +40,8 @@ import {
   ENTITY_SUCCESS_DISMISS,
   ENTITY_OPTION_FAMILY, ENTITY_OPTION_FRIEND,
   ENTITY_OPTION_COLLEAGUE, ENTITY_OPTION_SPOUSE,
-  INGEST_FIELD_PHONE, INGEST_FIELD_REASON,
+  INGEST_FIELD_PHONE, INGEST_FIELD_PHONE_TYPE, INGEST_PHONE_TYPE_UNSET,
+  INGEST_FIELD_REASON,
   INGEST_MODE_LABEL,
   INGEST_MODE_EXISTING, INGEST_MODE_NEW, INGEST_MODE_ENVELOPE,
   INGEST_PICK_ENTITY, INGEST_PICK_CLIENT, INGEST_PICK_TARGET,
@@ -53,6 +54,7 @@ import { relationOptions } from '../../config/vocabOptions';
 
 const EMPTY_FORM = {
   phoneNumber:     '',
+  phoneType:       '',
   reason:          '',
   mode:            'existing',         // 'existing' | 'new' | 'envelope'
   // existing-mode picker
@@ -232,6 +234,7 @@ export default function SingleIngestionPanel({ active }) {
       const created = await quickAttachPhone({
         phone_number:     cleaned,
         entity_id:        entityId,
+        phone_type:       form.phoneType || null,
       }, mockDb);
 
       pushToast({ variant: 'success', message: INGEST_TOAST_SUCCESS });
@@ -292,6 +295,19 @@ export default function SingleIngestionPanel({ active }) {
         error={errors.phoneNumber}
         dir="ltr"
       />
+
+      {/* Phone type — optional classification from the managed vocabulary. */}
+      <SelectField
+        id="phone-type"
+        label={INGEST_FIELD_PHONE_TYPE}
+        value={form.phoneType}
+        onChange={(v) => setField('phoneType', v)}
+      >
+        <option value="">{INGEST_PHONE_TYPE_UNSET}</option>
+        {(mockDb.vocabularies?.phone_types || []).map((t) => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </SelectField>
 
       {/* Mode selector */}
       <fieldset className="space-y-2">

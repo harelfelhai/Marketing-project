@@ -286,6 +286,25 @@ class TestQuickAttach:
         assert body["phone_number"] == "+15559998888"
         assert body["entity_id"] == ent.id
 
+    def test_persists_phone_type_and_extra_data(self, client):
+        """phone_type + opaque extra_data flow through quick-attach (add-number form)."""
+        tc, session = client
+        ent = Entity(relation_type="primary", deleted_at=not_deleted())
+        session.add(ent)
+        session.commit()
+        session.refresh(ent)
+
+        r = tc.post("/api/v1/phones/quick", json={
+            "phone_number": "+15557776666",
+            "entity_id": ent.id,
+            "phone_type": "mobile",
+            "extra_data": {"campaign": "spring"},
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["phone_type"] == "mobile"
+        assert body["extra_data"] == {"campaign": "spring"}
+
     def test_unknown_entity_returns_422(self, client):
         tc, _ = client
         r = tc.post("/api/v1/phones/quick", json={

@@ -88,6 +88,8 @@ export const PROFILE_TOAST_ERROR  = (msg) => `שגיאה: ${msg}`;
 
 // SingleIngestionPanel — UAT round-3 simplified phone-add form.
 export const INGEST_FIELD_PHONE        = 'מספר טלפון';
+export const INGEST_FIELD_PHONE_TYPE   = 'סוג מספר';
+export const INGEST_PHONE_TYPE_UNSET   = 'ללא סיווג';
 export const INGEST_FIELD_REASON       = 'סיבת הצפה';
 export const INGEST_MODE_LABEL         = 'קישור לישות';
 export const INGEST_MODE_EXISTING      = 'ישות קיימת';
@@ -852,6 +854,7 @@ export const ENTITY_TAB_COMING_SOON  = 'תכונה זו תהיה זמינה בק
 // Single-entry panel form labels.
 export const ENTITY_FIELD_FIRST_NAME    = 'שם פרטי';
 export const ENTITY_FIELD_LAST_NAME     = 'שם משפחה';
+export const ENTITY_FIELD_FULL_NAME     = 'שם מלא';
 export const ENTITY_FIELD_RELATION      = 'סוג קרבה';
 export const ENTITY_FIELD_CLIENT        = 'לקוח';
 export const ENTITY_FIELD_TARGET        = 'ישות ראשית (לקוח)';

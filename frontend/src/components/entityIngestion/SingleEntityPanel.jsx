@@ -27,7 +27,7 @@ import { useMockData }          from '../../contexts/MockDataContext';
 import { useUI }                from '../../contexts/UIContext';
 import NotificationOptInPanel   from '../notifications/NotificationOptInPanel';
 import {
-  ENTITY_FIELD_FIRST_NAME, ENTITY_FIELD_LAST_NAME,
+  ENTITY_FIELD_FULL_NAME,
   ENTITY_FIELD_RELATION, ENTITY_FIELD_TARGET,
   ENTITY_PLACEHOLDER_PICK,
   ENTITY_TARGET_LIST_EMPTY,
@@ -52,10 +52,9 @@ const RELATION_LABELS = {
 };
 
 const EMPTY_FORM = {
-  firstName: '',
-  lastName:  '',
-  relation:  'family',
-  targetId:  '',
+  fullName: '',
+  relation: 'family',
+  targetId: '',
 };
 
 export default function SingleEntityPanel({ active }) {
@@ -122,9 +121,9 @@ export default function SingleEntityPanel({ active }) {
 
   const validate = () => {
     const next = {};
-    if (!form.firstName.trim()) next.firstName = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_FIRST_NAME);
-    if (!form.relation)         next.relation  = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_RELATION);
-    if (form.targetId === '')   next.targetId  = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_TARGET);
+    if (!form.fullName.trim()) next.fullName = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_FULL_NAME);
+    if (!form.relation)        next.relation = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_RELATION);
+    if (form.targetId === '')  next.targetId = ENTITY_FIELD_REQUIRED(ENTITY_FIELD_TARGET);
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -132,9 +131,8 @@ export default function SingleEntityPanel({ active }) {
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    const parts = [form.firstName.trim(), form.lastName.trim()].filter(Boolean);
     const payload = {
-      full_name:        parts.join(' ') || null,
+      full_name:        form.fullName.trim() || null,
       relation_type:    form.relation,
       target_entity_id: form.targetId || null,
     };
@@ -223,23 +221,15 @@ export default function SingleEntityPanel({ active }) {
   // ===========================================================================
   return (
     <div className="space-y-4">
-      {/* Name row — first + last side by side */}
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          id="entity-first-name"
-          label={ENTITY_FIELD_FIRST_NAME}
-          required
-          value={form.firstName}
-          onChange={(v) => handleChange('firstName', v)}
-          error={errors.firstName}
-        />
-        <Field
-          id="entity-last-name"
-          label={ENTITY_FIELD_LAST_NAME}
-          value={form.lastName}
-          onChange={(v) => handleChange('lastName', v)}
-        />
-      </div>
+      {/* Full name — single field (was first + last). */}
+      <Field
+        id="entity-full-name"
+        label={ENTITY_FIELD_FULL_NAME}
+        required
+        value={form.fullName}
+        onChange={(v) => handleChange('fullName', v)}
+        error={errors.fullName}
+      />
 
       {/* Relation dropdown */}
       <SelectField

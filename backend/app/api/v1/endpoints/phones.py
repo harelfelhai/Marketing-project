@@ -415,6 +415,7 @@ class _QuickAttachIn(_BaseModel):
     phone_number: str
     entity_id:    str
     phone_type:   Optional[str] = None
+    extra_data:   Optional[dict] = None
 
 
 @router.post(
@@ -431,6 +432,8 @@ def quick_attach_phone(
             phone_number=body.phone_number,
             entity_id=body.entity_id,
             ingestion_source="manual",
+            phone_type=body.phone_type,
+            extra_data=body.extra_data,
             uploaded_by_user_id=current_user.id if current_user else None,
         )
     except TargetNotFoundError as exc:

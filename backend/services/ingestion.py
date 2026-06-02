@@ -31,10 +31,17 @@ class IngestionService:
         phone_number: str,
         entity_id: str,
         ingestion_source: str = "manual",
+        phone_type: Optional[str] = None,
+        extra_data: Optional[dict] = None,
         uploaded_by_user_id: Optional[str] = None,
     ) -> PhoneNumber:
         """
         Create a PhoneNumber attached to an EXISTING entity.
+
+        `phone_type` is an optional classification (operator-managed vocabulary).
+        `extra_data` is an opaque pass-through blob written verbatim to
+        PhoneNumber.extra_data (Secrets-Free Mandate) — used by the
+        admin-defined dynamic ingestion fields.
 
         Raises:
             TargetNotFoundError: entity_id does not exist or is soft-deleted.
@@ -48,8 +55,9 @@ class IngestionService:
             entity_id=entity_id,
             phone_number=phone_number.strip(),
             ingestion_source=ingestion_source,
+            phone_type=phone_type,
             score=0.0,
             deleted_at=not_deleted(),
-            extra_data={},
+            extra_data=extra_data or {},
         )
         return self.phones.add(new_phone)
