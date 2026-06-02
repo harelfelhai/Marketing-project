@@ -33,10 +33,15 @@ import {
   AUTH_CLIENT_PICKER_PLACEHOLDER,
   AUTH_CLIENT_PICKER_EMPTY,
   AUTH_CLIENT_PICKER_REMOVE_ARIA,
+  AUTH_CLIENT_PICKER_MORE,
 } from '../../config/strings.he';
 
 
-const MAX_VISIBLE_RESULTS = 50;
+// Upper bound on rendered dropdown rows. The list is searchable, so this is
+// only a guard against pathological client counts; it must stay comfortably
+// above the real root-entity count (≈100) so the full list is reachable
+// without typing. A "keep typing" hint shows when it actually truncates.
+const MAX_VISIBLE_RESULTS = 500;
 
 
 export default function ClientMultiPicker({
@@ -61,16 +66,20 @@ export default function ClientMultiPicker({
 
   // Filter the registry: exclude already-selected ids, then substring
   // match on name + shortName. Sorted by registry order for stability.
-  const filtered = useMemo(() => {
+  // `truncated` flags when the cap actually hid matches so the UI can say so.
+  const { filtered, truncated } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const out = [];
+    const matches = [];
     for (const c of registry) {
       if (selected.has(c.id)) continue;
-      if (!q) { out.push(c); continue; }
+      if (!q) { matches.push(c); continue; }
       const hay = `${c.name} ${c.shortName || ''}`.toLowerCase();
-      if (hay.includes(q)) out.push(c);
+      if (hay.includes(q)) matches.push(c);
     }
-    return out.slice(0, MAX_VISIBLE_RESULTS);
+    return {
+      filtered: matches.slice(0, MAX_VISIBLE_RESULTS),
+      truncated: matches.length > MAX_VISIBLE_RESULTS,
+    };
   }, [query, selected, registry]);
 
   // Keep the highlighted index in-range when the result set shrinks.
@@ -214,6 +223,11 @@ export default function ClientMultiPicker({
                 )}
               </button>
             ))
+          )}
+          {truncated && (
+            <div className="px-3 py-1.5 text-[11px] text-slate-400 border-t border-slate-100">
+              {AUTH_CLIENT_PICKER_MORE(MAX_VISIBLE_RESULTS)}
+            </div>
           )}
         </div>
       )}

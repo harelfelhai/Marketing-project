@@ -601,6 +601,7 @@ export const AUTH_REGISTER_CLIENTS_LABEL = 'באחריותי הלקוחות הב
 export const AUTH_CLIENT_PICKER_PLACEHOLDER = 'חפש לקוח להוספה…';
 export const AUTH_CLIENT_PICKER_EMPTY       = 'לא נמצאו לקוחות תואמים.';
 export const AUTH_CLIENT_PICKER_REMOVE_ARIA = (name) => `הסר את ${name}`;
+export const AUTH_CLIENT_PICKER_MORE        = (n) => `מוצגות ${n} התאמות ראשונות — הקלד כדי לצמצם.`;
 export const AUTH_BTN_REGISTER        = 'הירשם';
 export const AUTH_BTN_REGISTERING     = 'נרשם…';
 export const AUTH_BTN_BACK_TO_LOGIN   = 'חזור לכניסה';

@@ -6,12 +6,36 @@
  * than being only exercised through RegisterPage.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
+// ClientMultiPicker sources its selectable clients from MockDataContext (the
+// live clients slice derived from root entities). Mock the hook so the picker
+// can be exercised in isolation with a deterministic client list. `bag` is
+// hoisted so individual tests can swap the list (e.g. the 100-client case).
+const bag = vi.hoisted(() => ({
+  clients: [
+    { id: 'ent-1',  name: 'Alpha' },
+    { id: 'ent-9',  name: 'Beta'  },
+    { id: 'ent-17', name: 'Gamma' },
+  ],
+}));
+vi.mock('../../src/contexts/MockDataContext', () => ({
+  useMockData: () => ({ clients: bag.clients }),
+}));
+
 import ClientMultiPicker from '../../src/components/primitives/ClientMultiPicker';
+
+
+beforeEach(() => {
+  bag.clients = [
+    { id: 'ent-1',  name: 'Alpha' },
+    { id: 'ent-9',  name: 'Beta'  },
+    { id: 'ent-17', name: 'Gamma' },
+  ];
+});
 
 
 function Harness({ initial = new Set() } = {}) {
@@ -115,5 +139,24 @@ describe('ClientMultiPicker — keyboard', () => {
     // Last chip (id=9) is gone; first chip remains.
     expect(screen.queryByTestId('client-chip-ent-9')).not.toBeInTheDocument();
     expect(screen.getByTestId('client-chip-ent-1')).toBeInTheDocument();
+  });
+});
+
+
+describe('ClientMultiPicker — full client list (regression: 50-row cap)', () => {
+  it('renders all 100 root-entity clients, not just the first 50', async () => {
+    bag.clients = Array.from({ length: 100 }, (_, i) => ({
+      id: `ent-${i + 1}`,
+      name: `Client ${i + 1}`,
+    }));
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByTestId('client-multi-picker-input'));
+
+    // The previously-capped tail must be present (ids 51 and 100).
+    expect(screen.getByTestId('client-option-ent-51')).toBeInTheDocument();
+    expect(screen.getByTestId('client-option-ent-100')).toBeInTheDocument();
+    expect(screen.getAllByRole('option')).toHaveLength(100);
   });
 });
