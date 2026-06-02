@@ -13,7 +13,7 @@ Endpoints:
     POST /api/v1/entities/{entity_id}/restore — Restore entity
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
@@ -201,6 +201,7 @@ class EntityPatchIn(BaseModel):
 )
 def list_entities(
     target_entity_id: Optional[str] = Query(default=None),
+    client_ids: Optional[List[str]] = Query(default=None),
     include_deleted: bool = Query(default=False),
     q: Optional[str] = Query(default=None),
     admin: DataAdminService = Depends(get_data_admin_service),
@@ -208,6 +209,10 @@ def list_entities(
     """
     Fast path (production): served from the in-memory ReadModelStore.
     Fallback path (tests / startup failure): one DB query via DataAdminService.
+
+    `client_ids` scopes results to specific clients (used by the "My Data"
+    personalization view). An entity's client is its root: a member's
+    target_entity_id, or — for a root entity — its own id.
     """
     mgr = read_model_manager
     if mgr.started:
@@ -233,6 +238,12 @@ def list_entities(
             include_deleted=include_deleted,
             q=q,
         )
+
+    # Client scoping applies to both paths. Derive each entity's client id
+    # (root = its own id; member = target_entity_id) and keep only matches.
+    if client_ids:
+        allowed = set(client_ids)
+        rows = [e for e in rows if (e.target_entity_id or e.id) in allowed]
 
     return {"items": [_entity_to_dict(r) for r in rows], "total": len(rows)}
 

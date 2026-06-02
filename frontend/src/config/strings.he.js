@@ -668,7 +668,7 @@ export const TASK_TABLE_SHOWING = (shown, total) => `מציג ${shown} מתוך 
 // Row caption fragments
 export const TASK_ROW_REQUESTED_BY  = (who) => `נפתח ע"י ${who}`;
 export const TASK_ROW_RESOLVED_BY   = (who) => `טופל ע"י ${who}`;
-export const TASK_ROW_ENTITY_LINE   = (id, type) => `ישות #${id} · ${type}`;
+export const TASK_ROW_ENTITY_LINE   = (name, type) => `${name || 'ישות'} · ${type}`;
 
 // Permission gate fallback (used when RequireRole denies)
 export const PERMISSION_DENIED_NOTICE = 'אין לך הרשאה לצפות בתוכן זה. פנה למנהל מערכת.';

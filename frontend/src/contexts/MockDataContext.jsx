@@ -102,6 +102,26 @@ function _clientsFromEntities(entities) {
     });
 }
 
+// _enrichTasks: the backend task response carries entity_id + full_name but
+//   NOT client_id/client_name. The OperationsQueue's client column and the
+//   taskAdapter both expect client_id. Resolve it through the owning entity
+//   (task.entity_id → entity.client_id) and stamp client_id + client_name so
+//   "who does this task belong to" renders instead of "Unassigned".
+function _enrichTasks(tasks, entities, clients) {
+  const entityById = new Map((entities || []).map((e) => [e.id, e]));
+  const clientById = new Map((clients || []).map((c) => [c.id, c]));
+  return (tasks || []).map((t) => {
+    const ent      = entityById.get(t.entity_id);
+    const clientId = ent?.client_id ?? null;
+    const client   = clientId != null ? clientById.get(clientId) : null;
+    return {
+      ...t,
+      client_id:   clientId,
+      client_name: client?.name ?? ent?.full_name ?? t.client_name ?? null,
+    };
+  });
+}
+
 // Minimal empty db used as the real-mode boot state while the API hydrates.
 const EMPTY_DB = {
   clients:    [],
@@ -203,11 +223,12 @@ export function MockDataProvider({ children }) {
         const entitiesData = _enrichEntities(entitiesRaw);
         const phonesData   = _enrichPhones(phonesRaw, entitiesData);
         const clientsData  = _clientsFromEntities(entitiesData);
+        const tasksEnriched = _enrichTasks(tasksData, entitiesData, clientsData);
 
         setDb((prev) => ({
           ...prev,
           phones:   phonesData,
-          tasks:    tasksData,
+          tasks:    tasksEnriched,
           entities: entitiesData,
           clients:  clientsData,
         }));
@@ -301,7 +322,10 @@ export function MockDataProvider({ children }) {
   const refetchTasks = useCallback(async () => {
     if (MOCK_MODE) return;
     const fresh = await listTasks({ pageSize: 1_000_000 });
-    setDb((prev) => ({ ...prev, tasks: fresh }));
+    setDb((prev) => ({
+      ...prev,
+      tasks: _enrichTasks(fresh, prev.entities, prev.clients),
+    }));
   }, []);
 
   // UAT round-3: entities is now a real slice (not synthesized). Mutators

@@ -86,9 +86,9 @@ export default function TaskRow({ task, isSelected, onSelect, isChecked, onToggl
           </span>
           <span
             className="text-xs text-slate-500 truncate"
-            title={TASK_ROW_ENTITY_LINE(task.entity_id, task.task_type || '—')}
+            title={TASK_ROW_ENTITY_LINE(task.full_name || task.entity_id, task.task_type || '—')}
           >
-            {TASK_ROW_ENTITY_LINE(task.entity_id, task.task_type || '—')}
+            {TASK_ROW_ENTITY_LINE(task.full_name || task.entity_id, task.task_type || '—')}
           </span>
         </div>
       </td>
