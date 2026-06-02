@@ -26,3 +26,6 @@ dist/
 # admin roster. Per-deployment, MUST NOT be committed.
 # `admins.example.json` is checked in as a template.
 backend/admins.json
+
+# Claude Code agent worktrees (created by sub-agents, ephemeral)
+.claude/
