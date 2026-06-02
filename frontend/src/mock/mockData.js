@@ -407,6 +407,11 @@ export const SEED_SYSTEM_SETTINGS = {
   //   { surface: [ {key, label, field, widget, options?}, ... ] }
   // Empty = no custom filters. Persist via /system/settings/custom-filters.
   custom_filters: {},
+  // Admin-defined dynamic ingestion fields for the add-person / add-number
+  // forms. Shape: { 'entity'|'phone': [ {key, label, widget, options?}, ... ] }.
+  // Each `key` is the extra_data key the captured value lands under.
+  // Persist via /system/settings/ingestion-fields.
+  ingestion_fields: {},
   // Whether an admin has stored a MongoDB URL via PUT /settings/mongo-url.
   // The URL itself is never held in the frontend — only this boolean flag.
   mongo_configured: false,

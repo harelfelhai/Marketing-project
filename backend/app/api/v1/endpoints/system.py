@@ -8,6 +8,7 @@ Endpoints:
     PUT  /api/v1/system/settings/display-labels      — Override column labels for a surface
     PUT  /api/v1/system/settings/filter-fields      — Set active filters for a surface
     PUT  /api/v1/system/settings/custom-filters     — Set admin-defined custom filters
+    PUT  /api/v1/system/settings/ingestion-fields   — Set admin-defined dynamic ingestion fields
     PUT  /api/v1/system/settings/mongo-url          — Configure MongoDB URL
     GET  /api/v1/system/settings/vocabulary/{name}  — Get vocabulary list
     PUT  /api/v1/system/settings/vocabulary/{name}  — Update vocabulary list
@@ -24,6 +25,7 @@ from app.schemas.api_contracts import (
     DisplayFieldsUpdate,
     DisplayLabelsUpdate,
     FilterFieldsUpdate,
+    IngestionFieldsUpdate,
     MongoUrlUpdate,
     SystemSettingsResponse,
     SystemSettingsUpdate,
@@ -129,6 +131,22 @@ def update_custom_filters(
 ) -> SystemSettingsResponse:
     try:
         return SystemSettingsResponse(**svc.set_custom_filters(body.surface, body.filters))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/ingestion-fields",
+    response_model=SystemSettingsResponse,
+    summary="Set the admin-defined dynamic ingestion fields for a surface",
+)
+def update_ingestion_fields(
+    body: IngestionFieldsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_ingestion_fields(body.surface, body.fields))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 

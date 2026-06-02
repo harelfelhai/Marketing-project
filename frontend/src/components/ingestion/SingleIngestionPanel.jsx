@@ -28,10 +28,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Check, Loader2, Upload } from 'lucide-react';
 
 import { createEntity, createEnvelopeEntity, quickAttachPhone } from '../../api/entityApi';
+import { getSystemSettings } from '../../api/systemApi';
+import { resolveIngestionFields, buildExtraData } from '../../config/ingestionFields';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import { useAuth }     from '../../contexts/MockAuthContext';
 import NotificationOptInPanel from '../notifications/NotificationOptInPanel';
+import DynamicIngestionFields from './DynamicIngestionFields';
 import { CLIENT_REGISTRY, getClientById } from '../../config/clientRegistry';
 import {
   INGEST_MODAL_BTN_CANCEL, INGEST_MODAL_BTN_SUBMIT, INGEST_MODAL_BTN_SUBMITTING,
@@ -80,6 +83,18 @@ export default function SingleIngestionPanel({ active }) {
   const [submitting, setSubmitting]   = useState(false);
   const [ingestedPhone, setIngestedPhone] = useState(null);
 
+  // Admin-defined dynamic fields ('phone' surface) + their captured values.
+  const [dynFields, setDynFields]     = useState([]);
+  const [extraValues, setExtraValues] = useState({});
+  useEffect(() => {
+    let alive = true;
+    getSystemSettings(mockDb)
+      .then((s) => { if (alive) setDynFields(resolveIngestionFields('phone', s.ingestion_fields || {})); })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reset on tab activation (mirrors the previous SingleIngestionPanel
   // contract). Preset values from the friction-free entity→phone chain
   // are still honored — when present, we land in "existing" mode with
@@ -88,6 +103,7 @@ export default function SingleIngestionPanel({ active }) {
     if (!active) return;
     setIngestedPhone(null);
     setErrors({});
+    setExtraValues({});
     setForm(() => {
       const next = { ...EMPTY_FORM };
       if (phoneIngestionPreset?.targetEntityId) {
@@ -235,6 +251,7 @@ export default function SingleIngestionPanel({ active }) {
         phone_number:     cleaned,
         entity_id:        entityId,
         phone_type:       form.phoneType || null,
+        extra_data:       buildExtraData(dynFields, extraValues),
       }, mockDb);
 
       pushToast({ variant: 'success', message: INGEST_TOAST_SUCCESS });
@@ -308,6 +325,13 @@ export default function SingleIngestionPanel({ active }) {
           <option key={t} value={t}>{t}</option>
         ))}
       </SelectField>
+
+      {/* Admin-defined dynamic fields → phone.extra_data */}
+      <DynamicIngestionFields
+        descriptors={dynFields}
+        values={extraValues}
+        onChange={(key, value) => setExtraValues((p) => ({ ...p, [key]: value }))}
+      />
 
       {/* Mode selector */}
       <fieldset className="space-y-2">

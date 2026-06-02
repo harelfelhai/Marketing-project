@@ -278,6 +278,15 @@ class SystemSettingsResponse(BaseModel):
             "Stored opaquely; labels/options are interpreted only client-side."
         ),
     )
+    ingestion_fields: dict[str, list[dict]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-surface admin-defined dynamic ingestion fields: "
+            "{ 'entity'|'phone': [ {key, label, widget, options}, ... ] }. Each "
+            "`key` is the extra_data key the captured value is stored under. "
+            "Stored opaquely; rendered + collected client-side into extra_data."
+        ),
+    )
     vocabularies: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Current vocabulary lists keyed by vocabulary name.",
@@ -360,6 +369,22 @@ class CustomFiltersUpdate(BaseModel):
         description=(
             "Ordered list of custom filter descriptors. Each must carry at "
             "least a string `key` and `field`; label/widget/options are opaque."
+        ),
+    )
+
+
+class IngestionFieldsUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings/ingestion-fields."""
+
+    surface: str = Field(
+        ..., description="Ingestion surface: 'entity' or 'phone'."
+    )
+    fields: list[dict] = Field(
+        ...,
+        description=(
+            "Ordered list of dynamic field descriptors. Each must carry at "
+            "least a non-empty string `key` (the extra_data key); "
+            "label/widget/options are opaque."
         ),
     )
 

@@ -24,7 +24,7 @@ import { useUI }       from '../contexts/UIContext';
 import {
   getSystemSettings, updateSystemSettings, updateDisplayFields,
   updateDisplayLabels, updateFilterFields, updateCustomFilters,
-  updateMongoUrl, updateVocabulary,
+  updateIngestionFields, updateMongoUrl, updateVocabulary,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
@@ -48,6 +48,10 @@ import {
   SYSSET_CUSTOM_ADD_BTN, SYSSET_CUSTOM_LABEL_PH, SYSSET_CUSTOM_FIELD_PH,
   SYSSET_CUSTOM_OPTIONS_PH, SYSSET_CUSTOM_WIDGET_TEXT, SYSSET_CUSTOM_WIDGET_SELECT,
   SYSSET_CUSTOM_REMOVE_ARIA, SYSSET_CUSTOM_EMPTY, SYSSET_CUSTOM_FIELD_REQUIRED,
+  SYSSET_INGEST_FIELDS_TITLE, SYSSET_INGEST_FIELDS_DESC,
+  SYSSET_INGEST_SURFACE_ENTITY, SYSSET_INGEST_SURFACE_PHONE,
+  SYSSET_INGEST_ADD_BTN, SYSSET_INGEST_KEY_PH, SYSSET_INGEST_KEY_REQUIRED,
+  SYSSET_INGEST_TOAST_SAVED, SYSSET_INGEST_TOAST_ERROR,
   SYSSET_VOCAB_TITLE, SYSSET_VOCAB_DESC, SYSSET_VOCAB_NAMES, SYSSET_VOCAB_ORDER,
   SYSSET_VOCAB_ADD_ITEM, SYSSET_VOCAB_PLACEHOLDER, SYSSET_VOCAB_REMOVE_ARIA,
   SYSSET_VOCAB_BTN_SAVE, SYSSET_VOCAB_BTN_SAVING,
@@ -242,6 +246,30 @@ export default function SystemSettingsPage() {
               surface={surface}
               initialSelection={settings.filter_fields?.[surface.id]}
               initialCustom={settings.custom_filters?.[surface.id]}
+              mockDb={mockDb}
+              pushToast={pushToast}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Dynamic ingestion-fields section — extra inputs on the add forms. */}
+      <section className="rounded-lg border border-slate-200 bg-white p-5 mt-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Plus className="w-4 h-4 text-slate-700" />
+          <h2 className="text-sm font-semibold text-slate-900">{SYSSET_INGEST_FIELDS_TITLE}</h2>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-4">{SYSSET_INGEST_FIELDS_DESC}</p>
+
+        <div className="space-y-6">
+          {[
+            { id: 'entity', label: SYSSET_INGEST_SURFACE_ENTITY },
+            { id: 'phone',  label: SYSSET_INGEST_SURFACE_PHONE },
+          ].map((surface) => (
+            <IngestionFieldsEditor
+              key={surface.id}
+              surface={surface}
+              initialFields={settings.ingestion_fields?.[surface.id]}
               mockDb={mockDb}
               pushToast={pushToast}
             />
@@ -922,6 +950,141 @@ function FilterFieldsEditor({ surface, initialSelection, initialCustom, mockDb, 
           onClick={save}
           disabled={!dirty || saving}
           data-testid={`filter-fields-save-${surface.id}`}
+          className={[
+            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium',
+            !dirty || saving
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-slate-900 text-white hover:bg-slate-800',
+          ].join(' ')}
+        >
+          {saving
+            ? <><Loader2 className="w-4 h-4 animate-spin" />{SYSSET_BTN_SAVING}</>
+            : <><Save className="w-4 h-4" />{SYSSET_BTN_SAVE}</>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * IngestionFieldsEditor — manage the admin-defined dynamic input fields for one
+ * ingestion surface ('entity' add-person / 'phone' add-number). Each field's
+ * key is the extra_data key its captured value is stored under.
+ */
+function IngestionFieldsEditor({ surface, initialFields, mockDb, pushToast }) {
+  const _rows = () => (Array.isArray(initialFields) ? initialFields : [])
+    .filter((d) => d && typeof d.key === 'string')
+    .map((d) => ({
+      key: d.key,
+      label: typeof d.label === 'string' ? d.label : '',
+      widget: d.widget === 'select' ? 'select' : 'text',
+      options: Array.isArray(d.options)
+        ? d.options.map((o) => o.value).filter(Boolean).join(', ')
+        : '',
+    }));
+
+  const [rows, setRows]     = useState(_rows);
+  const [dirty, setDirty]   = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const addRow    = () => { setRows((p) => [...p, { key: '', label: '', widget: 'text', options: '' }]); setDirty(true); };
+  const updateRow = (i, patch) => { setRows((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); setDirty(true); };
+  const removeRow = (i) => { setRows((p) => p.filter((_, idx) => idx !== i)); setDirty(true); };
+
+  async function save() {
+    if (saving) return;
+    const fields = [];
+    for (const r of rows) {
+      const key = r.key.trim();
+      if (!key) { pushToast({ variant: 'error', message: SYSSET_INGEST_KEY_REQUIRED }); return; }
+      const desc = { key, label: r.label.trim() || key, widget: r.widget };
+      if (r.widget === 'select') {
+        desc.options = r.options.split(',').map((s) => s.trim()).filter(Boolean)
+          .map((v) => ({ value: v, label: v }));
+      }
+      fields.push(desc);
+    }
+    setSaving(true);
+    try {
+      await updateIngestionFields(surface.id, fields, mockDb);
+      pushToast({ variant: 'success', message: SYSSET_INGEST_TOAST_SAVED });
+      setDirty(false);
+    } catch (err) {
+      const { message } = normalizeError(err);
+      pushToast({ variant: 'error', message: SYSSET_INGEST_TOAST_ERROR(message) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div data-testid={`ingestion-fields-${surface.id}`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[13px] font-semibold text-slate-700">{surface.label}</h3>
+        <button
+          type="button"
+          onClick={addRow}
+          data-testid={`ingestion-field-add-${surface.id}`}
+          className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+        >
+          <Plus className="w-3 h-3" />{SYSSET_INGEST_ADD_BTN}
+        </button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="text-[12px] text-slate-400 italic">{SYSSET_CUSTOM_EMPTY}</p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((r, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-2"
+                data-testid={`ingestion-field-row-${surface.id}-${i}`}>
+              <input
+                type="text" value={r.key} dir="ltr"
+                onChange={(e) => updateRow(i, { key: e.target.value })}
+                placeholder={SYSSET_INGEST_KEY_PH}
+                className="h-8 px-2 text-sm rounded-md border border-slate-300 min-w-[180px] grow"
+              />
+              <input
+                type="text" value={r.label}
+                onChange={(e) => updateRow(i, { label: e.target.value })}
+                placeholder={SYSSET_CUSTOM_LABEL_PH}
+                className="h-8 px-2 text-sm rounded-md border border-slate-300 min-w-[120px] grow"
+              />
+              <select
+                value={r.widget}
+                onChange={(e) => updateRow(i, { widget: e.target.value })}
+                className="h-8 px-2 text-sm rounded-md border border-slate-300 bg-white"
+              >
+                <option value="text">{SYSSET_CUSTOM_WIDGET_TEXT}</option>
+                <option value="select">{SYSSET_CUSTOM_WIDGET_SELECT}</option>
+              </select>
+              {r.widget === 'select' && (
+                <input
+                  type="text" value={r.options}
+                  onChange={(e) => updateRow(i, { options: e.target.value })}
+                  placeholder={SYSSET_CUSTOM_OPTIONS_PH}
+                  className="h-8 px-2 text-sm rounded-md border border-slate-300 min-w-[160px] grow"
+                />
+              )}
+              <button
+                type="button" onClick={() => removeRow(i)}
+                aria-label={SYSSET_CUSTOM_REMOVE_ARIA}
+                className="text-slate-400 hover:text-rose-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid={`ingestion-fields-save-${surface.id}`}
           className={[
             'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium',
             !dirty || saving

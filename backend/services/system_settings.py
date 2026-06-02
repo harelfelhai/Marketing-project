@@ -211,6 +211,33 @@ class SystemSettingsService:
                 out[surface] = clean
         return out
 
+    def _read_ingestion_fields(self) -> dict:
+        """
+        Return the persisted per-surface admin-defined ingestion fields.
+
+        Shape: { "<surface>": [ {"key","label","widget","options"}, ... ] },
+        surface ∈ {"entity","phone"}. These are extra input fields an admin
+        adds to the add-person / add-number forms; each `key` is the
+        extra_data key the captured value is stored under. Stored opaquely —
+        the backend keeps only well-formed descriptor dicts (requiring a
+        string `key`) and never interprets labels/options (Secrets-Free
+        Mandate), exactly like custom_filters.
+        """
+        raw = self._read_all().get("ingestion_fields", {})
+        if not isinstance(raw, dict):
+            return {}
+        out: dict = {}
+        for surface, defs in raw.items():
+            if not (isinstance(surface, str) and isinstance(defs, list)):
+                continue
+            clean = [
+                d for d in defs
+                if isinstance(d, dict) and isinstance(d.get("key"), str)
+            ]
+            if clean:
+                out[surface] = clean
+        return out
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -236,6 +263,7 @@ class SystemSettingsService:
             "display_labels": self._read_display_labels(),
             "filter_fields":  self._read_filter_fields(),
             "custom_filters": self._read_custom_filters(),
+            "ingestion_fields": self._read_ingestion_fields(),
             "vocabularies": self._read_vocabularies(),
             "mongo_configured": self._read_mongo_url() is not None,
             "applies_on_restart": True,
@@ -343,6 +371,36 @@ class SystemSettingsService:
             store = {}
         store[surface.strip()] = list(filters)
         data["custom_filters"] = store
+        self._write_all(data)
+        return self.get()
+
+    def set_ingestion_fields(self, surface: str, fields: list) -> dict:
+        """
+        Persist the admin-defined dynamic ingestion fields for one surface
+        ("entity" or "phone").
+
+        Each entry must be a dict carrying at least a non-empty string `key`
+        (the extra_data key the captured value is stored under). label /
+        widget / options are stored opaquely. An empty list clears the
+        surface's ingestion fields.
+
+        Raises:
+            ValueError: malformed surface name, or an entry missing `key`.
+        """
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError("surface must be a non-empty string.")
+        if not isinstance(fields, list):
+            raise ValueError("fields must be a list.")
+        for d in fields:
+            if not (isinstance(d, dict)
+                    and isinstance(d.get("key"), str) and d["key"].strip()):
+                raise ValueError("each ingestion field must have a non-empty 'key'.")
+        data = self._read_all()
+        store = data.get("ingestion_fields")
+        if not isinstance(store, dict):
+            store = {}
+        store[surface.strip()] = list(fields)
+        data["ingestion_fields"] = store
         self._write_all(data)
         return self.get()
 

@@ -1971,6 +1971,22 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  const applyUpdateIngestionFields = useCallback((surface, fields) => {
+    let snapshot;
+    setDb((prev) => {
+      const store = { ...(prev.systemSettings.ingestion_fields || {}) };
+      if (Array.isArray(fields) && fields.length) {
+        store[surface] = fields.map((d) => ({ ...d }));
+      } else {
+        delete store[surface];
+      }
+      const next = { ...prev.systemSettings, ingestion_fields: store };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   // Mock parity for PUT /system/settings/vocabulary/{name}. Also used as the
   // in-memory mirror update in BOTH modes: the System Settings editor calls
   // this after a successful save so the controlled dropdowns (which read
@@ -2050,6 +2066,7 @@ export function MockDataProvider({ children }) {
     applyUpdateDisplayLabels,
     applyUpdateFilterFields,
     applyUpdateCustomFilters,
+    applyUpdateIngestionFields,
     applyUpdateVocabulary,
     applyUpdateMongoUrl,
     // Operator-managed closed lists — the single source every controlled

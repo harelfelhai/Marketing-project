@@ -165,6 +165,24 @@ export async function updateCustomFilters(surface, filters, mockDb) {
 }
 
 /**
+ * updateIngestionFields — set the admin-defined dynamic ingestion fields for
+ * one surface ('entity' | 'phone'). Returns the full updated settings object.
+ *
+ * @param {string}   surface  'entity' | 'phone'.
+ * @param {object[]} fields   Ordered descriptors { key, label, widget, options? }.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateIngestionFields(surface, fields, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/ingestion-fields',
+                                         { surface, fields });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateIngestionFields(surface, fields);
+}
+
+/**
  * updateMongoUrl — validate and persist a MongoDB connection URL server-side.
  *
  * The URL is WRITE-ONLY from the frontend's perspective. The response only

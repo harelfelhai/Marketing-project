@@ -1051,6 +1051,19 @@ export const SYSSET_CUSTOM_FIELD_REQUIRED   = 'לכל פילטר מותאם נד
 // Generic "all" option shown first in a custom select-widget filter.
 export const CUSTOM_FILTER_ALL              = 'הכל';
 
+// Admin-defined dynamic ingestion fields (add-person / add-number forms).
+export const SYSSET_INGEST_FIELDS_TITLE     = 'שדות קלט דינמיים';
+export const SYSSET_INGEST_FIELDS_DESC      =
+  'הוסף שדות קלט משלך לטפסי הקליטה. כל שדה נשמר ב-extra_data של הרשומה תחת ' +
+  'המפתח שתגדיר. התווית והערכים נשמרים בצד הלקוח בלבד.';
+export const SYSSET_INGEST_SURFACE_ENTITY   = 'הוספת אדם';
+export const SYSSET_INGEST_SURFACE_PHONE    = 'הוספת מספר';
+export const SYSSET_INGEST_ADD_BTN          = 'הוסף שדה';
+export const SYSSET_INGEST_KEY_PH           = 'שם שדה (מפתח ב-extra_data)';
+export const SYSSET_INGEST_KEY_REQUIRED     = 'לכל שדה נדרש שם שדה (מפתח).';
+export const SYSSET_INGEST_TOAST_SAVED      = 'שדות הקלט נשמרו.';
+export const SYSSET_INGEST_TOAST_ERROR      = (msg) => `שמירת שדות הקלט נכשלה: ${msg}`;
+
 export const FILTER_LABEL_SEARCH            = 'חיפוש חופשי';
 export const FILTER_LABEL_CLIENT            = 'לקוח';
 export const FILTER_LABEL_VERIF_STATUS      = 'סטטוס אימות';

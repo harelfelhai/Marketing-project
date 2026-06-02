@@ -191,3 +191,37 @@ class TestCustomFilters:
         svc = SystemSettingsService(path=str(p))
         out = svc.get()["custom_filters"]["phones"]
         assert out == [{"key": "ok", "field": "extra_data.ok"}]
+
+
+class TestIngestionFields:
+    def test_default_is_empty(self, svc):
+        assert svc.get()["ingestion_fields"] == {}
+
+    def test_set_and_read_back(self, svc, tmp_path):
+        defs = [{"key": "region", "label": "אזור", "widget": "text"}]
+        out = svc.set_ingestion_fields("entity", defs)
+        assert out["ingestion_fields"]["entity"] == defs
+        again = SystemSettingsService(path=str(tmp_path / "system_settings.json"))
+        assert again.get()["ingestion_fields"]["entity"] == defs
+
+    def test_entity_and_phone_surfaces_coexist(self, svc):
+        svc.set_ingestion_fields("entity", [{"key": "role"}])
+        svc.set_ingestion_fields("phone", [{"key": "carrier"}])
+        fields = svc.get()["ingestion_fields"]
+        assert fields["entity"][0]["key"] == "role"
+        assert fields["phone"][0]["key"] == "carrier"
+
+    def test_empty_list_clears(self, svc):
+        svc.set_ingestion_fields("phone", [{"key": "carrier"}])
+        out = svc.set_ingestion_fields("phone", [])
+        assert out["ingestion_fields"].get("phone", []) == []
+
+    def test_entry_missing_key_raises(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_ingestion_fields("entity", [{"label": "no key"}])
+
+    def test_bad_surface_or_type_raises(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_ingestion_fields("", [])
+        with pytest.raises(ValueError):
+            svc.set_ingestion_fields("entity", "not-a-list")

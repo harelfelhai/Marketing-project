@@ -23,9 +23,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Loader2, UserPlus, Phone, Check } from 'lucide-react';
 
 import { createEntity }         from '../../api/entityApi';
+import { getSystemSettings }    from '../../api/systemApi';
+import { resolveIngestionFields, buildExtraData } from '../../config/ingestionFields';
 import { useMockData }          from '../../contexts/MockDataContext';
 import { useUI }                from '../../contexts/UIContext';
 import NotificationOptInPanel   from '../notifications/NotificationOptInPanel';
+import DynamicIngestionFields   from '../ingestion/DynamicIngestionFields';
 import {
   ENTITY_FIELD_FULL_NAME,
   ENTITY_FIELD_RELATION, ENTITY_FIELD_TARGET,
@@ -76,11 +79,24 @@ export default function SingleEntityPanel({ active }) {
   const [submitting, setSubmitting]   = useState(false);
   const [createdEntity, setCreatedEntity] = useState(null);  // SUCCESS state
 
+  // Admin-defined dynamic fields ('entity' surface) + their captured values.
+  const [dynFields, setDynFields]   = useState([]);
+  const [extraValues, setExtraValues] = useState({});
+  useEffect(() => {
+    let alive = true;
+    getSystemSettings(mockDb)
+      .then((s) => { if (alive) setDynFields(resolveIngestionFields('entity', s.ingestion_fields || {})); })
+      .catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reset on activation (mirrors SingleIngestionPanel's reset-on-open).
   useEffect(() => {
     if (active) {
       setForm(EMPTY_FORM);
       setErrors({});
+      setExtraValues({});
       setCreatedEntity(null);
     }
   }, [active]);
@@ -135,6 +151,7 @@ export default function SingleEntityPanel({ active }) {
       full_name:        form.fullName.trim() || null,
       relation_type:    form.relation,
       target_entity_id: form.targetId || null,
+      extra_data:       buildExtraData(dynFields, extraValues),
     };
 
     setSubmitting(true);
@@ -270,6 +287,13 @@ export default function SingleEntityPanel({ active }) {
       {targetsByClient.length === 0 && (
         <p className="text-xs text-amber-600">{ENTITY_TARGET_LIST_EMPTY}</p>
       )}
+
+      {/* Admin-defined dynamic fields → entity.extra_data */}
+      <DynamicIngestionFields
+        descriptors={dynFields}
+        values={extraValues}
+        onChange={(key, value) => setExtraValues((p) => ({ ...p, [key]: value }))}
+      />
 
       <div className="flex items-center justify-end gap-2 pt-2">
         <button
