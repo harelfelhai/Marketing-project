@@ -262,6 +262,13 @@ class SystemSettingsResponse(BaseModel):
             "labels so admins can rename columns without a code change."
         ),
     )
+    filter_fields: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-surface active-filter selections: { surface: [filter_key, ...] }. "
+            "Same opaque-to-backend contract as display_fields."
+        ),
+    )
     vocabularies: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Current vocabulary lists keyed by vocabulary name.",
@@ -319,6 +326,17 @@ class DisplayLabelsUpdate(BaseModel):
             "Map of field_key -> custom label. Keys absent from this map keep "
             "their frontend default label. An empty map clears all overrides."
         ),
+    )
+
+
+class FilterFieldsUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings/filter-fields."""
+
+    surface: str = Field(
+        ..., description="Surface id whose active filters are being set (e.g. 'phones')."
+    )
+    fields: list[str] = Field(
+        ..., description="Ordered list of active filter keys for the surface."
     )
 
 

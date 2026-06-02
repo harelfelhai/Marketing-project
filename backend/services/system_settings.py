@@ -160,6 +160,28 @@ class SystemSettingsService:
                     out[surface] = clean
         return out
 
+    def _read_filter_fields(self) -> dict:
+        """
+        Return the persisted per-surface active-filter selections.
+
+        Shape: { "<surface>": ["<filter_key>", ...], ... }. Opaque to the
+        backend — the filter catalog + labels live in the frontend config
+        layer (Secrets-Free Mandate). An empty / missing entry means the
+        surface falls back to its frontend-defined defaults.
+
+        Mirrors _read_display_fields exactly; the only reason this is a
+        separate setting is the surfaces / keys come from a different
+        frontend catalog (filterFields.js vs displayFields.js).
+        """
+        raw = self._read_all().get("filter_fields", {})
+        if not isinstance(raw, dict):
+            return {}
+        out: dict = {}
+        for surface, fields in raw.items():
+            if isinstance(surface, str) and isinstance(fields, list):
+                out[surface] = [f for f in fields if isinstance(f, str)]
+        return out
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -183,6 +205,7 @@ class SystemSettingsService:
             ],
             "display_fields": self._read_display_fields(),
             "display_labels": self._read_display_labels(),
+            "filter_fields":  self._read_filter_fields(),
             "vocabularies": self._read_vocabularies(),
             "mongo_configured": self._read_mongo_url() is not None,
             "applies_on_restart": True,
@@ -234,6 +257,30 @@ class SystemSettingsService:
             display = {}
         display[surface.strip()] = list(fields)
         data["display_fields"] = display
+        self._write_all(data)
+        return self.get()
+
+    def set_filter_fields(self, surface: str, fields: list) -> dict:
+        """
+        Persist the active-filter selection (ordered) for one surface.
+
+        Mirrors set_display_fields: opaque storage, identical validation.
+        An empty list is allowed (means "no active custom filters"; the
+        frontend decides whether to then fall back to defaults).
+
+        Raises:
+            ValueError: malformed surface name or fields list.
+        """
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError("surface must be a non-empty string.")
+        if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+            raise ValueError("fields must be a list of strings.")
+        data = self._read_all()
+        store = data.get("filter_fields")
+        if not isinstance(store, dict):
+            store = {}
+        store[surface.strip()] = list(fields)
+        data["filter_fields"] = store
         self._write_all(data)
         return self.get()
 
