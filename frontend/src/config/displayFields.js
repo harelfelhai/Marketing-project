@@ -30,6 +30,9 @@ import {
   CLIENT_CARD_SECTION_ROLE, CLIENT_CARD_SECTION_IDENTIFIER,
   CLIENT_CARD_SECTION_PHONE_COUNT,
   SURFACE_LABEL_ENTITIES, SURFACE_LABEL_PHONES, SURFACE_LABEL_CLIENTS,
+  SURFACE_LABEL_OPERATIONS,
+  TASK_TABLE_COL_TYPE, TASK_TABLE_COL_PHONE, TASK_TABLE_COL_CLIENT,
+  TASK_TABLE_COL_CLIENT_ID, TASK_TABLE_COL_STATUS, TASK_TABLE_COL_UPDATED,
 } from './strings.he';
 
 
@@ -87,6 +90,22 @@ export const DISPLAY_SURFACES = {
       { key: 'verdicts',    label: CLIENT_CARD_SECTION_VERDICTS,    default: true },
       { key: 'sla',         label: CLIENT_CARD_SECTION_SLA,         default: true },
       { key: 'tasks',       label: CLIENT_CARD_SECTION_TASKS,       default: true },
+    ],
+  },
+  // Operations / Task Queue table. The selection checkbox is structural and
+  // always shown; everything else is toggleable. `client_id` is the small
+  // "#ent-N" caption under the client name — split out so it can be hidden
+  // independently of the client name.
+  operations: {
+    id: 'operations',
+    label: SURFACE_LABEL_OPERATIONS,
+    columns: [
+      { key: 'task_type', label: TASK_TABLE_COL_TYPE,      default: true },
+      { key: 'phone',     label: TASK_TABLE_COL_PHONE,     default: true },
+      { key: 'client',    label: TASK_TABLE_COL_CLIENT,    default: true },
+      { key: 'client_id', label: TASK_TABLE_COL_CLIENT_ID, default: true },
+      { key: 'status',    label: TASK_TABLE_COL_STATUS,    default: true },
+      { key: 'updated',   label: TASK_TABLE_COL_UPDATED,   default: true },
     ],
   },
 };

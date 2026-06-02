@@ -22,17 +22,29 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
 import { resolveCustomFilters, rowMatchesCustom } from '../../config/customFilters';
+import { resolveVisibleColumns } from '../../config/displayFields';
 import { getSystemSettings } from '../../api/systemApi';
 import TaskRow         from './TaskRow';
 import Skeleton        from '../primitives/Skeleton';
 import {
-  TASK_TABLE_COL_TYPE, TASK_TABLE_COL_PHONE, TASK_TABLE_COL_CLIENT,
-  TASK_TABLE_COL_STATUS, TASK_TABLE_COL_UPDATED,
+  TASK_TABLE_COL_CLIENT,
   TASK_TABLE_EMPTY, TASK_TABLE_SHOWING,
   TASK_HEADER_SELECT_ALL_ARIA,
 } from '../../config/strings.he';
 
 const SKELETON_ROW_COUNT = 8;
+
+// Physical table columns (the selection checkbox is structural, always shown,
+// and not listed here). Order is fixed; visibility is config-driven via the
+// 'operations' display-fields surface. The `client` physical column also hosts
+// the optional `client_id` caption, so it shows when either key is enabled.
+const PHYSICAL_COLUMNS = [
+  { key: 'task_type', widthClass: 'w-[180px]' },
+  { key: 'phone',     widthClass: 'w-[180px]' },
+  { key: 'client',    widthClass: 'w-[180px]' },
+  { key: 'status',    widthClass: null },        // flex column
+  { key: 'updated',   widthClass: 'w-[140px]' },
+];
 
 /**
  * applyFilters — pure filter function for unit-testability.
@@ -103,14 +115,41 @@ export default function TaskTable({
   const { taskFilters, customFilterValues } = useUI();
 
   const [customDescriptors, setCustomDescriptors] = useState([]);
+  const [displayFields, setDisplayFields] = useState(null);
+  const [displayLabels, setDisplayLabels] = useState(null);
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
-      .then((s) => { if (alive) setCustomDescriptors(resolveCustomFilters('operations', s.custom_filters || {})); })
+      .then((s) => {
+        if (!alive) return;
+        setCustomDescriptors(resolveCustomFilters('operations', s.custom_filters || {}));
+        setDisplayFields(s.display_fields || {});
+        setDisplayLabels(s.display_labels || {});
+      })
       .catch(() => {});
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Config-driven columns ('operations' surface). Defaults show every column,
+  // so the table is unchanged until an admin toggles fields in System Settings.
+  const visibleCols = useMemo(
+    () => resolveVisibleColumns('operations', displayFields, displayLabels),
+    [displayFields, displayLabels],
+  );
+  const visibleKeys = useMemo(() => new Set(visibleCols.map((c) => c.key)), [visibleCols]);
+  const labelOf = useMemo(
+    () => Object.fromEntries(visibleCols.map((c) => [c.key, c.label])),
+    [visibleCols],
+  );
+  // Physical columns actually rendered, in fixed order. The client column is
+  // kept when either the name or the id caption is enabled.
+  const physCols = useMemo(() => PHYSICAL_COLUMNS.filter((c) =>
+    c.key === 'client'
+      ? (visibleKeys.has('client') || visibleKeys.has('client_id'))
+      : visibleKeys.has(c.key),
+  ), [visibleKeys]);
+  const colSpan = physCols.length + 1;
 
   // Phase AUTH-C — same merge pattern as PhoneTable: the page derives
   // personalization rootEntityIds from useAuth and hands them in here.
@@ -150,11 +189,9 @@ export default function TaskTable({
       <table className="w-full table-fixed">
         <colgroup>
           <col className="w-[40px]" />
-          <col className="w-[180px]" />
-          <col className="w-[180px]" />
-          <col className="w-[180px]" />
-          <col />
-          <col className="w-[140px]" />
+          {physCols.map((c) => (
+            <col key={c.key} className={c.widthClass || undefined} />
+          ))}
         </colgroup>
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
@@ -170,21 +207,21 @@ export default function TaskTable({
                 className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-300"
               />
             </th>
-            <Th>{TASK_TABLE_COL_TYPE}</Th>
-            <Th>{TASK_TABLE_COL_PHONE}</Th>
-            <Th>{TASK_TABLE_COL_CLIENT}</Th>
-            <Th>{TASK_TABLE_COL_STATUS}</Th>
-            <Th>{TASK_TABLE_COL_UPDATED}</Th>
+            {physCols.map((c) => (
+              <Th key={c.key}>
+                {c.key === 'client' ? (labelOf.client || TASK_TABLE_COL_CLIENT) : labelOf[c.key]}
+              </Th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {loading ? (
             Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
-              <TaskSkeletonRow key={i} />
+              <TaskSkeletonRow key={i} colCount={physCols.length} />
             ))
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-400">
+              <td colSpan={colSpan} className="px-4 py-12 text-center text-sm text-slate-400">
                 {TASK_TABLE_EMPTY}
               </td>
             </tr>
@@ -193,6 +230,8 @@ export default function TaskTable({
               <TaskRow
                 key={task.id}
                 task={task}
+                columns={physCols}
+                visibleKeys={visibleKeys}
                 isSelected={selectedId === task.id}
                 onSelect={onSelect}
                 isChecked={selectedSet.has(task.id)}
@@ -218,39 +257,20 @@ function Th({ children }) {
   );
 }
 
-function TaskSkeletonRow() {
+function TaskSkeletonRow({ colCount }) {
   return (
     <tr className="border-b border-slate-100">
       <td className="px-3 py-3">
         <Skeleton width={16} height={16} rounded="rounded" />
       </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <Skeleton height={14} width={90} rounded="rounded-full" />
-          <Skeleton height={10} width="50%" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <Skeleton height={12} width="80%" />
-          <Skeleton height={10} width="50%" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <Skeleton height={12} width="70%" />
-          <Skeleton height={10} width="35%" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <Skeleton height={14} width={80} rounded="rounded-full" />
-          <Skeleton height={10} width="65%" />
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <Skeleton height={10} width="80%" />
-      </td>
+      {Array.from({ length: colCount }).map((_, i) => (
+        <td key={i} className="px-4 py-3">
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <Skeleton height={12} width="75%" />
+            <Skeleton height={10} width="45%" />
+          </div>
+        </td>
+      ))}
     </tr>
   );
 }

@@ -659,6 +659,7 @@ export const TASK_HEADER_SELECT_ALL_ARIA    = 'בחר את כל המשימות �
 export const TASK_TABLE_COL_TYPE      = 'סוג משימה';
 export const TASK_TABLE_COL_PHONE     = 'טלפון';
 export const TASK_TABLE_COL_CLIENT    = 'לקוח';
+export const TASK_TABLE_COL_CLIENT_ID = 'מזהה לקוח (ent)';
 export const TASK_TABLE_COL_STATUS    = 'סטטוס וייחוס';
 export const TASK_TABLE_COL_UPDATED   = 'עודכן';
 

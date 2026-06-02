@@ -58,3 +58,20 @@ describe('resolveVisibleColumns', () => {
     }
   });
 });
+
+
+describe('operations surface (Task Queue columns)', () => {
+  it('is registered and defaults to all columns including client_id', () => {
+    const keys = defaultFieldKeys('operations');
+    expect(keys).toEqual(['task_type', 'phone', 'client', 'client_id', 'status', 'updated']);
+  });
+
+  it('lets the #ent-N client_id caption be hidden independently', () => {
+    const cols = resolveVisibleColumns('operations', {
+      operations: ['task_type', 'phone', 'client', 'status', 'updated'],
+    });
+    const keys = cols.map((c) => c.key);
+    expect(keys).toContain('client');
+    expect(keys).not.toContain('client_id');
+  });
+});
