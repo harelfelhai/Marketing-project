@@ -28,16 +28,19 @@ import {
   FILTER_ALL_CLIENTS,
 } from '../../config/strings.he';
 
-const STATUS_OPTIONS = ['pending', 'done', 'rejected'];
-const TYPE_OPTIONS   = ['remediation_failure', 'approval_required', 'manual_recommendation'];
-
 // Text/select keys that should be cleared (to '') when deactivated.
 const TEXT_SELECT_KEYS = ['search', 'status', 'taskType', 'rootEntityId'];
 
 export default function TaskFilterBar() {
   const mockDb = useMockData();
-  const { clients } = mockDb;
+  const { clients, vocabularies } = mockDb;
   const { taskFilters, updateTaskFilters, resetTaskFilters } = useUI();
+
+  // Status / type values from the operator-managed vocabularies (single
+  // source of truth). Labels still come from classifyStatus's label maps,
+  // which fall back to the raw token for operator-added values.
+  const STATUS_OPTIONS = vocabularies?.task_statuses || [];
+  const TYPE_OPTIONS   = vocabularies?.task_types || [];
 
   // Load active filter fields from settings.
   const [activeFilters, setActiveFilters] = useState(() =>

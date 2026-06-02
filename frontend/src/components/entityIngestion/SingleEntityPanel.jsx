@@ -40,15 +40,16 @@ import {
   ENTITY_TOAST_SUCCESS, ENTITY_TOAST_ERROR,
 } from '../../config/strings.he';
 
-// Operator-creatable subset of Entity.entity_type. Kept in sync with the
-// backend's `interfaces/relation_types.py::AssociatedRelationType` — if
-// the backend's vocabulary changes, this list must update too.
-const RELATION_OPTIONS = [
-  { value: 'family',    label: ENTITY_OPTION_FAMILY },
-  { value: 'friend',    label: ENTITY_OPTION_FRIEND },
-  { value: 'colleague', label: ENTITY_OPTION_COLLEAGUE },
-  { value: 'spouse',    label: ENTITY_OPTION_SPOUSE },
-];
+// Token → Hebrew label map for relation types. The actual option list comes
+// from the operator-managed `relation_types` vocabulary (single source of
+// truth); unknown tokens fall back to the raw value. 'primary' is excluded
+// here — this panel creates associated members, not roots.
+const RELATION_LABELS = {
+  family:    ENTITY_OPTION_FAMILY,
+  friend:    ENTITY_OPTION_FRIEND,
+  colleague: ENTITY_OPTION_COLLEAGUE,
+  spouse:    ENTITY_OPTION_SPOUSE,
+};
 
 const EMPTY_FORM = {
   firstName: '',
@@ -64,6 +65,12 @@ export default function SingleEntityPanel({ active }) {
     openPhoneIngestionWithPreset,
     pushToast,
   } = useUI();
+
+  // Relation options from the managed vocabulary (excluding the root-only
+  // 'primary'); labels resolved via RELATION_LABELS with raw-token fallback.
+  const relationOptions = (mockDb.vocabularies?.relation_types || [])
+    .filter((v) => v !== 'primary')
+    .map((v) => ({ value: v, label: RELATION_LABELS[v] || v }));
 
   const [form, setForm]               = useState(EMPTY_FORM);
   const [errors, setErrors]           = useState({});
@@ -243,7 +250,7 @@ export default function SingleEntityPanel({ active }) {
         onChange={(v) => handleChange('relation', v)}
         error={errors.relation}
       >
-        {RELATION_OPTIONS.map((o) => (
+        {relationOptions.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </SelectField>

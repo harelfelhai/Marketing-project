@@ -63,15 +63,7 @@ import {
   ENTITY_BTN_CANCEL, ENTITY_PLACEHOLDER_PICK,
   ENTITY_OPTION_FAMILY, ENTITY_OPTION_FRIEND, ENTITY_OPTION_COLLEAGUE, ENTITY_OPTION_SPOUSE,
 } from '../../config/strings.he';
-
-// Operator-creatable relation subset. Kept in lockstep with the
-// backend's interfaces/relation_types.py::AssociatedRelationType.
-const RELATION_OPTIONS = [
-  { value: 'family',    label: ENTITY_OPTION_FAMILY },
-  { value: 'friend',    label: ENTITY_OPTION_FRIEND },
-  { value: 'colleague', label: ENTITY_OPTION_COLLEAGUE },
-  { value: 'spouse',    label: ENTITY_OPTION_SPOUSE },
-];
+import { relationOptions } from '../../config/vocabOptions';
 
 // Tokenizer (PASTE → grid rows).
 //   - Splits on commas, newlines, tabs, and runs of 2+ spaces.
@@ -119,6 +111,7 @@ const EMPTY_STATE = {
 export default function MultiEntityIngestionPanel() {
   const mockDb = useMockData();
   const { closeEntityIngestionModal, pushToast } = useUI();
+  const RELATION_OPTIONS = relationOptions(mockDb.vocabularies);
 
   const [state, setState] = useState(EMPTY_STATE);
 

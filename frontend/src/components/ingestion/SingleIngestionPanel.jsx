@@ -48,14 +48,7 @@ import {
   INGEST_ERR_PHONE_DIGITS, INGEST_ERR_PICK_ENTITY,
   INGEST_ERR_PICK_CLIENT, INGEST_ERR_PICK_TARGET,
 } from '../../config/strings.he';
-
-
-const RELATION_OPTIONS = [
-  { value: 'family',    label: ENTITY_OPTION_FAMILY },
-  { value: 'friend',    label: ENTITY_OPTION_FRIEND },
-  { value: 'colleague', label: ENTITY_OPTION_COLLEAGUE },
-  { value: 'spouse',    label: ENTITY_OPTION_SPOUSE },
-];
+import { relationOptions } from '../../config/vocabOptions';
 
 
 const EMPTY_FORM = {
@@ -78,6 +71,7 @@ export default function SingleIngestionPanel({ active }) {
   const mockDb = useMockData();
   const { closeIngestionModal, pushToast, phoneIngestionPreset } = useUI();
   const { personalizationActive, user } = useAuth();
+  const RELATION_OPTIONS = relationOptions(mockDb.vocabularies);
 
   const [form, setForm]               = useState(EMPTY_FORM);
   const [errors, setErrors]           = useState({});

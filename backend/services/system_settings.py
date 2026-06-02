@@ -49,12 +49,23 @@ KNOWN_VOCABULARY_NAMES: frozenset[str] = frozenset({
     "relation_types",
     "phone_types",
     "task_types",
+    # Phase VOCAB — every closed list in the product is operator-managed,
+    # not just the three "type" lists. Statuses and ingestion sources are
+    # editable from the System Settings tab like any other vocabulary.
+    "verification_statuses",
+    "task_statuses",
+    "ingestion_sources",
 })
 
+# Defaults aligned to the values actually present in the seed data
+# (scripts/seed_large.py) so a fresh deploy's lists match the rows it ships.
 DEFAULT_VOCABULARIES: dict[str, list[str]] = {
-    "relation_types": ["primary", "family", "friend", "colleague"],
-    "phone_types":    ["mobile", "home", "work", "other"],
-    "task_types":     ["review", "verify", "follow_up", "escalate"],
+    "relation_types":        ["primary", "family", "friend", "colleague", "spouse", "associated"],
+    "phone_types":           ["mobile", "work", "home", "type_a", "type_b"],
+    "ingestion_sources":     ["api", "manual", "import", "partner_feed"],
+    "verification_statuses": ["pending", "verified", "rejected"],
+    "task_types":            ["remediation_failure", "approval_required", "manual_recommendation"],
+    "task_statuses":         ["pending", "done", "rejected"],
 }
 
 

@@ -19,6 +19,7 @@ import { MOCK_MODE } from '../api/client';
 import { listPhones, getPhoneDetail }     from '../api/phonesApi';
 import { listTasks, getTaskDetail }        from '../api/tasksApi';
 import { listEntities }                    from '../api/entityApi';
+import { getSystemSettings }               from '../api/systemApi';
 import { CLIENT_REGISTRY } from '../config/clientRegistry';
 
 const MockDataContext = createContext(null);
@@ -214,11 +215,16 @@ export function MockDataProvider({ children }) {
       listPhones({ pageSize: 1_000_000 }),
       listTasks({ pageSize: 1_000_000 }),
       listEntities({}, /* mockDb */ null),
+      // System settings carry the operator-managed vocabularies (closed
+      // lists). Fetched at boot so every controlled dropdown reads from one
+      // hydrated source instead of hardcoded constants.
+      getSystemSettings(/* mockDb */ null),
     ])
-      .then(([phonesRes, tasksRes, entitiesRes]) => {
+      .then(([phonesRes, tasksRes, entitiesRes, settingsRes]) => {
         const phonesRaw    = phonesRes.status   === 'fulfilled' ? phonesRes.value   : [];
         const tasksData    = tasksRes.status    === 'fulfilled' ? tasksRes.value    : [];
         const entitiesRaw  = entitiesRes.status === 'fulfilled' ? entitiesRes.value : [];
+        const settingsData = settingsRes.status === 'fulfilled' ? settingsRes.value : null;
 
         const entitiesData = _enrichEntities(entitiesRaw);
         const phonesData   = _enrichPhones(phonesRaw, entitiesData);
@@ -231,6 +237,7 @@ export function MockDataProvider({ children }) {
           tasks:    tasksEnriched,
           entities: entitiesData,
           clients:  clientsData,
+          systemSettings: settingsData || prev.systemSettings,
         }));
       })
       .finally(() => setLoading(false));
@@ -1947,6 +1954,24 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  // Mock parity for PUT /system/settings/vocabulary/{name}. Also used as the
+  // in-memory mirror update in BOTH modes: the System Settings editor calls
+  // this after a successful save so the controlled dropdowns (which read
+  // `vocabularies` from this context) update live without a page reload.
+  const applyUpdateVocabulary = useCallback((name, items) => {
+    setDb((prev) => {
+      const vocabularies = {
+        ...(prev.systemSettings?.vocabularies || {}),
+        [name]: [...items],
+      };
+      return {
+        ...prev,
+        systemSettings: { ...prev.systemSettings, vocabularies },
+      };
+    });
+    return { name, items: [...items] };
+  }, []);
+
   // Mock parity for PUT /system/settings/mongo-url.
   // In mock mode the connection "always succeeds" — we just flip the flag.
   // The URL itself is intentionally not stored in mock state (Secrets-Free).
@@ -2007,7 +2032,11 @@ export function MockDataProvider({ children }) {
     applyUpdateDisplayFields,
     applyUpdateDisplayLabels,
     applyUpdateFilterFields,
+    applyUpdateVocabulary,
     applyUpdateMongoUrl,
+    // Operator-managed closed lists — the single source every controlled
+    // dropdown reads from (hydrated at boot, updated live on edit).
+    vocabularies: db.systemSettings?.vocabularies || {},
     // Phase NOTIF
     listNotificationSubscriptions,
     applyCreateNotificationSubscription,

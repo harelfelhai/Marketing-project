@@ -11,8 +11,8 @@ import { Search, X } from 'lucide-react';
 
 import { useUI }       from '../../contexts/UIContext';
 import { useMockData } from '../../contexts/MockDataContext';
-import { PHONE_TYPES } from '../../mock/mockData';
 import { getSystemSettings } from '../../api/systemApi';
+import { verificationLabel } from '../../utils/classifyStatus';
 import { resolveActiveFilters, defaultFilterKeys, FILTER_SURFACES } from '../../config/filterFields';
 import {
   FILTER_SEARCH_PLACEHOLDER, FILTER_ALL_CLIENTS, FILTER_ALL_STATUSES,
@@ -27,37 +27,50 @@ import {
   ENTITY_OPTION_COLLEAGUE, ENTITY_OPTION_SPOUSE,
 } from '../../config/strings.he';
 
-const VERIFICATION_OPTIONS = [
-  { value: '',         label: FILTER_ALL_STATUSES },
-  { value: 'pending',  label: FILTER_STATUS_PENDING },
-  { value: 'verified', label: FILTER_STATUS_GOOD },
-  { value: 'rejected', label: FILTER_STATUS_BAD },
-];
-
-const SOURCE_OPTIONS = [
-  { value: '',              label: FILTER_ALL_SOURCES },
-  { value: 'api',           label: FILTER_SOURCE_API },
-  { value: 'manual',        label: FILTER_SOURCE_MANUAL },
-  { value: 'import',        label: FILTER_SOURCE_IMPORT },
-  { value: 'partner_feed',  label: FILTER_SOURCE_PARTNER },
-];
-
-const RELATION_TYPE_OPTIONS = [
-  { value: '',          label: FILTER_ALL_RELATION_TYPES },
-  { value: 'family',    label: ENTITY_OPTION_FAMILY },
-  { value: 'friend',    label: ENTITY_OPTION_FRIEND },
-  { value: 'colleague', label: ENTITY_OPTION_COLLEAGUE },
-  { value: 'spouse',    label: ENTITY_OPTION_SPOUSE },
-  { value: 'associated', label: 'קשור' },
-];
+// Token → Hebrew label maps for the controlled lists. Unknown tokens (e.g.
+// operator-added vocab values) fall back to the raw token. The OPTION arrays
+// are built inside the component from the managed vocabularies.
+const SOURCE_LABELS = {
+  api:          FILTER_SOURCE_API,
+  manual:       FILTER_SOURCE_MANUAL,
+  import:       FILTER_SOURCE_IMPORT,
+  partner_feed: FILTER_SOURCE_PARTNER,
+};
+const RELATION_LABELS = {
+  family:    ENTITY_OPTION_FAMILY,
+  friend:    ENTITY_OPTION_FRIEND,
+  colleague: ENTITY_OPTION_COLLEAGUE,
+  spouse:    ENTITY_OPTION_SPOUSE,
+  associated: 'קשור',
+};
+// "all" sentinel + a vocab list → [{value,label}], with a label resolver.
+function _opts(allLabel, values, labelOf) {
+  return [{ value: '', label: allLabel }, ...values.map((v) => ({ value: v, label: labelOf(v) }))];
+}
 
 // All keys that map to a '' default (text/select filters). Used for auto-clear.
 const TEXT_SELECT_KEYS = ['search', 'rootEntityId', 'verificationStatus', 'ingestionSource', 'phoneType', 'entityName', 'relationType'];
 
 export default function PhoneFilterBar() {
   const mockDb = useMockData();
-  const { clients } = mockDb;
+  const { clients, vocabularies } = mockDb;
   const { phoneFilters, updatePhoneFilters, resetPhoneFilters } = useUI();
+
+  // Options sourced from the operator-managed vocabularies (single source of
+  // truth). Reactive: editing a list in System Settings updates these live.
+  const VERIFICATION_OPTIONS = useMemo(
+    () => _opts(FILTER_ALL_STATUSES, vocabularies?.verification_statuses || [], verificationLabel),
+    [vocabularies],
+  );
+  const SOURCE_OPTIONS = useMemo(
+    () => _opts(FILTER_ALL_SOURCES, vocabularies?.ingestion_sources || [], (v) => SOURCE_LABELS[v] || v),
+    [vocabularies],
+  );
+  const RELATION_TYPE_OPTIONS = useMemo(
+    () => _opts(FILTER_ALL_RELATION_TYPES, vocabularies?.relation_types || [], (v) => RELATION_LABELS[v] || v),
+    [vocabularies],
+  );
+  const PHONE_TYPE_VALUES = vocabularies?.phone_types || [];
 
   // Load active filter fields from settings.
   const [activeFilters, setActiveFilters] = useState(() =>
@@ -169,7 +182,7 @@ export default function PhoneFilterBar() {
           className={selectClass}
         >
           <option value="">{FILTER_ALL_CLASSIFICATIONS}</option>
-          {(PHONE_TYPES || []).map((t) => (
+          {PHONE_TYPE_VALUES.map((t) => (
             <option key={t} value={t}>{t.toUpperCase()}</option>
           ))}
         </select>

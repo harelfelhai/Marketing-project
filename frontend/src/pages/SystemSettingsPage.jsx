@@ -16,14 +16,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   Loader2, Save, ArrowLeft, Database, AlertCircle,
   Columns3, ChevronUp, ChevronDown, RotateCcw,
-  Link2, CheckCircle2, Eye, EyeOff, Search,
+  Link2, CheckCircle2, Eye, EyeOff, Search, ListChecks, X, Plus,
 } from 'lucide-react';
 
 import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
 import {
   getSystemSettings, updateSystemSettings, updateDisplayFields,
-  updateDisplayLabels, updateFilterFields, updateMongoUrl,
+  updateDisplayLabels, updateFilterFields, updateMongoUrl, updateVocabulary,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
@@ -43,6 +43,11 @@ import {
   SYSSET_MONGO_TOAST_OK, SYSSET_MONGO_TOAST_ERROR, SYSSET_MONGO_UPDATE_PROMPT,
   SYSSET_FILTER_FIELDS_TITLE, SYSSET_FILTER_FIELDS_DESC,
   SYSSET_FILTER_FIELDS_TOAST_SAVED, SYSSET_FILTER_FIELDS_TOAST_ERROR,
+  SYSSET_VOCAB_TITLE, SYSSET_VOCAB_DESC, SYSSET_VOCAB_NAMES, SYSSET_VOCAB_ORDER,
+  SYSSET_VOCAB_ADD_ITEM, SYSSET_VOCAB_PLACEHOLDER, SYSSET_VOCAB_REMOVE_ARIA,
+  SYSSET_VOCAB_BTN_SAVE, SYSSET_VOCAB_BTN_SAVING,
+  SYSSET_VOCAB_TOAST_SAVED, SYSSET_VOCAB_TOAST_ERROR,
+  SYSSET_VOCAB_EMPTY, SYSSET_VOCAB_DUP, SYSSET_VOCAB_MOVE_UP, SYSSET_VOCAB_MOVE_DOWN,
 } from '../config/strings.he';
 
 
@@ -237,6 +242,156 @@ export default function SystemSettingsPage() {
           ))}
         </div>
       </section>
+
+      {/* Vocabulary section — operator-managed closed lists. */}
+      <section className="rounded-lg border border-slate-200 bg-white p-5 mt-6">
+        <div className="flex items-center gap-2 mb-1">
+          <ListChecks className="w-4 h-4 text-slate-700" />
+          <h2 className="text-sm font-semibold text-slate-900">{SYSSET_VOCAB_TITLE}</h2>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-4">{SYSSET_VOCAB_DESC}</p>
+
+        <div className="space-y-6">
+          {SYSSET_VOCAB_ORDER.map((name) => (
+            <VocabularyEditor
+              key={name}
+              name={name}
+              initialItems={settings.vocabularies?.[name] || []}
+              mockDb={mockDb}
+              pushToast={pushToast}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+
+/**
+ * VocabularyEditor — add / remove / reorder one operator-managed closed list.
+ * Persists via updateVocabulary (PUT /system/settings/vocabulary/{name}) and
+ * mirrors into MockDataContext so the controlled dropdowns update live.
+ */
+function VocabularyEditor({ name, initialItems, mockDb, pushToast }) {
+  const [items, setItems]   = useState(() => [...initialItems]);
+  const [draft, setDraft]   = useState('');
+  const [dirty, setDirty]   = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const label = SYSSET_VOCAB_NAMES[name] || name;
+
+  const add = () => {
+    const v = draft.trim();
+    if (!v) return;
+    if (items.includes(v)) {
+      pushToast({ variant: 'error', message: SYSSET_VOCAB_DUP });
+      return;
+    }
+    setItems((xs) => [...xs, v]);
+    setDraft('');
+    setDirty(true);
+  };
+
+  const remove = (v) => {
+    setItems((xs) => xs.filter((x) => x !== v));
+    setDirty(true);
+  };
+
+  const move = (idx, delta) => {
+    setItems((xs) => {
+      const next = [...xs];
+      const j = idx + delta;
+      if (j < 0 || j >= next.length) return xs;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+    setDirty(true);
+  };
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await updateVocabulary(name, items, mockDb);
+      // Mirror into the live context so dropdowns refresh without reload.
+      mockDb.applyUpdateVocabulary?.(name, items);
+      pushToast({ variant: 'success', message: SYSSET_VOCAB_TOAST_SAVED(label) });
+      setDirty(false);
+    } catch (err) {
+      const { message } = normalizeError(err);
+      pushToast({ variant: 'error', message: SYSSET_VOCAB_TOAST_ERROR(message) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div data-testid={`vocab-${name}`}>
+      <h3 className="text-[13px] font-semibold text-slate-700 mb-2">{label}</h3>
+
+      {items.length === 0 ? (
+        <p className="text-xs text-slate-400 mb-2">{SYSSET_VOCAB_EMPTY}</p>
+      ) : (
+        <ul className="divide-y divide-slate-100 border border-slate-200 rounded-md mb-2">
+          {items.map((v, idx) => (
+            <li key={v} className="flex items-center gap-2 px-3 py-2"
+                data-testid={`vocab-${name}-item-${v}`}>
+              <span className="font-mono text-sm text-slate-800 flex-1 truncate" title={v}>{v}</span>
+              <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
+                      aria-label={SYSSET_VOCAB_MOVE_UP}
+                      className="text-slate-400 hover:text-slate-800 disabled:opacity-30">
+                <ChevronUp className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={() => move(idx, 1)} disabled={idx === items.length - 1}
+                      aria-label={SYSSET_VOCAB_MOVE_DOWN}
+                      className="text-slate-400 hover:text-slate-800 disabled:opacity-30">
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={() => remove(v)}
+                      aria-label={SYSSET_VOCAB_REMOVE_ARIA(v)}
+                      className="text-slate-400 hover:text-rose-600">
+                <X className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          placeholder={SYSSET_VOCAB_PLACEHOLDER}
+          data-testid={`vocab-${name}-input`}
+          className="flex-1 min-w-0 text-sm rounded-md border border-slate-200 px-2 py-1.5
+                     focus:border-slate-400 outline-none"
+        />
+        <button type="button" onClick={add}
+                data-testid={`vocab-${name}-add`}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5
+                           text-sm text-slate-700 hover:bg-slate-50">
+          <Plus className="w-4 h-4" />{SYSSET_VOCAB_ADD_ITEM}
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid={`vocab-${name}-save`}
+          className={[
+            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium',
+            !dirty || saving
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-slate-900 text-white hover:bg-slate-800',
+          ].join(' ')}
+        >
+          {saving
+            ? <><Loader2 className="w-4 h-4 animate-spin" />{SYSSET_VOCAB_BTN_SAVING}</>
+            : <><Save className="w-4 h-4" />{SYSSET_VOCAB_BTN_SAVE}</>}
+        </button>
+      </div>
     </div>
   );
 }

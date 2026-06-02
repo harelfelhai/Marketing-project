@@ -55,14 +55,7 @@ import {
   ENTITY_OPTION_FAMILY, ENTITY_OPTION_FRIEND,
   ENTITY_OPTION_COLLEAGUE, ENTITY_OPTION_SPOUSE,
 } from '../../config/strings.he';
-
-
-const RELATION_OPTIONS = [
-  { value: 'family',    label: ENTITY_OPTION_FAMILY },
-  { value: 'friend',    label: ENTITY_OPTION_FRIEND },
-  { value: 'colleague', label: ENTITY_OPTION_COLLEAGUE },
-  { value: 'spouse',    label: ENTITY_OPTION_SPOUSE },
-];
+import { relationOptions } from '../../config/vocabOptions';
 
 // Mirrors the backend's tokenize regex (services/bulk_ingestion.py).
 const TOKEN_SPLIT_RE = /[,\s;]+/;
@@ -85,6 +78,7 @@ export default function MultiTextIngestionPanel() {
   const mockDb = useMockData();
   const { closeIngestionModal, pushToast } = useUI();
   const { personalizationActive, user } = useAuth();
+  const RELATION_OPTIONS = relationOptions(mockDb.vocabularies);
 
   const [form, setForm]             = useState(EMPTY_FORM);
   const [errors, setErrors]         = useState({});

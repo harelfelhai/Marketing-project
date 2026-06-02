@@ -367,12 +367,29 @@ export function buildInitialDb() {
 // System Settings (mock parity with backend /system/settings)
 // ---------------------------------------------------------------------------
 
+// Operator-managed closed lists. Single source of truth for every dropdown
+// whose options are a controlled vocabulary. Mirrors the backend's
+// DEFAULT_VOCABULARIES (services/system_settings.py) and is aligned to the
+// values present in the seed data above. Admins add/remove/reorder these
+// from the System Settings tab; they persist via /settings/vocabulary/{name}.
+export const SEED_VOCABULARIES = {
+  relation_types:        ['primary', 'family', 'friend', 'colleague', 'spouse', 'associated'],
+  phone_types:           ['mobile', 'work', 'home', 'type_a', 'type_b'],
+  ingestion_sources:     ['api', 'manual', 'import', 'partner_feed'],
+  verification_statuses: ['pending', 'verified', 'rejected'],
+  task_types:            ['remediation_failure', 'approval_required', 'manual_recommendation'],
+  task_statuses:         ['pending', 'done', 'rejected'],
+};
+
 export const SEED_SYSTEM_SETTINGS = {
   storage_backend: 'sql',
   backends: [
     { id: 'sql',   available: true },
     { id: 'mongo', available: true },
   ],
+  // Operator-managed closed lists (see SEED_VOCABULARIES). Every controlled
+  // dropdown reads from here so adding a type is a frontend-only action.
+  vocabularies: structuredClone(SEED_VOCABULARIES),
   // Per-surface visible-field selections. Empty = each surface uses its
   // catalog defaults (src/config/displayFields.js). Admins edit these from
   // the System Settings tab; they persist via /system/settings/display-fields.

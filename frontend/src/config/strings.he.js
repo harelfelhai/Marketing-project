@@ -1054,10 +1054,27 @@ export const SYSSET_VOCAB_TITLE             = 'ניהול אוצר מילים';
 export const SYSSET_VOCAB_DESC              =
   'ערוך רשימות שדות מבוקרים (סוגי קרבה, מקורות קליטה, וכו׳). השינויים מיד בתוקף.';
 export const SYSSET_VOCAB_NAMES = {
-  relation_types:    'סוגי קרבה',
-  ingestion_sources: 'מקורות קליטה',
-  phone_types:       'סוגי טלפון',
+  relation_types:        'סוגי קרבה',
+  phone_types:           'סוגי טלפון',
+  ingestion_sources:     'מקורות קליטה',
+  verification_statuses: 'סטטוסי אימות',
+  task_types:            'סוגי משימה',
+  task_statuses:         'סטטוסי משימה',
 };
+// Ordered list of vocabulary names the editor renders (also the catalog of
+// editable lists). Mirrors the backend KNOWN_VOCABULARY_NAMES.
+export const SYSSET_VOCAB_ORDER = [
+  'relation_types',
+  'phone_types',
+  'ingestion_sources',
+  'verification_statuses',
+  'task_types',
+  'task_statuses',
+];
+export const SYSSET_VOCAB_EMPTY             = 'הרשימה ריקה — הוסף ערך ראשון.';
+export const SYSSET_VOCAB_DUP               = 'הערך כבר קיים ברשימה.';
+export const SYSSET_VOCAB_MOVE_UP           = 'הזז למעלה';
+export const SYSSET_VOCAB_MOVE_DOWN         = 'הזז למטה';
 export const SYSSET_VOCAB_ADD_ITEM          = 'הוסף פריט';
 export const SYSSET_VOCAB_PLACEHOLDER       = 'ערך חדש…';
 export const SYSSET_VOCAB_REMOVE_ARIA       = (v) => `הסר "${v}"`;
