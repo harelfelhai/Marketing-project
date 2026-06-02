@@ -41,6 +41,22 @@ AVAILABLE_BACKENDS: tuple[str, ...] = ("sql", "mongo")
 
 DEFAULT_BACKEND = "sql"
 
+# ---------------------------------------------------------------------------
+# Vocabulary management
+# ---------------------------------------------------------------------------
+
+KNOWN_VOCABULARY_NAMES: frozenset[str] = frozenset({
+    "relation_types",
+    "phone_types",
+    "task_types",
+})
+
+DEFAULT_VOCABULARIES: dict[str, list[str]] = {
+    "relation_types": ["primary", "family", "friend", "colleague"],
+    "phone_types":    ["mobile", "home", "work", "other"],
+    "task_types":     ["review", "verify", "follow_up", "escalate"],
+}
+
 
 class SystemSettingsService:
     """
@@ -76,6 +92,20 @@ class SystemSettingsService:
         """Return the persisted storage_backend, or the default."""
         backend = self._read_all().get("storage_backend", DEFAULT_BACKEND)
         return backend if backend in KNOWN_BACKENDS else DEFAULT_BACKEND
+
+    def _read_vocabularies(self) -> dict[str, list[str]]:
+        """Return the persisted vocabulary lists, falling back to defaults."""
+        raw = self._read_all().get("vocabularies", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        result: dict[str, list[str]] = {}
+        for name, default in DEFAULT_VOCABULARIES.items():
+            stored = raw.get(name)
+            if isinstance(stored, list) and all(isinstance(v, str) for v in stored):
+                result[name] = stored
+            else:
+                result[name] = list(default)
+        return result
 
     def _read_display_fields(self) -> dict:
         """
@@ -118,6 +148,7 @@ class SystemSettingsService:
                 for b in KNOWN_BACKENDS
             ],
             "display_fields": self._read_display_fields(),
+            "vocabularies": self._read_vocabularies(),
             "mongo_configured": self._read_mongo_url() is not None,
             "applies_on_restart": True,
         }
@@ -168,6 +199,43 @@ class SystemSettingsService:
             display = {}
         display[surface.strip()] = list(fields)
         data["display_fields"] = display
+        self._write_all(data)
+        return self.get()
+
+    def get_vocabulary(self, name: str) -> list[str]:
+        """
+        Return the vocabulary list for `name`.
+
+        Raises:
+            ValueError: name is not one of the known vocabulary names.
+        """
+        if name not in KNOWN_VOCABULARY_NAMES:
+            raise ValueError(
+                f"Unknown vocabulary '{name}'. "
+                f"Known vocabularies: {', '.join(sorted(KNOWN_VOCABULARY_NAMES))}."
+            )
+        return self._read_vocabularies()[name]
+
+    def set_vocabulary(self, name: str, items: list[str]) -> dict:
+        """
+        Persist a new vocabulary list.
+
+        Raises:
+            ValueError: name is unknown, or items is not a list of strings.
+        """
+        if name not in KNOWN_VOCABULARY_NAMES:
+            raise ValueError(
+                f"Unknown vocabulary '{name}'. "
+                f"Known vocabularies: {', '.join(sorted(KNOWN_VOCABULARY_NAMES))}."
+            )
+        if not isinstance(items, list) or not all(isinstance(v, str) for v in items):
+            raise ValueError("items must be a list of strings.")
+        data = self._read_all()
+        vocabs = data.get("vocabularies")
+        if not isinstance(vocabs, dict):
+            vocabs = {}
+        vocabs[name] = list(items)
+        data["vocabularies"] = vocabs
         self._write_all(data)
         return self.get()
 

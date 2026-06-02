@@ -13,8 +13,7 @@ Two concrete builders:
 
 The active backend is chosen at request boundary (the dependency factory
 reads the System Settings file). Behaviour is identical because the
-Repository contract + filter DSL are identical (proven by the dual-backend
-contract test).
+Repository contract + filter DSL are identical.
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from models.action_log import ActionLog
 from models.entity import Entity
 from models.notification import NotificationDelivery, NotificationSubscription
 from models.phone_number import PhoneNumber
@@ -42,7 +40,6 @@ class Storage:
 
     entities: Repository[Entity]
     phones: Repository[PhoneNumber]
-    action_logs: Repository[ActionLog]
     tasks: Repository[PipelineTask]
     users: Repository[User]
     sessions: Repository[UserSession]
@@ -55,7 +52,6 @@ def SqlStorage(session: "Session") -> Storage:
     return Storage(
         entities=SqlRepository(session, Entity),
         phones=SqlRepository(session, PhoneNumber),
-        action_logs=SqlRepository(session, ActionLog),
         tasks=SqlRepository(session, PipelineTask),
         users=SqlRepository(session, User),
         sessions=SqlRepository(session, UserSession),
@@ -70,7 +66,6 @@ def SqlStorage(session: "Session") -> Storage:
 _MONGO_COLLECTIONS = {
     Entity:                   "entity",
     PhoneNumber:              "phone_number",
-    ActionLog:                "action_log",
     PipelineTask:             "pipeline_task",
     User:                     "user",
     UserSession:              "session",
@@ -89,7 +84,6 @@ def MongoStorage(database) -> Storage:
     return Storage(
         entities=_repo(Entity),
         phones=_repo(PhoneNumber),
-        action_logs=_repo(ActionLog),
         tasks=_repo(PipelineTask),
         users=_repo(User),
         sessions=_repo(UserSession),

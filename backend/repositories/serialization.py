@@ -1,5 +1,5 @@
 """
-repositories/serialization.py — domain model ↔ Mongo document mapping.
+repositories/serialization.py — domain model <-> Mongo document mapping.
 
 The Mongo backend stores plain documents; this module converts between a
 SQLModel domain instance and the document shape, in both directions.
@@ -10,22 +10,27 @@ Conventions
   is single-sourced. The PK field name is discovered from the SQLAlchemy
   table metadata, so models that name their PK something other than `id`
   (e.g. Session.token) round-trip correctly without per-model code here.
-- Derived attributes that are NOT stored model fields (e.g. Entity.client_id,
-  a hybrid property) are denormalised onto the document at write time so the
-  filter DSL can match them. They are stripped on read (the model recomputes
-  them) so reconstruction never sees an unexpected constructor kwarg.
+- No derived fields are denormalised: the new Entity schema has no hybrid
+  properties, so all fields are direct model columns.
+- DateTime fields: mongomock (and some pymongo configurations) strip tzinfo
+  when storing/retrieving datetimes. We normalise all datetime fields to
+  UTC-aware on the way out so sentinel comparisons work correctly.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Type, TypeVar
 
 T = TypeVar("T")
 
-# Derived/denormalised attributes written to the document for query support
-# but removed before reconstructing the model (which recomputes them).
-_DERIVED_FIELDS = ("client_id",)
+
+def _ensure_utc(value):
+    """Ensure a datetime value is timezone-aware (UTC)."""
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 @lru_cache(maxsize=None)
@@ -44,17 +49,10 @@ def to_document(obj) -> dict:
     """
     Serialise a domain model instance to a Mongo document.
 
-    Uses `model_dump()` for the stored fields, maps the PK field → `_id`, and
-    denormalises any derived attribute the model exposes (so filtering on it
-    works on Mongo too).
+    Uses `model_dump()` for the stored fields, maps the PK field -> `_id`.
     """
     pk = pk_field(type(obj))
     doc = obj.model_dump()
-    for name in _DERIVED_FIELDS:
-        if name not in doc:
-            value = getattr(obj, name, None)
-            if value is not None:
-                doc[name] = value
     doc["_id"] = doc.pop(pk)
     return doc
 
@@ -63,14 +61,17 @@ def from_document(doc: dict, model: Type[T]) -> T:
     """
     Reconstruct a domain model instance from a Mongo document.
 
-    Maps `_id` → the model's PK field name and drops denormalised derived
-    fields so the model recomputes them from the authoritative columns.
+    Maps `_id` -> the model's PK field name. Normalises all datetime
+    values to timezone-aware UTC so sentinel comparisons work correctly
+    (mongomock can strip tzinfo on round-trip).
     """
     data = dict(doc)
     _id = data.pop("_id", None)
     pk = pk_field(model)
     if _id is not None:
         data[pk] = _id
-    for name in _DERIVED_FIELDS:
-        data.pop(name, None)
+    # Ensure all datetime values have UTC timezone.
+    for key, value in data.items():
+        if isinstance(value, datetime):
+            data[key] = _ensure_utc(value)
     return model(**data)

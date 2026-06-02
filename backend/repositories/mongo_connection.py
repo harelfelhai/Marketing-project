@@ -46,10 +46,12 @@ def _ensure_indexes(db) -> None:
     db["phone_number"].create_index("phone_number", unique=True)
     # Common lookup fields (best-effort; non-unique).
     db["phone_number"].create_index("entity_id")
+    db["phone_number"].create_index("deleted_at")
     db["entity"].create_index("target_entity_id")
-    db["entity"].create_index("client_id")
-    db["action_log"].create_index("phone_id")
+    db["entity"].create_index("deleted_at")
     db["pipeline_task"].create_index("phone_id")
+    db["pipeline_task"].create_index("entity_id")
+    db["pipeline_task"].create_index("deleted_at")
     db["user"].create_index("username", unique=True)
     db["session"].create_index("user_id")
 

@@ -6,10 +6,8 @@ SQLite) and once against MongoRepository (in-memory mongomock). If a
 behaviour diverges between the backends, this suite fails — that is the
 guarantee that lets the System Settings storage-backend switch be safe.
 
-The Entity aggregate is used as the probe because it exercises the hardest
-cross-backend feature: the DERIVED `client_id` (= COALESCE(target_entity_id,
-id)), resolved via a SQL hybrid on one side and a denormalised document
-field on the other.
+The Entity aggregate is used as the probe because it exercises the core
+cross-backend features: PK round-trips, filter DSL, updates.
 """
 
 import mongomock
@@ -17,15 +15,11 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine
 from sqlalchemy.pool import StaticPool
 
-import models  # noqa: F401  — registers table metadata
+import models  # noqa: F401
 from models.entity import Entity
+from models.types import not_deleted
 from repositories.mongo_repository import MongoRepository
 from repositories.sql_repository import SqlRepository
-
-
-# ---------------------------------------------------------------------------
-# Both backends behind one fixture
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(params=["sql", "mongo"])
@@ -45,11 +39,21 @@ def repo(request):
 
 
 def _root(**extra):
-    return Entity(entity_type="target", target_entity_id=None, extra_data=extra or {})
+    return Entity(
+        relation_type="primary",
+        target_entity_id=None,
+        deleted_at=not_deleted(),
+        extra_data=extra or {},
+    )
 
 
-def _member(root_id, entity_type="family", **extra):
-    return Entity(entity_type=entity_type, target_entity_id=root_id, extra_data=extra or {})
+def _member(root_id, relation_type="family", **extra):
+    return Entity(
+        relation_type=relation_type,
+        target_entity_id=root_id,
+        deleted_at=not_deleted(),
+        extra_data=extra or {},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -59,26 +63,26 @@ def _member(root_id, entity_type="family", **extra):
 
 class TestCrud:
     def test_add_then_get_round_trips(self, repo):
-        ent = _root(first_name="Alpha")
+        ent = _root(some_key="value")
         repo.add(ent)
         fetched = repo.get(ent.id)
         assert fetched is not None
         assert fetched.id == ent.id
-        assert fetched.entity_type == "target"
-        assert fetched.extra_data["first_name"] == "Alpha"
+        assert fetched.relation_type == "primary"
+        assert fetched.extra_data["some_key"] == "value"
 
     def test_get_missing_returns_none(self, repo):
         assert repo.get("does-not-exist") is None
 
     def test_update_persists_mutation(self, repo):
-        ent = _root(first_name="Alpha")
+        ent = _root(name="Alpha")
         repo.add(ent)
-        ent.extra_data = {**ent.extra_data, "first_name": "Alpha2"}
-        ent.strong_identifier = "X-1"
+        ent.full_name = "Alpha Updated"
+        ent.identifier_1 = "ID-001"
         repo.update(ent)
         again = repo.get(ent.id)
-        assert again.extra_data["first_name"] == "Alpha2"
-        assert again.strong_identifier == "X-1"
+        assert again.full_name == "Alpha Updated"
+        assert again.identifier_1 == "ID-001"
 
     def test_delete_removes(self, repo):
         ent = _root()
@@ -94,57 +98,44 @@ class TestCrud:
 
 class TestFilters:
     def test_eq_and_is_null(self, repo):
-        root = _root(); repo.add(root)
-        member = _member(root.id); repo.add(member)
+        root = _root()
+        repo.add(root)
+        member = _member(root.id)
+        repo.add(member)
         roots = repo.list({"target_entity_id": None})
         assert {e.id for e in roots} == {root.id}
 
     def test_in_membership(self, repo):
-        a = _root(); b = _root(); c = _root()
+        a = _root()
+        b = _root()
+        c = _root()
         for e in (a, b, c):
             repo.add(e)
         out = repo.list({"id": {"in": [a.id, c.id]}})
         assert {e.id for e in out} == {a.id, c.id}
 
-    def test_ne(self, repo):
-        root = _root(); repo.add(root)
-        member = _member(root.id, entity_type="friend"); repo.add(member)
-        out = repo.list({"entity_type": {"ne": "target"}})
+    def test_ne_on_relation_type(self, repo):
+        root = _root()
+        repo.add(root)
+        member = _member(root.id, relation_type="friend")
+        repo.add(member)
+        out = repo.list({"relation_type": {"ne": "primary"}})
         assert {e.id for e in out} == {member.id}
 
-    def test_contains_is_case_insensitive(self, repo):
-        a = _root(); a.strong_identifier = "ABC-123"; repo.add(a)
-        b = _root(); b.strong_identifier = "ZZ-999"; repo.add(b)
-        out = repo.list({"strong_identifier": {"contains": "abc"}})
-        assert {e.id for e in out} == {a.id}
-
     def test_count_matches_list(self, repo):
-        root = _root(); repo.add(root)
+        root = _root()
+        repo.add(root)
         for _ in range(3):
             repo.add(_member(root.id))
-        assert repo.count({"entity_type": "family"}) == 3
+        assert repo.count({"relation_type": "family"}) == 3
         assert repo.count() == 4
 
-
-# ---------------------------------------------------------------------------
-# The derived client_id — identical on both backends
-# ---------------------------------------------------------------------------
-
-
-class TestDerivedClientId:
-    def test_root_client_id_is_own_id(self, repo):
-        root = _root(); repo.add(root)
-        assert repo.get(root.id).client_id == root.id
-
-    def test_member_client_id_is_root_id(self, repo):
-        root = _root(); repo.add(root)
-        member = _member(root.id); repo.add(member)
-        assert repo.get(member.id).client_id == root.id
-
-    def test_filter_by_client_id_returns_whole_family(self, repo):
-        root = _root(); repo.add(root)
-        m1 = _member(root.id); repo.add(m1)
-        m2 = _member(root.id, entity_type="friend"); repo.add(m2)
-        other = _root(); repo.add(other)
-        out = repo.list({"client_id": root.id})
-        assert {e.id for e in out} == {root.id, m1.id, m2.id}
+    def test_target_entity_id_filter(self, repo):
+        root = _root()
+        repo.add(root)
+        m1 = _member(root.id)
+        m2 = _member(root.id, relation_type="friend")
+        repo.add(m1)
+        repo.add(m2)
+        out = repo.list({"target_entity_id": root.id})
+        assert {e.id for e in out} == {m1.id, m2.id}

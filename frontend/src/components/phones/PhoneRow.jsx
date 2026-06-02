@@ -54,9 +54,11 @@ export default function PhoneRow({
   );
 
   // Phase DY-4 — Vector A vs Vector B determines provenance + truth-axis
-  // shapes. The entity_type is the single source of truth; isEnvelope()
+  // shapes. `relation_type` is the canonical field name; `entity_type` is
+  // the legacy mock-mode alias retained for backward compat. isEnvelope()
   // wraps the comparison so the same check is testable in isolation.
-  const envelope = isEnvelope(entity?.entity_type);
+  const relationType = entity?.relation_type ?? entity?.entity_type;
+  const envelope = isEnvelope(relationType);
 
   // Provenance pip — emerald left border for Vector A, amber for Vector B.
   // The first cell carries the pip so it visually anchors the row's start
@@ -71,7 +73,7 @@ export default function PhoneRow({
   // verification_status; Vector B reads only from confidence (the
   // identity axis is always 'pending' until the envelope is identified).
   const phoneState    = phoneAxisState(phone.confidence_score);
-  const identityState = identityAxisState(entity?.entity_type, phone.verification_status);
+  const identityState = identityAxisState(relationType, phone.verification_status);
 
   return (
     <tr
@@ -129,18 +131,15 @@ export default function PhoneRow({
               </span>
             ) : (
               (() => {
-                // UAT round-3: prefer the entity's name when present
-                // (it was previously "Entity #N" even after a rename).
-                // Falls back to "Entity #N" when the entity has no
-                // first/last name in extra_data (envelopes already
-                // got their own branch above).
-                const nm = [
-                  entity?.extra_data?.first_name,
-                  entity?.extra_data?.last_name,
-                ].filter(Boolean).join(' ');
+                // Prefer full_name (new schema) then extra_data.first_name+last_name
+                // (mock/legacy schema), then fall back to "Entity #N".
+                const nm = entity?.full_name
+                  || [entity?.extra_data?.first_name, entity?.extra_data?.last_name]
+                    .filter(Boolean).join(' ')
+                  || null;
                 const label = nm
-                  ? `${nm} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`
-                  : `Entity #${entity?.id} · ${ENTITY_TYPE_DISPLAY(entity?.entity_type)}`;
+                  ? `${nm} · ${ENTITY_TYPE_DISPLAY(relationType)}`
+                  : `Entity #${entity?.id} · ${ENTITY_TYPE_DISPLAY(relationType)}`;
                 return (
                   <span
                     className="text-xs text-slate-500 truncate"

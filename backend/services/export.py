@@ -20,8 +20,7 @@ PRIVACY CONTRACT
 The per-table ALLOWED_EXPORT_COLUMNS_* sets are the security boundary.
 Any column key not in the set is rejected with ValueError before any
 DB work happens — so a malformed request can't dump arbitrary
-extra_data subkeys (e.g. `extra_data.api_key`) the operator was never
-meant to see in a file.
+extra_data subkeys the operator was never meant to see in a file.
 """
 
 import io
@@ -33,6 +32,7 @@ from typing import Iterable
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from models.types import SOFT_DELETE_SENTINEL
 from repositories.storage import Storage
 from services.export_formatters import format_value, resolve_column
 
@@ -41,65 +41,44 @@ from services.export_formatters import format_value, resolve_column
 # Caps + allowlists
 # ---------------------------------------------------------------------------
 
-# Hard cap on rows per export. openpyxl serialization is fast at this
-# scale (<2s for 10K rows × 15 cols) and the memory profile stays sane.
-# Operators wanting more must narrow filters first; the endpoint
-# surfaces a friendly 422 explaining how many rows they tried to grab.
+# Hard cap on rows per export.
 MAX_EXPORT_ROWS = 10_000
 
 
-# Operator-allowed export columns for /phones. Anything outside this
-# set is rejected — this is the privacy gate that prevents arbitrary
-# extra_data subkey dumping. New keys land here ONLY by explicit
-# review.
+# Operator-allowed export columns for /phones.
 ALLOWED_EXPORT_COLUMNS_PHONES: frozenset[str] = frozenset({
     # Identity + structural
     "id", "phone_number", "entity_id",
     # Entity JOIN
-    "entity_type", "client_id",
-    # UAT round-3 — root-target name (the head of the circle this
-    # phone belongs to). Distinct from extra_data.first_name (which
-    # is the IMMEDIATE entity's name).
-    "root_first_name", "root_last_name",
-    # Phase 1 ingestion block
-    "ingestion_source", "ingestion_reason", "ingested_at",
-    # Phase 3 verification block
-    "verification_status", "verification_source", "verification_reason",
-    "verified_at",
-    # Phase DY scoring block
-    "confidence_score", "priority_score",
-    "confidence_updated_at", "priority_updated_at",
-    "customer_tier",
-    # Other mutable fields
-    "classification_type",
-    "created_at", "updated_at",
-    # Allowlisted extra_data subkeys (Phase E2 + DX audit fields)
-    "extra_data.first_name", "extra_data.last_name",
-    "extra_data.customer_tier", "extra_data.bulk_submission_id",
-    "extra_data.envelope_id", "extra_data.row_token",
+    "relation_type", "full_name", "identifier_1", "identifier_2",
+    # Ingestion block
+    "ingestion_source", "phone_type",
+    # Verification block
+    "verification_status",
+    # Scoring
+    "score",
+    # Timestamps
+    "deleted_at",
+    # Allowlisted extra_data subkeys
+    "extra_data.bulk_submission_id",
 })
 
 
 # Operator-allowed export columns for /tasks.
 ALLOWED_EXPORT_COLUMNS_TASKS: frozenset[str] = frozenset({
     # Task identity + structural
-    "id", "task_type", "status", "source_action_log_id",
-    # Phone + Entity JOIN
-    "phone_id", "phone_number", "entity_id", "entity_type", "client_id",
-    # Attribution
-    "requested_by", "resolved_by",
-    # Timestamps
-    "created_at", "updated_at", "resolved_at",
+    "id", "task_type", "status",
+    # Phone + Entity
+    "phone_id", "phone_number", "entity_id",
+    # Entity JOIN
+    "full_name", "identifier_1", "identifier_2", "relation_type",
     # Allowlisted extra_data subkeys
     "extra_data.failure_category", "extra_data.suggested_remediation",
-    "extra_data.requested_action_type", "extra_data.operator_note",
-    "extra_data.resolution_note", "extra_data.resolution_outcome",
+    "extra_data.operator_note", "extra_data.resolution_note",
 })
 
 
-# Filename hint sanitizer — keep only safe filesystem chars so an
-# operator typing arbitrary Hebrew / punctuation can't break the
-# Content-Disposition header.
+# Filename hint sanitizer
 _FILENAME_HINT_CLEAN = re.compile(r"[^A-Za-z0-9_-]+")
 
 
@@ -111,17 +90,9 @@ _FILENAME_HINT_CLEAN = re.compile(r"[^A-Za-z0-9_-]+")
 class ExportService:
     """
     Per-request writer-free service that turns filter+column requests
-    into .xlsx bytes. Constructed via the `get_export_service`
-    factory in `dependencies.py`.
+    into .xlsx bytes.
 
     No mutator methods — exports are read-only.
-
-    The JOINs the SQL version did (phone→entity→root-entity for
-    customer_tier / root name; task→phone→entity for client_id) are
-    performed application-side here so the export runs on either storage
-    backend. Candidate rows are loaded, then the referenced entities /
-    roots are batch-fetched and stitched in Python; the volume is capped
-    at MAX_EXPORT_ROWS so the cost stays bounded.
     """
 
     def __init__(self, storage: Storage) -> None:
@@ -143,14 +114,10 @@ class ExportService:
         Export the /phones table to .xlsx.
 
         Args:
-            filters       (dict):       Same shape as GET /phones query
-                                          params. Recognised keys:
+            filters       (dict):       Recognised keys:
                                           verification_status,
-                                          ingestion_source, entity_type,
-                                          classification_type, client_id, q.
-            columns       (list[dict]): TableExportColumn-shaped dicts
-                                          ({key, label, format}). Order
-                                          drives sheet column order.
+                                          ingestion_source, phone_type, q.
+            columns       (list[dict]): TableExportColumn-shaped dicts.
             filename_hint (Optional[str]): Operator-supplied label.
 
         Returns:
@@ -163,44 +130,34 @@ class ExportService:
         self._validate_columns(columns, ALLOWED_EXPORT_COLUMNS_PHONES)
         f = filters or {}
 
-        # Phone-level filters resolved by the repository; entity-level
-        # filters (entity_type / client_id[s] / q) applied app-side after
-        # the join, mirroring the SQL WHERE clauses exactly.
-        phone_where: dict = {"deleted_at": None}
+        phone_where: dict = {"deleted_at": SOFT_DELETE_SENTINEL}
         if f.get("verification_status"):
             phone_where["verification_status"] = f["verification_status"]
         if f.get("ingestion_source"):
             phone_where["ingestion_source"] = f["ingestion_source"]
-        if f.get("classification_type"):
-            phone_where["classification_type"] = f["classification_type"]
+        if f.get("phone_type"):
+            phone_where["phone_type"] = f["phone_type"]
 
         phones = self.phones.list(phone_where)
-        entities, roots = self._entity_join_maps(phones)
+        entities = self._entity_map(phones)
 
-        entity_type = f.get("entity_type")
-        client_id = f.get("client_id") if f.get("client_id") not in (None, "") else None
-        client_ids = f.get("client_ids")
         needle = (f.get("q") or "").strip().lower() or None
 
         matched = []
         for phone in phones:
             entity = entities.get(phone.entity_id)
-            if entity is None or entity.deleted_at is not None:
-                continue
-            if entity_type and entity.entity_type != entity_type:
-                continue
-            if client_id is not None and entity.client_id != client_id:
-                continue
-            if client_ids and entity.client_id not in client_ids:
+            if entity is None or entity.deleted_at != SOFT_DELETE_SENTINEL:
                 continue
             if needle is not None:
-                hay = f"{phone.phone_number} {entity.client_id} {phone.entity_id}".lower()
+                hay = " ".join(str(x or "") for x in (
+                    phone.phone_number,
+                    entity.full_name,
+                    entity.identifier_1,
+                    entity.identifier_2,
+                )).lower()
                 if needle not in hay:
                     continue
-            # outerjoin semantics: root_extra is None when the entity is
-            # itself a root (no target_entity_id).
-            root = roots.get(entity.target_entity_id) if entity.target_entity_id else None
-            matched.append((phone, entity, root))
+            matched.append((phone, entity))
 
         total = len(matched)
         if total > MAX_EXPORT_ROWS:
@@ -209,16 +166,11 @@ class ExportService:
                 "Narrow filters and try again."
             )
 
-        # Newest-first, id tiebreaker; cap at the export ceiling.
-        matched.sort(key=lambda t: (t[0].ingested_at, t[0].id), reverse=True)
         matched = matched[:MAX_EXPORT_ROWS]
 
         flattened = [
-            self._flatten_phone_row((
-                phone, entity.entity_type, entity.client_id,
-                entity.extra_data, root.extra_data if root else None,
-            ))
-            for phone, entity, root in matched
+            self._flatten_phone_row(phone, entity)
+            for phone, entity in matched
         ]
         applied_filters = {k: v for k, v in f.items() if v not in (None, "")}
 
@@ -250,9 +202,7 @@ class ExportService:
         self._validate_columns(columns, ALLOWED_EXPORT_COLUMNS_TASKS)
         f = filters or {}
 
-        # Task-level filters via the repository; the phone/entity join +
-        # the entity-level filters (client_ids / q) applied app-side.
-        task_where: dict = {}
+        task_where: dict = {"deleted_at": SOFT_DELETE_SENTINEL}
         if f.get("status"):
             task_where["status"] = f["status"]
         if f.get("task_type"):
@@ -260,7 +210,7 @@ class ExportService:
         if f.get("phone_id") not in (None, ""):
             task_where["phone_id"] = f["phone_id"]
         if f.get("exclude_terminal") and not f.get("status"):
-            task_where["status"] = {"nin": ["resolved", "rejected"]}
+            task_where["status"] = {"nin": ["done", "rejected"]}
 
         tasks = self.tasks.list(task_where)
 
@@ -275,23 +225,21 @@ class ExportService:
             if entity_ids else {}
         )
 
-        client_ids = f.get("client_ids")
         needle = (f.get("q") or "").strip().lower() or None
 
         matched = []
         for task in tasks:
             phone = phones.get(task.phone_id)
-            if phone is None or phone.deleted_at is not None:
+            if phone is None or phone.deleted_at != SOFT_DELETE_SENTINEL:
                 continue
             entity = entities.get(phone.entity_id)
-            if entity is None or entity.deleted_at is not None:
-                continue
-            if client_ids and entity.client_id not in client_ids:
+            if entity is None or entity.deleted_at != SOFT_DELETE_SENTINEL:
                 continue
             if needle is not None:
                 hay = " ".join(str(x or "") for x in (
-                    phone.phone_number, task.requested_by,
-                    task.resolved_by, entity.client_id,
+                    phone.phone_number,
+                    entity.full_name,
+                    entity.identifier_1,
                 )).lower()
                 if needle not in hay:
                     continue
@@ -304,14 +252,10 @@ class ExportService:
                 "Narrow filters and try again."
             )
 
-        matched.sort(key=lambda t: (t[0].created_at, t[0].id), reverse=True)
         matched = matched[:MAX_EXPORT_ROWS]
 
         flattened = [
-            self._flatten_task_row((
-                task, phone.phone_number, phone.entity_id,
-                entity.entity_type, entity.client_id,
-            ))
+            self._flatten_task_row(task, phone, entity)
             for task, phone, entity in matched
         ]
         applied_filters = {k: v for k, v in f.items() if v not in (None, "")}
@@ -329,91 +273,34 @@ class ExportService:
     # Application-side join helper
     # ----------------------------------------------------------------
 
-    def _entity_join_maps(self, phones):
-        """
-        Batch-fetch the entities owning `phones`, plus the root entities
-        those members point at. Returns (entities_by_id, roots_by_id).
-        """
+    def _entity_map(self, phones):
+        """Batch-fetch the entities owning `phones`. Returns entities_by_id."""
         entity_ids = list({p.entity_id for p in phones})
-        entities = (
-            {e.id: e for e in self.entities.list({"id": {"in": entity_ids}})}
-            if entity_ids else {}
-        )
-        root_ids = list({
-            e.target_entity_id for e in entities.values() if e.target_entity_id
-        })
-        roots = (
-            {e.id: e for e in self.entities.list({"id": {"in": root_ids}})}
-            if root_ids else {}
-        )
-        return entities, roots
+        if not entity_ids:
+            return {}
+        return {e.id: e for e in self.entities.list({"id": {"in": entity_ids}})}
 
     # ----------------------------------------------------------------
     # Row flatteners (private; per table)
     # ----------------------------------------------------------------
 
     @staticmethod
-    def _flatten_phone_row(row) -> dict:
-        """
-        Build a column-resolvable dict from one (PhoneNumber, etype,
-        client_id, immediate_extra, root_extra) tuple.
-
-        `customer_tier` is computed here (single place) so it lands on
-        the same row dict as everything else and column projection
-        becomes a pure lookup.
-        """
-        phone, entity_type, client_id, immediate_extra, root_extra = row
-        effective_extra = root_extra if root_extra is not None else immediate_extra
-        customer_tier = None
-        if effective_extra is not None:
-            raw_tier = effective_extra.get("customer_tier")
-            if raw_tier is not None:
-                try:
-                    customer_tier = int(raw_tier)
-                except (TypeError, ValueError):
-                    customer_tier = None
-
-        # Start from the SQLModel's dict so every column on PhoneNumber
-        # is addressable (id, phone_number, ingested_at, etc.). Then
-        # layer JOIN fields and the computed customer_tier on top.
+    def _flatten_phone_row(phone, entity) -> dict:
         flat = phone.model_dump()
-        flat["entity_type"] = entity_type
-        flat["client_id"] = client_id
-        flat["customer_tier"] = customer_tier
-
-        # UAT round-3 fix (round 2): `extra_data.first_name` /
-        # `extra_data.last_name` must resolve to the IMMEDIATE entity's
-        # name (the person being called) — not the root target's. The
-        # previous merge used effective_extra (= root when present),
-        # which silently exported the root's name and missed the
-        # associated entity's name entirely. We now merge the immediate
-        # entity blob in first, then the phone blob, so:
-        #
-        #   extra_data.first_name → owning entity (Jane / Sam / envelope = none)
-        #   extra_data.last_name  → owning entity
-        #
-        # The root-target's name is exposed separately on flat top-level
-        # keys (`root_first_name`, `root_last_name`) so an operator can
-        # build an export that shows BOTH "person called" and "client
-        # head-of-circle" side by side. customer_tier stays as the
-        # envelope-propagated value (root wins) — that's the Phase DY
-        # invariant, unchanged.
-        flat["extra_data"] = {
-            **(immediate_extra or {}),
-            **(phone.extra_data or {}),
-        }
-        flat["root_first_name"] = (root_extra or {}).get("first_name")
-        flat["root_last_name"]  = (root_extra or {}).get("last_name")
+        flat["relation_type"] = entity.relation_type
+        flat["full_name"] = entity.full_name
+        flat["identifier_1"] = entity.identifier_1
+        flat["identifier_2"] = entity.identifier_2
         return flat
 
     @staticmethod
-    def _flatten_task_row(row) -> dict:
-        task, phone_number, entity_id, entity_type, client_id = row
+    def _flatten_task_row(task, phone, entity) -> dict:
         flat = task.model_dump()
-        flat["phone_number"] = phone_number
-        flat["entity_id"] = entity_id
-        flat["entity_type"] = entity_type
-        flat["client_id"] = client_id
+        flat["phone_number"] = phone.phone_number
+        flat["full_name"] = entity.full_name
+        flat["identifier_1"] = entity.identifier_1
+        flat["identifier_2"] = entity.identifier_2
+        flat["relation_type"] = entity.relation_type
         return flat
 
     # ----------------------------------------------------------------
@@ -427,29 +314,16 @@ class ExportService:
         total: int,
         applied_filters: dict,
     ) -> bytes:
-        """
-        Build the two-sheet workbook and return its bytes.
-
-        Sheet 1 — `data`:
-            Row 1   = bold header (labels from `columns` in order)
-            Rows 2+ = data rows; per-column values resolved + formatted
-
-        Sheet 2 — `export_metadata`:
-            Auditing context: applied filters, total row count, UTC
-            timestamp, bulk_export_id (uuid).
-        """
+        """Build the two-sheet workbook and return its bytes."""
         wb = Workbook()
         ws = wb.active
         ws.title = "data"
 
-        # Header row.
         header_labels = [c["label"] for c in columns]
         ws.append(header_labels)
-        # Bold the header so operators can immediately spot column names.
         for cell in ws[1]:
             cell.font = Font(bold=True)
 
-        # Data rows. Each row resolves once per column key + format.
         for row in rows:
             cells = []
             for c in columns:
@@ -457,8 +331,6 @@ class ExportService:
                 cells.append(format_value(raw, c.get("format", "text")))
             ws.append(cells)
 
-        # Metadata sheet — always present (even when rows == 0) so the
-        # operator can correlate the export with audit logs later.
         meta = wb.create_sheet(title="export_metadata")
         meta.append(["field", "value"])
         for cell in meta[1]:
@@ -467,13 +339,9 @@ class ExportService:
         meta.append(["exported_rows", len(rows)])
         meta.append(["exported_at_utc", datetime.now(timezone.utc).isoformat()])
         meta.append(["bulk_export_id", str(uuid.uuid4())])
-        meta.append(["", ""])    # spacer
+        meta.append(["", ""])
         meta.append(["applied_filters", ""])
         for k, v in applied_filters.items():
-            # openpyxl can only put scalars in cells — coerce lists +
-            # dicts to JSON-ish strings so multi-value filters
-            # (e.g. Phase AUTH-C's client_ids=[1,3]) round-trip into
-            # the audit sheet rather than crashing the export.
             if isinstance(v, (list, dict)):
                 v = str(v)
             meta.append([f"  {k}", v])
@@ -488,11 +356,6 @@ class ExportService:
 
     @staticmethod
     def _validate_columns(columns: list[dict], allowlist: Iterable[str]) -> None:
-        """
-        Reject the whole request if ANY requested key is outside the
-        per-table allowlist. We fail fast — partial-allowlist exports
-        risk operators believing they got more data than they did.
-        """
         allowed = set(allowlist)
         bad = [c["key"] for c in columns if c["key"] not in allowed]
         if bad:
@@ -502,12 +365,6 @@ class ExportService:
 
     @staticmethod
     def _build_filename(table: str, hint: str | None) -> str:
-        """
-        `{table}_{hint?}_{YYYY-MM-DD}_{HHMM}.xlsx`
-
-        Hint is sanitized to a safe filename slug so Content-Disposition
-        can never carry a header-injection attack vector.
-        """
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
         parts = [table]
         if hint:

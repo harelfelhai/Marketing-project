@@ -6,7 +6,7 @@ internal implementation, an engineer only needs to set the corresponding
 environment variable — no source code changes required.
 
 Environment variables can be provided via a `.env` file at the project root
-or injected directly into the process environment (e.g. via Docker, K8s secrets).
+or injected directly into the process environment.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,18 +18,6 @@ class Settings(BaseSettings):
 
     Each field maps directly to an env var of the same name (uppercased).
     Pydantic-settings handles type coercion and validation automatically.
-
-    Injectable Module Convention
-    ----------------------------
-    The three `*_module` fields follow Python's dotted-module path format
-    (e.g. "modules.mock_ingestion"). The named module MUST export a class
-    with the exact name specified in `dependencies.py` (e.g. `IngestionEngine`).
-    The class MUST subclass the corresponding abstract interface in `interfaces/`.
-
-    Example override for internal deployment:
-        INGESTION_MODULE=company.proprietary.lead_engine
-        DISPATCHER_MODULE=company.proprietary.campaign_dispatcher
-        FEEDBACK_MODULE=company.proprietary.conversion_checker
     """
 
     model_config = SettingsConfigDict(
@@ -46,30 +34,22 @@ class Settings(BaseSettings):
     """
     SQLAlchemy-compatible connection string.
     Default: local SQLite file for development.
-    Internal deployment: replace with PostgreSQL/MySQL DSN.
     """
 
     system_settings_path: str = "system_settings.json"
     """
     Path to the operator-editable system-settings file (System Settings tab).
 
-    Holds runtime-selectable infrastructure choices that an admin flips from
-    the frontend — starting with `storage_backend` (the DB engine selector).
-
-    This file lives OUTSIDE the swappable database on purpose: the storage
-    backend choice must be readable at boot regardless of which DB is active,
-    so it cannot be stored in the database it selects. Resolved relative to
-    the process working directory. Changes take effect on the next
-    reconnect / restart.
+    Holds runtime-selectable infrastructure choices. Lives OUTSIDE the database
+    on purpose: the storage backend choice must be readable at boot regardless
+    of which DB is active. Changes take effect on the next reconnect / restart.
     """
 
     mongo_url: str = "mongodb://localhost:27017"
     """
     MongoDB connection string, used only when the System Settings storage
-    backend is set to 'mongo'. The credentials (if the deployment's Mongo
-    requires auth) belong in this URL, which is supplied via the environment
-    / secret store on the server — never typed into the frontend (the tab
-    selects the backend TYPE, not the connection string). Secrets-Free Mandate.
+    backend is set to 'mongo'. Secrets-Free Mandate: supplied via environment
+    / secret store on the server, never via the frontend.
     """
 
     mongo_db_name: str = "marketing"
@@ -77,9 +57,7 @@ class Settings(BaseSettings):
 
     read_cache_enabled: bool = True
     """
-    Enable the process-wide, version-invalidated read cache (repositories/cache.py)
-    that backs the unified read-model. Reads are served from memory until a write
-    advances the data version, so repeated hub/list loads cost zero DB round-trips.
+    Enable the process-wide, version-invalidated read cache.
     Set False to bypass (always recompute) — useful when running multiple worker
     processes that don't share an invalidation signal.
     """
@@ -87,49 +65,23 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Injectable Module Paths
     # ------------------------------------------------------------------
-    # IMPORTANT FOR INTERNAL ENGINEERS:
-    # Each variable below points to a Python module that contains the
-    # concrete implementation of one of the three core pipeline stages.
-    # Set these env vars in your deployment environment to inject your
-    # proprietary implementations without touching this codebase.
 
     ingestion_module: str = "modules.mock_ingestion"
     """
-    Dotted path to the module containing `IngestionEngine`.
-    Must implement: interfaces.ingestion.BaseIngestionEngine
-    """
-
-    dispatcher_module: str = "modules.mock_dispatcher"
-    """
-    Dotted path to the module containing `CampaignDispatcher`.
-    Must implement: interfaces.dispatcher.BaseCampaignDispatcher
+    Dotted path to the module containing `IngestionRoutingEngine`.
+    Must implement: interfaces.ingestion.BaseIngestionRoutingEngine
     """
 
     feedback_module: str = "modules.mock_feedback"
     """
-    Dotted path to the module containing `FeedbackChecker`.
-    Must implement: interfaces.feedback.BaseFeedbackChecker
-    """
-
-    scoring_module: str = "modules.mock_scoring"
-    """
-    Dotted path to the module containing `ScoringStrategy` (Phase DY).
-    Must implement: interfaces.scoring.BaseScoringStrategy
-
-    Internal teams replace this with their proprietary scoring strategy
-    (weight tables + formula). The mock implementation ships a default
-    hybrid formula that is workable but generic.
+    Dotted path to the module containing `VerificationStrategy`.
+    Must implement: interfaces.verification.BaseVerificationStrategy
     """
 
     notification_module: str = "modules.mock_chat"
     """
-    Dotted path to the module containing `NotificationChannel`
-    (Phase NOTIF). Must implement:
-    interfaces.notifications.BaseNotificationChannel.
-
-    The open-source default `mock_chat` logs every delivery to stdout
-    and always returns success. Internal teams swap in their Slack /
-    Teams / Discord / generic-webhook adapter at deployment time.
+    Dotted path to the module containing `NotificationChannel` (Phase NOTIF).
+    Must implement: interfaces.notifications.BaseNotificationChannel.
     """
 
     # ------------------------------------------------------------------
@@ -139,69 +91,7 @@ class Settings(BaseSettings):
     admin_config_path: str = "admins.json"
     """
     Path to the static `admins.json` file (Phase AUTH).
-
-    Read once at startup by `services.admin_sync.sync_admins()` to
-    reconcile admin entries into the `user` table. Path is resolved
-    relative to the process working directory — the standard `cd
-    backend/ && uvicorn main:app` invocation looks for the file at
-    `backend/admins.json`.
-
-    The file is the SOURCE OF TRUTH for which usernames have
-    Admin role. Edit + restart to rotate. No API endpoint exists for
-    admin creation (that's the safety-via-friction the requirement
-    asks for).
-    """
-
-    scoring_default_confidence: float = 50.0
-    """
-    Baseline confidence_score written on every newly-ingested PhoneNumber
-    row. Neutral midpoint — new numbers compete on tier and relation
-    alone until audited (manual verdict, automated check, or a PATCH
-    write). Tunable per deployment via env var.
-    """
-
-    # ------------------------------------------------------------------
-    # Scheduler Intervals
-    # ------------------------------------------------------------------
-
-    ingestion_interval_seconds: int = 60
-    """How often (in seconds) the automated ingestion job runs."""
-
-    feedback_interval_seconds: int = 120
-    """How often (in seconds) the feedback/conversion-check job runs."""
-
-    # ------------------------------------------------------------------
-    # Phase 2 — Retry Policy
-    # ------------------------------------------------------------------
-
-    max_retry_count: int = 5
-    """
-    Upper bound on the number of automated retry attempts per ActionLog row.
-
-    Once `ActionLog.retry_count >= max_retry_count`, the next retryable
-    failure transitions the row to terminal `status="failed"` instead of
-    scheduling yet another retry. Prevents infinite retry loops against
-    a broken external provider.
-    """
-
-    retry_backoff_seconds: int = 300
-    """
-    Default seconds added to `now()` when scheduling a retry.
-    Used by ActionDispatcher to set `ActionLog.retry_after`.
-    Internal deployments may replace this with an exponential back-off
-    by overriding `ActionDispatcher` and computing per-attempt durations.
-    """
-
-    # ------------------------------------------------------------------
-    # Phase 3 — Verification Eligibility Window
-    # ------------------------------------------------------------------
-
-    verification_window_days: int = 7
-    """
-    Number of days that must elapse after the most recent "sent" ActionLog
-    before a `pending` PhoneNumber becomes eligible for the automated
-    VerificationEngine. Independent of `feedback_interval_seconds` (which
-    governs how often the engine *runs*, not its eligibility window).
+    Read once at startup by `services.admin_sync.sync_admins()`.
     """
 
 

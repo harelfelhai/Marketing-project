@@ -1024,3 +1024,27 @@ export const CLIENT_CARD_SECTION_METRICS    = 'גריד מטריקות (כולל
 export const CLIENT_CARD_SECTION_VERDICTS   = 'פירוט החלטות (טוב / רע)';
 export const CLIENT_CARD_SECTION_SLA        = 'רצועת SLA';
 export const CLIENT_CARD_SECTION_TASKS      = 'תג משימות פתוחות';
+
+// ---------------------------------------------------------------------------
+// System Settings — vocabulary management (feature 4)
+// ---------------------------------------------------------------------------
+export const SYSSET_VOCAB_TITLE             = 'ניהול אוצר מילים';
+export const SYSSET_VOCAB_DESC              =
+  'ערוך רשימות שדות מבוקרים (סוגי קרבה, מקורות קליטה, וכו׳). השינויים מיד בתוקף.';
+export const SYSSET_VOCAB_NAMES = {
+  relation_types:    'סוגי קרבה',
+  ingestion_sources: 'מקורות קליטה',
+  phone_types:       'סוגי טלפון',
+};
+export const SYSSET_VOCAB_ADD_ITEM          = 'הוסף פריט';
+export const SYSSET_VOCAB_PLACEHOLDER       = 'ערך חדש…';
+export const SYSSET_VOCAB_REMOVE_ARIA       = (v) => `הסר "${v}"`;
+export const SYSSET_VOCAB_BTN_SAVE          = 'שמור';
+export const SYSSET_VOCAB_BTN_SAVING        = 'שומר…';
+export const SYSSET_VOCAB_TOAST_SAVED       = (name) => `אוצר המילים "${name}" נשמר.`;
+export const SYSSET_VOCAB_TOAST_ERROR       = (msg) => `שמירת אוצר המילים נכשלה: ${msg}`;
+
+// Entity display fields — updated to match new schema (no strong_identifier)
+export const ENTITIES_COL_IDENTIFIER_1     = 'מזהה 1';
+export const ENTITIES_COL_IDENTIFIER_2     = 'מזהה 2';
+export const ENTITIES_COL_FULL_NAME        = 'שם מלא';

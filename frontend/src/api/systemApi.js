@@ -135,3 +135,31 @@ export async function updateMongoUrl(url, mockDb) {
   await mockDelay(600);
   return mockDb.applyUpdateMongoUrl(url);
 }
+
+/**
+ * updateVocabulary — persist a vocabulary list by name.
+ *
+ * Vocabulary names: 'relation_types', 'ingestion_sources', 'phone_types', etc.
+ * The backend validates names; unknown names return 422.
+ *
+ * MOCK_MODE = false → PUT /system/settings/vocabulary/{name}
+ * MOCK_MODE = true  → MockDataContext.applyUpdateVocabulary(name, items)
+ *
+ * @param {string}   name    Vocabulary name.
+ * @param {string[]} items   Ordered list of string values.
+ * @param {object}   mockDb  MockDataContext instance.
+ * @returns {Promise<{name: string, items: string[]}>} The updated vocabulary.
+ */
+export async function updateVocabulary(name, items, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put(
+      `/system/settings/vocabulary/${encodeURIComponent(name)}`,
+      { items },
+    );
+    return data;
+  }
+  await mockDelay(300);
+  return mockDb.applyUpdateVocabulary
+    ? mockDb.applyUpdateVocabulary(name, items)
+    : { name, items };
+}

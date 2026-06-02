@@ -1,5 +1,5 @@
 """
-services/data_admin.py — UAT round-3: edit + soft-delete for Entity and PhoneNumber.
+services/data_admin.py — edit + soft-delete for Entity and PhoneNumber.
 
 Single service that owns every admin-facing mutation on the two
 "long-lived" rows in the system (the operational identity graph).
@@ -10,48 +10,35 @@ Kept separate from `entity_ingestion.py` because:
   - admin operations are role-gated (require_admin) at the endpoint
     layer; ingestion is open to authenticated regulars too.
 
-The soft-delete contract is timestamp-based, not boolean:
-  - `deleted_at IS NULL`     →  active row.
-  - `deleted_at = <ts>`      →  soft-deleted at that UTC instant.
+The soft-delete contract uses SOFT_DELETE_SENTINEL:
+  - `deleted_at == SOFT_DELETE_SENTINEL`  →  active row.
+  - `deleted_at = <ts>`                   →  soft-deleted at that UTC instant.
 
-Why a timestamp:
-  - "WHEN was it deleted" is part of the documentation requirement —
-    the user explicitly called out reseeding the same number after a
-    delete should be detectable as "re-surfaced", which means we need
-    the time of the previous tombstone, not just a flag.
-  - Restore is just `UPDATE ... SET deleted_at = NULL`. No second
-    boolean to maintain.
-
-Cascade rule (per UAT spec):
+Cascade rule:
   - Soft-deleting an Entity also soft-deletes EVERY PhoneNumber whose
-    `entity_id` matches, plus every member entity pointing at it. Every
-    row stamped in one cascade shares a `deletion_group_id` (UUID).
-  - Restore is symmetric: restoring any row in a group revives the
-    whole group. Rows tombstoned in unrelated actions stay deleted.
+    `entity_id` matches, plus every member entity pointing at it, plus
+    every PipelineTask tied to those phones/entities.
+  - Restore is symmetric: restoring an entity sets deleted_at back to
+    SOFT_DELETE_SENTINEL for the entity, its phones, child entities,
+    and their tasks.
 
 Storage seam
 ------------
 This service speaks to the storage layer only through repositories
-(see `repositories/`), so it runs identically on SQL and MongoDB. The
-two backends are kept in sync by `tests/repositories/test_repository_contract.py`.
+(see `repositories/`), so it runs identically on SQL and MongoDB.
 """
 
 from datetime import datetime, timezone
-import uuid
 from typing import Optional
 
 from models.entity import Entity
 from models.phone_number import PhoneNumber
+from models.types import SOFT_DELETE_SENTINEL, not_deleted
 from repositories.storage import Storage
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _new_deletion_group_id() -> str:
-    """UUID stamped onto every row tombstoned by one cascade action."""
-    return str(uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +58,7 @@ class DataAdminService:
     def __init__(self, storage: Storage) -> None:
         self.entities = storage.entities
         self.phones = storage.phones
+        self.tasks = storage.tasks
 
     # ----------------------------------------------------------------
     # Entity
@@ -80,103 +68,78 @@ class DataAdminService:
         ent = self.entities.get(entity_id)
         if ent is None:
             raise ValueError(f"Entity {entity_id} not found")
-        if ent.deleted_at is not None and not include_deleted:
+        if ent.deleted_at != SOFT_DELETE_SENTINEL and not include_deleted:
             raise ValueError(f"Entity {entity_id} not found")
         return ent
 
     def list_entities(
         self,
         *,
-        client_id: Optional[str] = None,
-        client_ids: Optional[list[str]] = None,
-        entity_type: Optional[str] = None,
+        target_entity_id: Optional[str] = None,
         include_deleted: bool = False,
         q: Optional[str] = None,
     ) -> list[Entity]:
         """
         Read-side query for the Entities view tab.
 
-        Filter shape mirrors GET /phones for consistency:
-          - client_id  / client_ids  →  partition + personalization
-          - entity_type              →  'target' (primary roots) or
-                                          'associated' (members)
-          - include_deleted=False    →  default, hides tombstones
-          - q                        →  substring match on name fields
-                                          inside extra_data
+        Filter shape:
+          - target_entity_id  →  filter by parent entity
+          - include_deleted   →  default False, hides tombstones
+          - q                 →  substring match on full_name, identifier_1,
+                                   identifier_2
         """
         where: dict = {}
         if not include_deleted:
-            where["deleted_at"] = None
-        if client_id is not None:
-            where["client_id"] = client_id
-        if client_ids:
-            where["client_id"] = {"in": list(client_ids)}
-        if entity_type:
-            where["entity_type"] = entity_type
+            where["deleted_at"] = SOFT_DELETE_SENTINEL
+        if target_entity_id is not None:
+            where["target_entity_id"] = target_entity_id
 
         rows = self.entities.list(where)
 
         if q:
-            # Substring match on first_name + last_name inside
-            # extra_data. Done in Python because SQLite/Postgres JSON
-            # operators diverge and Mongo would need a different path;
-            # the entity volume in any one client partition stays bounded.
             needle = q.strip().lower()
             def _hay(e: Entity) -> str:
-                fn = (e.extra_data or {}).get("first_name") or ""
-                ln = (e.extra_data or {}).get("last_name") or ""
-                return f"{fn} {ln} {e.id}".lower()
+                return " ".join(filter(None, [
+                    e.full_name or "",
+                    e.identifier_1 or "",
+                    e.identifier_2 or "",
+                    e.id,
+                ])).lower()
             rows = [e for e in rows if needle in _hay(e)]
 
-        # Stable: newest-first, then id-desc tiebreaker.
-        rows.sort(key=lambda e: (e.created_at, e.id), reverse=True)
+        # Stable: by id descending.
+        rows.sort(key=lambda e: e.id, reverse=True)
         return rows
 
     def patch_entity(
         self,
         entity_id: str,
         *,
-        first_name: Optional[str] = None,
-        last_name: Optional[str] = None,
+        full_name: Optional[str] = None,
+        identifier_1: Optional[str] = None,
+        identifier_2: Optional[str] = None,
         relation_type: Optional[str] = None,
         target_entity_id: Optional[str] = None,
-        strong_identifier: Optional[str] = None,
     ) -> Entity:
         """
         Edit an existing entity. Only non-None args are applied —
-        callers send a partial body. Names + strong_identifier live in
-        extra_data; the others are schema columns.
-
-        Two-level model: there is no separate `client_id` to edit. To
-        move an entity to a different client, change its
-        `target_entity_id` (the root it points at) — `client_id` then
-        derives automatically.
+        callers send a partial body.
 
         Raises ValueError on missing entity or deleted entity (you
         must restore before editing).
         """
         ent = self.get_entity(entity_id, include_deleted=False)
 
+        if full_name is not None:
+            ent.full_name = full_name.strip() or None
+        if identifier_1 is not None:
+            ent.identifier_1 = identifier_1.strip() or None
+        if identifier_2 is not None:
+            ent.identifier_2 = identifier_2.strip() or None
         if relation_type is not None:
-            ent.entity_type = relation_type
+            ent.relation_type = relation_type
         if target_entity_id is not None:
             ent.target_entity_id = target_entity_id
-
-        # UAT round-3 — strong_identifier is a first-class column. An
-        # explicit empty-string write clears it.
-        if strong_identifier is not None:
-            sid = strong_identifier.strip()
-            ent.strong_identifier = sid or None
-
-        # extra_data mutations for name fields only. Fresh dict so
-        # SQLAlchemy sees the JSON column as dirty.
-        if any(v is not None for v in (first_name, last_name)):
-            extra = dict(ent.extra_data or {})
-            if first_name is not None:
-                extra["first_name"] = first_name.strip()
-            if last_name is not None:
-                extra["last_name"] = last_name.strip() or None
-            ent.extra_data = extra
 
         return self.entities.update(ent)
 
@@ -184,110 +147,149 @@ class DataAdminService:
         """
         Tombstone an entity AND cascade through the full sub-graph.
 
-        Every row tombstoned by THIS action is stamped with a shared
-        `deletion_group_id` (UUID). restore_entity uses that stamp to
-        revive exactly the rows that fell together — without
-        resurrecting unrelated rows the operator deleted manually
-        before or after.
+        Sets deleted_at = utc_now() (a real timestamp, NOT the sentinel)
+        on the entity, its child entities, their phones, and related tasks.
 
         Returns the operator-facing summary:
-            {entity_id, phones_deleted, entities_deleted, deletion_group_id}
+            {entity_id, phones_deleted, entities_deleted, tasks_deleted}
         """
         ent = self.get_entity(entity_id, include_deleted=False)
         now = _utc_now()
-        group_id = _new_deletion_group_id()
 
-        # Children (associated entities targeting this entity).
+        # Children (member entities targeting this entity).
         child_entities = self.entities.list({
             "target_entity_id": entity_id,
-            "deleted_at": None,
+            "deleted_at": SOFT_DELETE_SENTINEL,
         })
         entity_ids_to_kill = [entity_id, *(c.id for c in child_entities)]
 
         # Phones across the whole sub-graph.
         phones = self.phones.list({
             "entity_id": {"in": entity_ids_to_kill},
-            "deleted_at": None,
+            "deleted_at": SOFT_DELETE_SENTINEL,
         })
+        phone_ids_to_kill = [p.id for p in phones]
+
+        # Tasks tied to those phones.
+        tasks_deleted = 0
+        if phone_ids_to_kill:
+            tasks = self.tasks.list({
+                "phone_id": {"in": phone_ids_to_kill},
+                "deleted_at": SOFT_DELETE_SENTINEL,
+            })
+            for t in tasks:
+                t.deleted_at = now
+                self.tasks.update(t)
+            tasks_deleted = len(tasks)
+        # Also tasks tied to the entity directly.
+        entity_tasks = self.tasks.list({
+            "entity_id": {"in": entity_ids_to_kill},
+            "deleted_at": SOFT_DELETE_SENTINEL,
+        })
+        for t in entity_tasks:
+            if t.deleted_at == SOFT_DELETE_SENTINEL:
+                t.deleted_at = now
+                self.tasks.update(t)
+                tasks_deleted += 1
+
         for p in phones:
             p.deleted_at = now
-            p.deletion_group_id = group_id
             self.phones.update(p)
 
         for child in child_entities:
             child.deleted_at = now
-            child.deletion_group_id = group_id
             self.entities.update(child)
 
         ent.deleted_at = now
-        ent.deletion_group_id = group_id
         self.entities.update(ent)
 
         return {
-            "entity_id":          entity_id,
-            "phones_deleted":     len(phones),
-            "entities_deleted":   len(child_entities) + 1,
-            "deletion_group_id":  group_id,
+            "entity_id":        entity_id,
+            "phones_deleted":   len(phones),
+            "entities_deleted": len(child_entities) + 1,
+            "tasks_deleted":    tasks_deleted,
         }
 
     def restore_entity(self, entity_id: str) -> dict:
         """
-        Symmetric counterpart to soft_delete_entity.
+        Restore a soft-deleted entity and its cascade.
 
-        Restores the entity itself, then every OTHER row sharing the
-        same deletion_group_id — so the full cascade reverses. Rows
-        that were deleted in a separate, unrelated action are NOT
-        touched (different group_id, or no group_id at all).
+        Sets deleted_at back to SOFT_DELETE_SENTINEL for the entity,
+        its child entities, their phones, and related tasks — but only
+        rows that were soft-deleted after the entity was deleted
+        (approximate heuristic: rows whose deleted_at >= entity.deleted_at).
 
         Returns:
-            {entity_id, phones_restored, entities_restored}
+            {entity_id, phones_restored, entities_restored, tasks_restored}
         """
         ent = self.entities.get(entity_id)
         if ent is None:
             raise ValueError(f"Entity {entity_id} not found")
-        if ent.deleted_at is None:
-            # Already active — idempotent. No cascade peers to revive.
+        if ent.deleted_at == SOFT_DELETE_SENTINEL:
+            # Already active — idempotent.
             return {
-                "entity_id":          entity_id,
-                "phones_restored":    0,
-                "entities_restored":  0,
+                "entity_id":        entity_id,
+                "phones_restored":  0,
+                "entities_restored": 0,
+                "tasks_restored":   0,
             }
 
-        group_id = ent.deletion_group_id
+        deleted_ts = ent.deleted_at
 
-        # Restore the entity itself first.
-        ent.deleted_at = None
-        ent.deletion_group_id = None
+        # Restore entity itself first.
+        ent.deleted_at = not_deleted()
         self.entities.update(ent)
         entities_restored = 1
-        phones_restored = 0
 
-        # If we have a group id, restore the rest of the cascade peers.
-        if group_id:
-            sibling_entities = [
-                e for e in self.entities.list({"deletion_group_id": group_id})
-                if e.id != entity_id and e.deleted_at is not None
-            ]
-            for child in sibling_entities:
-                child.deleted_at = None
-                child.deletion_group_id = None
-                self.entities.update(child)
-            entities_restored += len(sibling_entities)
+        # Child entities deleted at approximately the same time.
+        child_entities = [
+            e for e in self.entities.list({"target_entity_id": entity_id})
+            if e.deleted_at != SOFT_DELETE_SENTINEL
+            and e.deleted_at is not None
+            and e.deleted_at >= deleted_ts
+        ]
+        for child in child_entities:
+            child.deleted_at = not_deleted()
+            self.entities.update(child)
+        entities_restored += len(child_entities)
 
-            sibling_phones = [
-                p for p in self.phones.list({"deletion_group_id": group_id})
-                if p.deleted_at is not None
-            ]
-            for p in sibling_phones:
-                p.deleted_at = None
-                p.deletion_group_id = None
-                self.phones.update(p)
-            phones_restored = len(sibling_phones)
+        entity_ids_to_restore = [entity_id, *(c.id for c in child_entities)]
+
+        # Phones deleted at approximately the same time.
+        all_phones = self.phones.list({"entity_id": {"in": entity_ids_to_restore}})
+        phones_to_restore = [
+            p for p in all_phones
+            if p.deleted_at != SOFT_DELETE_SENTINEL
+            and p.deleted_at is not None
+            and p.deleted_at >= deleted_ts
+        ]
+        phone_ids_to_restore = [p.id for p in phones_to_restore]
+        for p in phones_to_restore:
+            p.deleted_at = not_deleted()
+            self.phones.update(p)
+        phones_restored = len(phones_to_restore)
+
+        # Tasks tied to those phones / entities.
+        tasks_restored = 0
+        if phone_ids_to_restore:
+            phone_tasks = self.tasks.list({"phone_id": {"in": phone_ids_to_restore}})
+            for t in phone_tasks:
+                if t.deleted_at != SOFT_DELETE_SENTINEL and t.deleted_at is not None:
+                    t.deleted_at = not_deleted()
+                    self.tasks.update(t)
+                    tasks_restored += 1
+        entity_tasks = self.tasks.list({"entity_id": {"in": entity_ids_to_restore}})
+        for t in entity_tasks:
+            if t.deleted_at != SOFT_DELETE_SENTINEL and t.deleted_at is not None:
+                t.deleted_at = not_deleted()
+                self.tasks.update(t)
+                tasks_restored += 1
 
         return {
-            "entity_id":          entity_id,
-            "phones_restored":    phones_restored,
-            "entities_restored":  entities_restored,
+            "entity_id":        entity_id,
+            "phones_restored":  phones_restored,
+            "entities_restored": entities_restored,
+            "tasks_restored":   tasks_restored,
         }
 
     # ----------------------------------------------------------------
@@ -298,7 +300,7 @@ class DataAdminService:
         ph = self.phones.get(phone_id)
         if ph is None:
             raise ValueError(f"Phone {phone_id} not found")
-        if ph.deleted_at is not None and not include_deleted:
+        if ph.deleted_at != SOFT_DELETE_SENTINEL and not include_deleted:
             raise ValueError(f"Phone {phone_id} not found")
         return ph
 
@@ -308,18 +310,15 @@ class DataAdminService:
         *,
         phone_number: Optional[str] = None,
         entity_id: Optional[str] = None,
-        classification_type: Optional[str] = None,
+        phone_type: Optional[str] = None,
         ingestion_source: Optional[str] = None,
-        ingestion_reason: Optional[str] = None,
         verification_status: Optional[str] = None,
-        verification_source: Optional[str] = None,
-        verification_reason: Optional[str] = None,
+        score: Optional[float] = None,
     ) -> PhoneNumber:
         """
-        Edit an existing phone row. Like patch_entity, only non-None
-        args take effect. Raises ValueError on missing/deleted row,
-        or on a non-existent / soft-deleted entity_id when moving the
-        phone to a different owner.
+        Edit an existing phone row. Only non-None args take effect.
+        Raises ValueError on missing/deleted row, or on a non-existent /
+        soft-deleted entity_id when moving the phone to a different owner.
         """
         ph = self.get_phone(phone_id, include_deleted=False)
 
@@ -327,68 +326,32 @@ class DataAdminService:
             ph.phone_number = phone_number.strip()
         if entity_id is not None:
             owner = self.entities.get(entity_id)
-            if owner is None or owner.deleted_at is not None:
+            if owner is None or owner.deleted_at != SOFT_DELETE_SENTINEL:
                 raise ValueError(f"Entity {entity_id} not found")
             ph.entity_id = entity_id
-        if classification_type is not None:
-            ph.classification_type = classification_type
+        if phone_type is not None:
+            ph.phone_type = phone_type
         if ingestion_source is not None:
             ph.ingestion_source = ingestion_source
-        if ingestion_reason is not None:
-            ph.ingestion_reason = ingestion_reason.strip() or None
         if verification_status is not None:
             ph.verification_status = verification_status
-        if verification_source is not None:
-            ph.verification_source = verification_source
-        if verification_reason is not None:
-            ph.verification_reason = verification_reason.strip() or None
+        if score is not None:
+            ph.score = score
 
         return self.phones.update(ph)
 
     def soft_delete_phone(self, phone_id: str) -> PhoneNumber:
-        # Standalone phone delete still stamps a fresh group_id so the
-        # restore path is uniform across single-phone and cascade
-        # tombstones — restore_phone simply revives whatever shares the
-        # group (which, in this case, is just this one phone).
         ph = self.get_phone(phone_id, include_deleted=False)
         ph.deleted_at = _utc_now()
-        ph.deletion_group_id = _new_deletion_group_id()
         return self.phones.update(ph)
 
     def restore_phone(self, phone_id: str) -> PhoneNumber:
-        """
-        Restore a soft-deleted phone. If the phone fell as part of a
-        cascade (deletion_group_id != null), every other row sharing
-        the same group_id is revived too — symmetric with the
-        soft_delete_entity → restore_entity behavior.
-        """
+        """Restore a soft-deleted phone."""
         ph = self.phones.get(phone_id)
         if ph is None:
             raise ValueError(f"Phone {phone_id} not found")
-        if ph.deleted_at is None:
+        if ph.deleted_at == SOFT_DELETE_SENTINEL:
             return ph
 
-        group_id = ph.deletion_group_id
-        ph.deleted_at = None
-        ph.deletion_group_id = None
-        self.phones.update(ph)
-
-        if group_id:
-            sibling_entities = [
-                e for e in self.entities.list({"deletion_group_id": group_id})
-                if e.deleted_at is not None
-            ]
-            for child in sibling_entities:
-                child.deleted_at = None
-                child.deletion_group_id = None
-                self.entities.update(child)
-            sibling_phones = [
-                p for p in self.phones.list({"deletion_group_id": group_id})
-                if p.id != phone_id and p.deleted_at is not None
-            ]
-            for sp in sibling_phones:
-                sp.deleted_at = None
-                sp.deletion_group_id = None
-                self.phones.update(sp)
-
-        return ph
+        ph.deleted_at = not_deleted()
+        return self.phones.update(ph)
