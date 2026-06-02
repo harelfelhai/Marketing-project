@@ -3028,3 +3028,34 @@ class TestClientsEndpoint:
         tc, _ = client
         _logout(tc)
         assert tc.get("/api/v1/clients").status_code == 401
+
+
+class TestDisplayFieldsEndpoint:
+    """PUT /api/v1/system/settings/display-fields — configurable display fields."""
+
+    def test_put_persists_and_reflects_on_get(self, client):
+        tc, _ = client
+        r = tc.put("/api/v1/system/settings/display-fields",
+                   json={"surface": "entities", "fields": ["id", "name", "client"]})
+        assert r.status_code == 200
+        assert r.json()["display_fields"]["entities"] == ["id", "name", "client"]
+        # Read-back through GET.
+        got = tc.get("/api/v1/system/settings").json()
+        assert got["display_fields"]["entities"] == ["id", "name", "client"]
+
+    def test_bad_fields_returns_422(self, client):
+        tc, _ = client
+        r = tc.put("/api/v1/system/settings/display-fields",
+                   json={"surface": "", "fields": ["id"]})
+        assert r.status_code == 422
+
+    def test_regular_user_returns_403(self, client):
+        tc, _ = client
+        _logout(tc)
+        tc.post("/api/v1/auth/register", json={
+            "username": "regular_df", "password": "pass1234",
+            "managed_client_ids": ["ent-1"],
+        })
+        r = tc.put("/api/v1/system/settings/display-fields",
+                   json={"surface": "entities", "fields": ["id"]})
+        assert r.status_code == 403

@@ -56,25 +56,45 @@ class SystemSettingsService:
         self._path = Path(path)
 
     # ------------------------------------------------------------------
-    # Internal file IO
+    # Internal file IO — the whole settings document
     # ------------------------------------------------------------------
 
-    def _read_backend(self) -> str:
-        """Return the persisted storage_backend, or the default."""
+    def _read_all(self) -> dict:
+        """Return the full settings doc, or {} on a missing/corrupt file."""
         if not self._path.exists():
-            return DEFAULT_BACKEND
+            return {}
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError, ValueError):
-            return DEFAULT_BACKEND
-        backend = data.get("storage_backend", DEFAULT_BACKEND) if isinstance(data, dict) else DEFAULT_BACKEND
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _write_all(self, data: dict) -> None:
+        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _read_backend(self) -> str:
+        """Return the persisted storage_backend, or the default."""
+        backend = self._read_all().get("storage_backend", DEFAULT_BACKEND)
         return backend if backend in KNOWN_BACKENDS else DEFAULT_BACKEND
 
-    def _write_backend(self, backend: str) -> None:
-        self._path.write_text(
-            json.dumps({"storage_backend": backend}, indent=2),
-            encoding="utf-8",
-        )
+    def _read_display_fields(self) -> dict:
+        """
+        Return the persisted per-surface display-field selections.
+
+        Shape: { "<surface>": ["<field_key>", ...], ... }. Opaque to the
+        backend — the field catalog + labels live in the frontend config
+        layer (Secrets-Free Mandate). An empty / missing entry means the
+        surface falls back to its frontend-defined defaults.
+        """
+        raw = self._read_all().get("display_fields", {})
+        if not isinstance(raw, dict):
+            return {}
+        # Keep only well-formed entries: surface -> list[str].
+        out: dict = {}
+        for surface, fields in raw.items():
+            if isinstance(surface, str) and isinstance(fields, list):
+                out[surface] = [f for f in fields if isinstance(f, str)]
+        return out
 
     # ------------------------------------------------------------------
     # Public API
@@ -82,17 +102,17 @@ class SystemSettingsService:
 
     def get(self) -> dict:
         """
-        Return the full settings view: the active backend plus the catalog
-        of known backends with an `available` flag on each (so the UI can
-        render unavailable options as disabled).
+        Return the full settings view: the active backend, the catalog of
+        known backends (with an `available` flag), and the per-surface
+        display-field selections.
         """
-        current = self._read_backend()
         return {
-            "storage_backend": current,
+            "storage_backend": self._read_backend(),
             "backends": [
                 {"id": b, "available": b in AVAILABLE_BACKENDS}
                 for b in KNOWN_BACKENDS
             ],
+            "display_fields": self._read_display_fields(),
             "applies_on_restart": True,
         }
 
@@ -114,5 +134,33 @@ class SystemSettingsService:
             raise ValueError(
                 f"Storage backend '{backend}' is not available yet."
             )
-        self._write_backend(backend)
+        data = self._read_all()
+        data["storage_backend"] = backend
+        self._write_all(data)
+        return self.get()
+
+    def set_display_fields(self, surface: str, fields: list) -> dict:
+        """
+        Persist the visible-field selection (ordered) for one surface.
+
+        The backend stores the selection opaquely — it does not know the
+        field catalog (that lives in the frontend). It only validates the
+        shape: a non-empty surface name and a list of string field keys.
+        An empty list is allowed (means "show nothing custom"; the frontend
+        decides whether to then fall back to defaults).
+
+        Raises:
+            ValueError: malformed surface name or fields list.
+        """
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError("surface must be a non-empty string.")
+        if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+            raise ValueError("fields must be a list of strings.")
+        data = self._read_all()
+        display = data.get("display_fields")
+        if not isinstance(display, dict):
+            display = {}
+        display[surface.strip()] = list(fields)
+        data["display_fields"] = display
+        self._write_all(data)
         return self.get()

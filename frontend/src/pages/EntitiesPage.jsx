@@ -21,18 +21,76 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Phone as PhoneIcon, X } from 'lucide-react';
 
 import { listEntities } from '../api/entityApi';
+import { getSystemSettings } from '../api/systemApi';
 import { useMockData } from '../contexts/MockDataContext';
 import { useAuth }     from '../contexts/MockAuthContext';
 import { getClientById } from '../config/clientRegistry';
+import { resolveVisibleColumns } from '../config/displayFields';
 import {
   PAGE_ENTITIES_TITLE, PAGE_ENTITIES_SUB,
-  ENTITIES_COL_ID, ENTITIES_COL_NAME, ENTITIES_COL_RELATION,
-  ENTITIES_COL_CLIENT, ENTITIES_COL_PHONES, ENTITIES_COL_CREATED,
-  ENTITIES_COL_STRONG_ID,
   ENTITIES_EMPTY,
   ENTITIES_PHONES_POPOVER_TITLE, ENTITIES_PHONES_POPOVER_EMPTY,
   ENTITIES_PHONES_POPOVER_CONFIDENCE,
 } from '../config/strings.he';
+
+
+/**
+ * renderEntityCell — render one configurable column's cell for an entity.
+ *
+ * Column visibility/order is driven by `resolveVisibleColumns('entities', …)`
+ * (config/displayFields.js); this function owns HOW each known column key
+ * renders. Adding a configurable column = one catalog entry + one case here.
+ */
+function renderEntityCell(key, e, ctx) {
+  switch (key) {
+    case 'id':
+      return <span className="text-slate-500 font-mono text-xs">#{e.id}</span>;
+    case 'name': {
+      const fullName = [e.first_name, e.last_name].filter(Boolean).join(' ');
+      return fullName
+        ? <span className="text-slate-900">{fullName}</span>
+        : <span className="text-slate-400 italic">ללא שם</span>;
+    }
+    case 'strong_identifier':
+      return e.strong_identifier
+        ? <span className="text-slate-700 font-mono text-xs">{e.strong_identifier}</span>
+        : <span className="text-slate-300">—</span>;
+    case 'relation':
+      return <span className="text-slate-700">{e.entity_type}</span>;
+    case 'client': {
+      const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
+      return <span className="text-slate-700">{clientName}</span>;
+    }
+    case 'phones': {
+      const phoneCount = (ctx.phonesByEntity.get(e.id) || []).length;
+      return (
+        <button
+          type="button"
+          onClick={() => ctx.setOpenPhonesFor(e.id)}
+          disabled={phoneCount === 0}
+          data-testid={`entity-phones-count-${e.id}`}
+          className={[
+            'inline-flex items-center gap-1.5 h-7 px-2 rounded text-xs transition-colors',
+            phoneCount === 0
+              ? 'text-slate-400 cursor-default'
+              : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 cursor-pointer',
+          ].join(' ')}
+        >
+          <PhoneIcon className="w-3 h-3" />
+          {phoneCount}
+        </button>
+      );
+    }
+    case 'created':
+      return (
+        <span className="text-slate-500 text-xs">
+          {e.created_at ? new Date(e.created_at).toLocaleDateString('he-IL') : '—'}
+        </span>
+      );
+    default:
+      return null;
+  }
+}
 
 
 export default function EntitiesPage() {
@@ -42,6 +100,24 @@ export default function EntitiesPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [openPhonesFor, setOpenPhonesFor] = useState(null);
+  const [displayFields, setDisplayFields] = useState(null);
+
+  // Load the configured display-field selection. Until it arrives (or when
+  // none is set) the surface falls back to the catalog defaults, so the
+  // table renders identically to before any configuration.
+  useEffect(() => {
+    let alive = true;
+    getSystemSettings(mockDb)
+      .then((s) => { if (alive) setDisplayFields(s.display_fields || {}); })
+      .catch(() => { if (alive) setDisplayFields({}); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const columns = useMemo(
+    () => resolveVisibleColumns('entities', displayFields),
+    [displayFields],
+  );
 
   // Derive personalization narrowing.
   const personalizationClientIds =
@@ -106,66 +182,32 @@ export default function EntitiesPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600 text-[11px] uppercase">
             <tr>
-              <th className="text-start px-3 py-2 font-medium w-20">{ENTITIES_COL_ID}</th>
-              <th className="text-start px-3 py-2 font-medium">{ENTITIES_COL_NAME}</th>
-              <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_STRONG_ID}</th>
-              <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_RELATION}</th>
-              <th className="text-start px-3 py-2 font-medium w-36">{ENTITIES_COL_CLIENT}</th>
-              <th className="text-start px-3 py-2 font-medium w-28">{ENTITIES_COL_PHONES}</th>
-              <th className="text-start px-3 py-2 font-medium w-32">{ENTITIES_COL_CREATED}</th>
+              {columns.map((col) => (
+                <th key={col.key} className="text-start px-3 py-2 font-medium">
+                  {col.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">…</td></tr>
+              <tr><td colSpan={columns.length} className="px-3 py-8 text-center text-slate-400">…</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">{ENTITIES_EMPTY}</td></tr>
+              <tr><td colSpan={columns.length} className="px-3 py-8 text-center text-slate-400">{ENTITIES_EMPTY}</td></tr>
             ) : (
-              items.map((e) => {
-                // UAT round-3 fix: render an explicit "ללא שם" marker
-                // when first + last are both empty (envelopes, in-
-                // progress drafts) rather than echoing the row id —
-                // operators were confused by the duplicate "#N" look.
-                const fullName = [e.first_name, e.last_name].filter(Boolean).join(' ');
-                const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
-                const created = e.created_at ? new Date(e.created_at).toLocaleDateString('he-IL') : '—';
-                const phoneCount = (phonesByEntity.get(e.id) || []).length;
-                return (
-                  <tr
-                    key={e.id}
-                    data-testid="entity-row"
-                    className="border-t border-slate-100 hover:bg-slate-50/60"
-                  >
-                    <td className="px-3 py-2 text-slate-500 font-mono text-xs">#{e.id}</td>
-                    <td className="px-3 py-2 text-slate-900">
-                      {fullName || <span className="text-slate-400 italic">ללא שם</span>}
+              items.map((e) => (
+                <tr
+                  key={e.id}
+                  data-testid="entity-row"
+                  className="border-t border-slate-100 hover:bg-slate-50/60"
+                >
+                  {columns.map((col) => (
+                    <td key={col.key} className="px-3 py-2">
+                      {renderEntityCell(col.key, e, { phonesByEntity, setOpenPhonesFor })}
                     </td>
-                    <td className="px-3 py-2 text-slate-700 font-mono text-xs">
-                      {e.strong_identifier || <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
-                    <td className="px-3 py-2 text-slate-700">{clientName}</td>
-                    <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => setOpenPhonesFor(e.id)}
-                        disabled={phoneCount === 0}
-                        data-testid={`entity-phones-count-${e.id}`}
-                        className={[
-                          'inline-flex items-center gap-1.5 h-7 px-2 rounded text-xs transition-colors',
-                          phoneCount === 0
-                            ? 'text-slate-400 cursor-default'
-                            : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 cursor-pointer',
-                        ].join(' ')}
-                      >
-                        <PhoneIcon className="w-3 h-3" />
-                        {phoneCount}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2 text-slate-500 text-xs">{created}</td>
-                  </tr>
-                );
-              })
+                  ))}
+                </tr>
+              ))
             )}
           </tbody>
         </table>

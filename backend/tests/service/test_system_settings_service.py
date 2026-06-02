@@ -77,3 +77,42 @@ class TestWrite:
         monkeypatch.setattr(mod, "AVAILABLE_BACKENDS", ("sql", "mongo"))
         with pytest.raises(ValueError, match="not available"):
             svc.set_storage_backend("redis")
+
+
+class TestDisplayFields:
+    def test_default_is_empty(self, svc):
+        assert svc.get()["display_fields"] == {}
+
+    def test_set_and_read_back(self, svc, tmp_path):
+        out = svc.set_display_fields("entities", ["id", "name", "client"])
+        assert out["display_fields"]["entities"] == ["id", "name", "client"]
+        again = SystemSettingsService(path=str(tmp_path / "system_settings.json"))
+        assert again.get()["display_fields"]["entities"] == ["id", "name", "client"]
+
+    def test_set_preserves_storage_backend(self, svc):
+        svc.set_storage_backend("sql")
+        svc.set_display_fields("entities", ["id"])
+        out = svc.get()
+        assert out["storage_backend"] == "sql"
+        assert out["display_fields"]["entities"] == ["id"]
+
+    def test_multiple_surfaces_coexist(self, svc):
+        svc.set_display_fields("entities", ["id", "name"])
+        svc.set_display_fields("phones", ["phone_number"])
+        df = svc.get()["display_fields"]
+        assert df["entities"] == ["id", "name"]
+        assert df["phones"] == ["phone_number"]
+
+    def test_empty_list_allowed(self, svc):
+        out = svc.set_display_fields("entities", [])
+        assert out["display_fields"]["entities"] == []
+
+    def test_bad_surface_raises(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_display_fields("", ["id"])
+
+    def test_bad_fields_raises(self, svc):
+        with pytest.raises(ValueError):
+            svc.set_display_fields("entities", "not-a-list")
+        with pytest.raises(ValueError):
+            svc.set_display_fields("entities", [1, 2, 3])

@@ -94,3 +94,21 @@ export async function updateSystemSettings(payload, mockDb) {
   await mockDelay(300);
   return mockDb.applyUpdateSystemSettings(payload);
 }
+
+/**
+ * updateDisplayFields — set the ordered visible-field selection for one
+ * surface (e.g. 'entities'). Returns the full updated settings object.
+ *
+ * @param {string}   surface  Surface id.
+ * @param {string[]} fields   Ordered visible field keys.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateDisplayFields(surface, fields, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/display-fields',
+                                         { surface, fields });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateDisplayFields(surface, fields);
+}

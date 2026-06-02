@@ -36,6 +36,7 @@ from app.api.deps import (
     require_admin,
 )
 from app.schemas.api_contracts import (
+    DisplayFieldsUpdate,
     SystemSettingsResponse,
     SystemSettingsUpdate,
     WorkerRunResponse,
@@ -169,6 +170,32 @@ def update_system_settings(
 ) -> SystemSettingsResponse:
     try:
         return SystemSettingsResponse(**svc.set_storage_backend(body.storage_backend))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+
+@router.put(
+    "/settings/display-fields",
+    response_model=SystemSettingsResponse,
+    summary="Set which fields a surface displays",
+    description=(
+        "Persists the ordered visible-field selection for one surface "
+        "(e.g. the entities table), so an admin can add/remove/reorder "
+        "displayed fields from the frontend without code changes. The field "
+        "catalog + labels live in the frontend; the backend stores the "
+        "selection opaquely. Admin-only."
+    ),
+)
+def update_display_fields(
+    body: DisplayFieldsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_display_fields(body.surface, body.fields))
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

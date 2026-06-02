@@ -796,6 +796,14 @@ class SystemSettingsResponse(BaseModel):
     backends: list[StorageBackendOption] = Field(
         ..., description="Catalog of known backends with availability flags."
     )
+    display_fields: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-surface visible-field selections, keyed by surface id "
+            "(e.g. 'entities'). Opaque field-key lists; the catalog + labels "
+            "live in the frontend. Empty/missing = use the surface's defaults."
+        ),
+    )
     applies_on_restart: bool = Field(
         ...,
         description="When True, a change is saved but takes effect on next restart.",
@@ -807,6 +815,17 @@ class SystemSettingsUpdate(BaseModel):
 
     storage_backend: str = Field(
         ..., description="Backend id to activate. Must be a known, available backend."
+    )
+
+
+class DisplayFieldsUpdate(BaseModel):
+    """Request body for PUT /api/v1/system/settings/display-fields."""
+
+    surface: str = Field(
+        ..., description="Surface id whose visible fields are being set (e.g. 'entities')."
+    )
+    fields: list[str] = Field(
+        ..., description="Ordered list of visible field keys for the surface."
     )
 
 

@@ -983,3 +983,17 @@ export const SYSSET_BACKEND_LABELS          = {
   sql:   'SQL (PostgreSQL / SQLite)',
   mongo: 'MongoDB',
 };
+
+// ---------------------------------------------------------------------------
+// System Settings — configurable display fields (feature 2)
+// ---------------------------------------------------------------------------
+export const SURFACE_LABEL_ENTITIES         = 'טבלת ישויות';
+export const SYSSET_FIELDS_TITLE            = 'שדות תצוגה';
+export const SYSSET_FIELDS_DESC             =
+  'בחר אילו שדות יוצגו בכל טבלה, וסדר אותם. השינוי נשמר ומשפיע מיד על התצוגה.';
+export const SYSSET_FIELDS_VISIBLE          = 'מוצג';
+export const SYSSET_FIELDS_MOVE_UP          = 'הזז למעלה';
+export const SYSSET_FIELDS_MOVE_DOWN        = 'הזז למטה';
+export const SYSSET_FIELDS_TOAST_SAVED      = 'שדות התצוגה נשמרו.';
+export const SYSSET_FIELDS_TOAST_ERROR      = (msg) => `שמירת שדות התצוגה נכשלה: ${msg}`;
+export const SYSSET_FIELDS_RESET            = 'אפס לברירת מחדל';

@@ -1080,6 +1080,10 @@ export const SEED_SYSTEM_SETTINGS = {
     { id: 'sql',   available: true },
     { id: 'mongo', available: true },
   ],
+  // Per-surface visible-field selections. Empty = each surface uses its
+  // catalog defaults (src/config/displayFields.js). Admins edit these from
+  // the System Settings tab; they persist via /system/settings/display-fields.
+  display_fields: {},
   applies_on_restart: true,
 };
 

@@ -2104,6 +2104,17 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  const applyUpdateDisplayFields = useCallback((surface, fields) => {
+    let snapshot;
+    setDb((prev) => {
+      const nextDisplay = { ...(prev.systemSettings.display_fields || {}), [surface]: [...fields] };
+      const next = { ...prev.systemSettings, display_fields: nextDisplay };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   const value = {
     // State slices
     clients,
@@ -2156,6 +2167,7 @@ export function MockDataProvider({ children }) {
     // System Settings tab
     applyGetSystemSettings,
     applyUpdateSystemSettings,
+    applyUpdateDisplayFields,
     // Phase NOTIF
     listNotificationSubscriptions,
     applyCreateNotificationSubscription,

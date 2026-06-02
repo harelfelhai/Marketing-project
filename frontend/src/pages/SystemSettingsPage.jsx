@@ -11,20 +11,29 @@
  * The whole page is gated behind RequireRole="admin" at the route level.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Save, ArrowLeft, Database, AlertCircle } from 'lucide-react';
+import {
+  Loader2, Save, ArrowLeft, Database, AlertCircle,
+  Columns3, ChevronUp, ChevronDown, RotateCcw,
+} from 'lucide-react';
 
 import { useMockData } from '../contexts/MockDataContext';
 import { useUI }       from '../contexts/UIContext';
-import { getSystemSettings, updateSystemSettings } from '../api/systemApi';
+import {
+  getSystemSettings, updateSystemSettings, updateDisplayFields,
+} from '../api/systemApi';
 import { normalizeError } from '../api/client';
+import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
 import {
   SYSSET_TITLE, SYSSET_SUB, SYSSET_LOADING,
   SYSSET_DB_TITLE, SYSSET_DB_DESC, SYSSET_APPLIES_ON_RESTART,
   SYSSET_BACKEND_UNAVAILABLE, SYSSET_BACKEND_LABELS,
   SYSSET_BTN_SAVE, SYSSET_BTN_SAVING, SYSSET_BTN_BACK,
   SYSSET_TOAST_SAVED, SYSSET_TOAST_ERROR,
+  SYSSET_FIELDS_TITLE, SYSSET_FIELDS_DESC, SYSSET_FIELDS_MOVE_UP,
+  SYSSET_FIELDS_MOVE_DOWN, SYSSET_FIELDS_TOAST_SAVED, SYSSET_FIELDS_TOAST_ERROR,
+  SYSSET_FIELDS_RESET,
 } from '../config/strings.he';
 
 
@@ -168,6 +177,161 @@ export default function SystemSettingsPage() {
           </button>
         </div>
       </section>
+
+      {/* Display-fields section — one editor per configurable surface. */}
+      <section className="rounded-lg border border-slate-200 bg-white p-5 mt-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Columns3 className="w-4 h-4 text-slate-700" />
+          <h2 className="text-sm font-semibold text-slate-900">{SYSSET_FIELDS_TITLE}</h2>
+        </div>
+        <p className="text-[13px] text-slate-500 mb-4">{SYSSET_FIELDS_DESC}</p>
+
+        <div className="space-y-6">
+          {Object.values(DISPLAY_SURFACES).map((surface) => (
+            <DisplayFieldsEditor
+              key={surface.id}
+              surface={surface}
+              initialSelection={settings.display_fields?.[surface.id]}
+              mockDb={mockDb}
+              pushToast={pushToast}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+
+/**
+ * DisplayFieldsEditor — toggle + reorder the columns shown by one surface.
+ * Pure config (catalog keys + labels); the selection persists via
+ * updateDisplayFields and takes effect on the surface immediately.
+ */
+function DisplayFieldsEditor({ surface, initialSelection, mockDb, pushToast }) {
+  const catalogKeys = surface.columns.map((c) => c.key);
+  const labelOf = useMemo(
+    () => Object.fromEntries(surface.columns.map((c) => [c.key, c.label])),
+    [surface],
+  );
+
+  const _initial = () => {
+    const known = Array.isArray(initialSelection)
+      ? initialSelection.filter((k) => catalogKeys.includes(k))
+      : null;
+    if (known && known.length) {
+      const rest = catalogKeys.filter((k) => !known.includes(k));
+      return { order: [...known, ...rest], visible: new Set(known) };
+    }
+    return {
+      order: [...catalogKeys],
+      visible: new Set(surface.columns.filter((c) => c.default).map((c) => c.key)),
+    };
+  };
+
+  const [{ order, visible }, setState] = useState(_initial);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (key) => {
+    setState((s) => {
+      const v = new Set(s.visible);
+      v.has(key) ? v.delete(key) : v.add(key);
+      return { ...s, visible: v };
+    });
+    setDirty(true);
+  };
+
+  const move = (idx, delta) => {
+    setState((s) => {
+      const next = [...s.order];
+      const j = idx + delta;
+      if (j < 0 || j >= next.length) return s;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return { ...s, order: next };
+    });
+    setDirty(true);
+  };
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const fields = order.filter((k) => visible.has(k));
+      await updateDisplayFields(surface.id, fields, mockDb);
+      pushToast({ variant: 'success', message: SYSSET_FIELDS_TOAST_SAVED });
+      setDirty(false);
+    } catch (err) {
+      const { message } = normalizeError(err);
+      pushToast({ variant: 'error', message: SYSSET_FIELDS_TOAST_ERROR(message) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function reset() {
+    const defaults = defaultFieldKeys(surface.id);
+    setState({ order: [...catalogKeys], visible: new Set(defaults) });
+    setDirty(true);
+  }
+
+  return (
+    <div data-testid={`display-fields-${surface.id}`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[13px] font-semibold text-slate-700">{surface.label}</h3>
+        <button
+          type="button"
+          onClick={reset}
+          className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-700"
+        >
+          <RotateCcw className="w-3 h-3" />{SYSSET_FIELDS_RESET}
+        </button>
+      </div>
+
+      <ul className="divide-y divide-slate-100 border border-slate-200 rounded-md">
+        {order.map((key, idx) => (
+          <li key={key} className="flex items-center gap-3 px-3 py-2"
+              data-testid={`field-row-${surface.id}-${key}`}>
+            <input
+              type="checkbox"
+              checked={visible.has(key)}
+              onChange={() => toggle(key)}
+              data-testid={`field-toggle-${surface.id}-${key}`}
+              className="accent-slate-900"
+            />
+            <span className="text-sm text-slate-800 flex-1">{labelOf[key]}</span>
+            <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
+                    aria-label={SYSSET_FIELDS_MOVE_UP}
+                    className="text-slate-400 hover:text-slate-800 disabled:opacity-30">
+              <ChevronUp className="w-4 h-4" />
+            </button>
+            <button type="button" onClick={() => move(idx, 1)} disabled={idx === order.length - 1}
+                    aria-label={SYSSET_FIELDS_MOVE_DOWN}
+                    className="text-slate-400 hover:text-slate-800 disabled:opacity-30">
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid={`display-fields-save-${surface.id}`}
+          className={[
+            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium',
+            !dirty || saving
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-slate-900 text-white hover:bg-slate-800',
+          ].join(' ')}
+        >
+          {saving
+            ? <><Loader2 className="w-4 h-4 animate-spin" />{SYSSET_BTN_SAVING}</>
+            : <><Save className="w-4 h-4" />{SYSSET_BTN_SAVE}</>}
+        </button>
+      </div>
     </div>
   );
 }
