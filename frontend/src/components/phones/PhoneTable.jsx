@@ -1,12 +1,16 @@
 /**
- * PhoneTable — filtered table over the live MockDataContext state.
+ * PhoneTable — filtered, grouped-by-root-entity table over MockDataContext state.
  *
- * Uses table-fixed with explicit colgroup widths. Filter application is
- * a useMemo derivation; the source of truth stays in context so
- * mutations propagate instantly.
+ * Phones are grouped into accordion sections by their root entity.
+ * Each accordion header shows the root entity name and phone count for that
+ * group; clicking it toggles the rows. Groups default to collapsed.
+ *
+ * Column visibility is driven by system settings (display_fields.phones).
+ * The first column (phone_number + phone_type + score) is always shown.
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
@@ -18,26 +22,19 @@ import {
   TABLE_HEADER_PHONE, TABLE_EMPTY_PHONES, TABLE_SHOWING,
 } from '../../config/strings.he';
 
-// Column-width hints per configurable phone-table key. The phone column
-// (row identity, always shown) gets a fixed 180px; the rest size
-// proportionally to the column count.
 const PHONE_COL_WIDTH = {
+  root_name:    '160px',
+  root_role:    '180px',
+  entity_name:  '140px',
+  relation:     '110px',
   association:  '200px',
   verification: '160px',
-  actions:      null,        // flex — fills remaining space
+  actions:      null,
   updated:      '140px',
 };
 
 const SKELETON_ROW_COUNT = 8;
 
-/**
- * applyFilters — pure filter + sort function exposed for unit-testability.
- *
- * Mirrors the TaskTable.applyFilters pattern (DX-T2): the function is a
- * NAMED export so tests can exercise the filter / sort matrix without
- * mounting the React tree. The component still uses it via the same
- * call signature; production bundle is unaffected.
- */
 export function applyFilters(phones, entities, clients, filters) {
   const entityById = new Map(entities.map((e) => [e.id, e]));
   const clientById = new Map(clients.map((c) => [c.id, c]));
@@ -45,26 +42,18 @@ export function applyFilters(phones, entities, clients, filters) {
   const rows = phones.map((phone) => {
     const entity = entityById.get(phone.entity_id);
     const client = entity ? clientById.get(entity.client_id) : null;
-    return { phone, entity, client };
+    const rootEntityId = entity?.target_entity_id ?? entity?.id;
+    const rootEntity = rootEntityId != null ? entityById.get(rootEntityId) : null;
+    return { phone, entity, client, rootEntity };
   });
 
-  // Phase AUTH-C — multi-value personalization filter. When the
-  // header toggle is ON, PhoneGridPage passes the operator's
-  // managed_client_ids as filters.clientIds; rows whose entity
-  // doesn't belong to one of those clients are hidden.
   const clientIdsAllowed = filters.clientIds?.length
     ? new Set(filters.clientIds.map(Number))
     : null;
 
-  const filtered = rows.filter(({ phone, entity, client }) => {
-    // UAT round-3: hide soft-deleted rows from the regular grid. The
-    // admin tab queries the same data with include_deleted=true.
+  const filtered = rows.filter(({ phone, entity }) => {
     if (phone.deleted_at || entity?.deleted_at)                                                    return false;
     if (clientIdsAllowed && !clientIdsAllowed.has(entity?.client_id))                              return false;
-    // UAT regression: the PhoneFilterBar's <select> emits e.target.value
-    // as a string ("1"), but the real-mode entity.client_id arrives as
-    // an integer. A strict `!==` always tripped, emptying the table.
-    // Stringify both sides to match the §5.1 cross-link coercion rule.
     if (filters.clientId && String(entity?.client_id) !== String(filters.clientId))               return false;
     if (filters.verificationStatus && phone.verification_status !== filters.verificationStatus) return false;
     if (filters.ingestionSource    && phone.ingestion_source    !== filters.ingestionSource)    return false;
@@ -79,19 +68,14 @@ export function applyFilters(phones, entities, clients, filters) {
       const hay = [
         phone.phone_number,
         String(phone.entity_id),
-        client?.name || '',
-        client?.id   || '',
+        // search also matches root entity name via client
+        rows.find(r => r.phone.id === phone.id)?.rootEntity?.full_name || '',
       ].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 
-  // Phase DY — client-side re-sort. The data in `db.phones` was fetched
-  // with the backend's default ordering (priority DESC); switching the
-  // toggle re-sorts the in-memory rows without a network round-trip.
-  // Same NULLS-LAST + id-DESC tiebreaker as the backend's ORDER BY so
-  // mock-mode and real-mode produce identical visible ordering.
   filtered.sort((a, b) => {
     const aHas = a.phone.score != null;
     const bHas = b.phone.score != null;
@@ -109,7 +93,6 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   const { phones, entities, clients, loading } = mockDb;
   const { phoneFilters } = useUI();
 
-  // Configurable display fields — driven by /system/settings → display_fields.
   const [displayFields, setDisplayFields] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -127,13 +110,8 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
     () => new Set(visibleCols.map((c) => c.key)),
     [visibleCols],
   );
-  // colSpan for skeleton / empty rows (phone column + every visible one).
   const colSpan = visibleCols.length + 1;
 
-  // Phase AUTH-C — merge personalization clientIds (from PhoneGridPage,
-  // which derives them from useAuth) into the filter shape so the
-  // table view honors the global toggle without re-reading the auth
-  // context here.
   const effectiveFilters = useMemo(
     () => (clientIds?.length ? { ...phoneFilters, clientIds } : phoneFilters),
     [phoneFilters, clientIds]
@@ -143,6 +121,29 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
     () => applyFilters(phones, entities, clients, effectiveFilters),
     [phones, entities, clients, effectiveFilters]
   );
+
+  // Group rows by root entity id.
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const row of rows) {
+      const rootId = row.rootEntity?.id ?? row.entity?.id ?? 'unknown';
+      if (!map.has(rootId)) {
+        map.set(rootId, { rootEntity: row.rootEntity, rows: [] });
+      }
+      map.get(rootId).rows.push(row);
+    }
+    return [...map.entries()].map(([rootId, group]) => ({ rootId, ...group }));
+  }, [rows]);
+
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
+
+  const toggleGroup = (rootId) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      next.has(rootId) ? next.delete(rootId) : next.add(rootId);
+      return next;
+    });
+  };
 
   return (
     <div className="bg-white rounded-lg border border-slate-200" aria-busy={loading || undefined}>
@@ -160,41 +161,84 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
             {visibleCols.map((c) => <Th key={c.key}>{c.label}</Th>)}
           </tr>
         </thead>
-        <tbody>
-          {loading ? (
-            Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+
+        {loading ? (
+          <tbody>
+            {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
               <SkeletonRow key={i} visibleKeys={visibleKeys} />
-            ))
-          ) : rows.length === 0 ? (
+            ))}
+          </tbody>
+        ) : rows.length === 0 ? (
+          <tbody>
             <tr>
               <td colSpan={colSpan} className="px-4 py-12 text-center text-sm text-slate-400">
                 {TABLE_EMPTY_PHONES}
               </td>
             </tr>
-          ) : (
-            rows.map(({ phone, entity, client }) => (
-              <PhoneRow
-                key={phone.id}
-                phone={phone}
-                entity={entity}
-                client={client}
-                isSelected={selectedId === phone.id}
-                onSelect={onSelect}
-                visibleKeys={visibleKeys}
-              />
-            ))
-          )}
-        </tbody>
+          </tbody>
+        ) : (
+          groups.map(({ rootId, rootEntity, rows: groupRows }) => {
+            const isExpanded = expandedGroups.has(rootId);
+            return (
+              <tbody key={rootId}>
+                {/* Accordion header */}
+                <tr
+                  className="border-b border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer select-none"
+                  onClick={() => toggleGroup(rootId)}
+                  data-testid={`phone-group-${rootId}`}
+                >
+                  <td colSpan={colSpan} className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <ChevronRight
+                        className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                      />
+                      <span className="font-semibold text-slate-800 text-sm">
+                        {rootEntity?.full_name || rootId}
+                      </span>
+                      {rootEntity?.extra_data?.role && (
+                        <span className="text-xs text-slate-500 truncate hidden sm:inline">
+                          {rootEntity.extra_data.role}
+                        </span>
+                      )}
+                      <span className="me-auto" />
+                      <span className="text-xs text-slate-400 whitespace-nowrap">
+                        {groupRows.length} טלפונים
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+
+                {/* Phone rows */}
+                {isExpanded && groupRows.map(({ phone, entity, client, rootEntity: re }) => (
+                  <PhoneRow
+                    key={phone.id}
+                    phone={phone}
+                    entity={entity}
+                    client={client}
+                    rootEntity={re}
+                    isSelected={selectedId === phone.id}
+                    onSelect={onSelect}
+                    visibleKeys={visibleKeys}
+                  />
+                ))}
+              </tbody>
+            );
+          })
+        )}
       </table>
 
       <div className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
-        {loading ? ' ' : TABLE_SHOWING(rows.length, phones.length)}
+        {loading ? ' ' : TABLE_SHOWING(rows.length, phones.length)}
       </div>
     </div>
   );
 }
 
 const SKELETON_CELL_BY_KEY = {
+  root_name:   <Skeleton height={12} width="70%" />,
+  root_role:   <Skeleton height={10} width="60%" />,
+  entity_name: <Skeleton height={12} width="65%" />,
+  relation:    <Skeleton height={10} width="50%" />,
   association: (
     <div className="flex flex-col gap-1.5 min-w-0">
       <Skeleton height={12} width="70%" />
@@ -226,10 +270,12 @@ function SkeletonRow({ visibleKeys }) {
           <Skeleton height={10} width="50%" />
         </div>
       </td>
-      {['association', 'verification', 'actions', 'updated']
+      {['root_name', 'root_role', 'entity_name', 'relation', 'association', 'verification', 'actions', 'updated']
         .filter((k) => visibleKeys.has(k))
         .map((k) => (
-          <td key={k} className="px-4 py-3">{SKELETON_CELL_BY_KEY[k]}</td>
+          <td key={k} className="px-4 py-3">
+            {SKELETON_CELL_BY_KEY[k] || <Skeleton height={10} width="60%" />}
+          </td>
         ))}
     </tr>
   );

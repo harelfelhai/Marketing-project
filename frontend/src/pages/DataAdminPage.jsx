@@ -46,7 +46,7 @@ import {
   ADMIN_FIELD_CLIENT_ID, ADMIN_FIELD_TARGET_ENTITY,
   ADMIN_FIELD_PHONE_ENTITY, ADMIN_FIELD_CLASSIFICATION,
   ADMIN_FIELD_INGEST_SOURCE,
-  ADMIN_COL_IDENTIFIER_1,
+  ADMIN_FIELD_ROLE, ADMIN_COL_IDENTIFIER_1,
 } from '../config/strings.he';
 
 
@@ -503,6 +503,7 @@ function EntityEditModal({ entity, onCancel, onSave }) {
   );
   const [identifier1,    setIdentifier1]    = useState(entity.identifier_1 || '');
   const [identifier2,    setIdentifier2]    = useState(entity.identifier_2 || '');
+  const [role,           setRole]           = useState(entity.extra_data?.role || '');
 
   const handleSave = () =>
     onSave({
@@ -512,6 +513,7 @@ function EntityEditModal({ entity, onCancel, onSave }) {
       target_entity_id: targetEntityId === '' ? null : targetEntityId,
       identifier_1:     identifier1 || null,
       identifier_2:     identifier2 || null,
+      extra_data:       { ...(entity.extra_data || {}), role: role || null },
     });
 
   return (
@@ -520,6 +522,7 @@ function EntityEditModal({ entity, onCancel, onSave }) {
       <LabeledInput label={ADMIN_FIELD_RELATION}        value={relation}       onChange={setRelation}  />
       <LabeledInput label={ADMIN_FIELD_IDENTIFIER_1}    value={identifier1}    onChange={setIdentifier1} />
       <LabeledInput label={ADMIN_FIELD_IDENTIFIER_2}    value={identifier2}    onChange={setIdentifier2} />
+      <LabeledInput label={ADMIN_FIELD_ROLE}             value={role}           onChange={setRole} />
       <LabeledInput label={ADMIN_FIELD_CLIENT_ID}       value={clientId}       onChange={setClientId} />
       <LabeledInput label={ADMIN_FIELD_TARGET_ENTITY}   value={targetEntityId} onChange={setTargetEntityId} />
       <ModalActions onCancel={onCancel} onSave={handleSave} />

@@ -1,9 +1,8 @@
 /**
  * ClientHubPage — landing screen: responsive grid of ClientCard tiles.
  *
- * Cards derive their metrics from MockDataContext live state, so any
- * mutation elsewhere in the app (verdict, ingest, etc.) is reflected
- * here on the next render.
+ * Passes the root entity for each client so ClientCard can display role
+ * and identifier fields.
  */
 
 import { useMemo } from 'react';
@@ -20,24 +19,29 @@ export default function ClientHubPage() {
   const { clients, entities, loading }  = useMockData();
   const { personalizationActive, user } = useAuth();
 
-  // UAT round-3: a client whose root target entity has been soft-
-  // deleted must not show up here — the tile would link to a circle
-  // that no longer exists. A client is "live" iff at least one
-  // active root target carries its client_id.
   const liveClientIds = useMemo(() => {
     const set = new Set();
     for (const e of entities) {
       if (e.deleted_at) continue;
       if (e.relation_type !== 'primary') continue;
-      if (e.target_entity_id != null) continue;     // only ROOTS count
+      if (e.target_entity_id != null) continue;
       if (e.client_id != null) set.add(String(e.client_id));
     }
     return set;
   }, [entities]);
 
-  // Phase AUTH-C — when the global toggle is ON and the operator has
-  // managed clients, narrow the hub to those tiles. Admins (no managed
-  // clients) see the full list regardless of toggle position.
+  // Map client_id → root entity for role/identifier display in ClientCard.
+  const rootEntityByClientId = useMemo(() => {
+    const map = new Map();
+    for (const e of entities) {
+      if (e.deleted_at) continue;
+      if (e.relation_type === 'primary' && e.target_entity_id == null) {
+        map.set(String(e.id), e);
+      }
+    }
+    return map;
+  }, [entities]);
+
   const visibleClients = useMemo(() => {
     const liveOnly = clients.filter((c) => liveClientIds.has(String(c.id)));
     if (!personalizationActive) return liveOnly;
@@ -63,7 +67,11 @@ export default function ClientHubPage() {
               <ClientCardSkeleton key={i} />
             ))
           : visibleClients.map((client) => (
-              <ClientCard key={client.id} client={client} />
+              <ClientCard
+                key={client.id}
+                client={client}
+                rootEntity={rootEntityByClientId.get(String(client.id))}
+              />
             ))}
       </div>
     </section>

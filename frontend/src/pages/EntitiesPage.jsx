@@ -1,24 +1,16 @@
 /**
- * EntitiesPage — UAT round-3 view tab for entities (persons + roots).
+ * EntitiesPage — entity table grouped by root entity (accordion).
  *
- * Mirrors the PhoneGridPage shape with fewer columns because entities
- * carry no per-row operational actions:
+ * Entities are grouped by their root entity (target_entity_id → primary).
+ * Each accordion header shows root entity name, entity count, and phone
+ * count for the whole group. Clicking the header toggles the row list.
+ * The root entity itself appears as the first row inside the open group.
  *
- *   ┌──────┬─────────────────┬─────────┬─────────┬───────────┬──────────┐
- *   │  ID  │  Name           │ Relation│ Client  │ # Phones  │ Created  │
- *   └──────┴─────────────────┴─────────┴─────────┴───────────┴──────────┘
- *
- * Shows BOTH primary (target) and associated (family/friend/...)
- * entities. Personalization toggle narrows by managed_client_ids.
- * Soft-deleted rows are hidden — surface them in /admin instead.
- *
- * Clicking the "# Phones" cell opens a popover with the linked
- * phones + their verification status + confidence score, so the
- * operator gets the per-number context without navigating away.
+ * Column visibility is driven by system settings (display_fields.entities).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Phone as PhoneIcon, X } from 'lucide-react';
+import { ChevronRight, Phone as PhoneIcon, X } from 'lucide-react';
 
 import { listEntities } from '../api/entityApi';
 import { getSystemSettings } from '../api/systemApi';
@@ -34,15 +26,21 @@ import {
 } from '../config/strings.he';
 
 
-/**
- * renderEntityCell — render one configurable column's cell for an entity.
- *
- * Column visibility/order is driven by `resolveVisibleColumns('entities', …)`
- * (config/displayFields.js); this function owns HOW each known column key
- * renders. Adding a configurable column = one catalog entry + one case here.
- */
 function renderEntityCell(key, e, ctx) {
+  const root = ctx.rootEntityById?.get(e.target_entity_id ?? e.id);
   switch (key) {
+    case 'root_name':
+      return root?.full_name
+        ? <span className="text-slate-800 font-medium">{root.full_name}</span>
+        : <span className="text-slate-300">—</span>;
+    case 'root_role':
+      return root?.extra_data?.role
+        ? <span className="text-slate-600 text-xs">{root.extra_data.role}</span>
+        : <span className="text-slate-300">—</span>;
+    case 'root_identifier':
+      return root?.identifier_1
+        ? <span className="text-slate-700 font-mono text-xs">{root.identifier_1}</span>
+        : <span className="text-slate-300">—</span>;
     case 'id':
       return <span className="text-slate-500 font-mono text-xs">#{e.id}</span>;
     case 'name':
@@ -99,10 +97,8 @@ export default function EntitiesPage() {
   const [q, setQ] = useState('');
   const [openPhonesFor, setOpenPhonesFor] = useState(null);
   const [displayFields, setDisplayFields] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
 
-  // Load the configured display-field selection. Until it arrives (or when
-  // none is set) the surface falls back to the catalog defaults, so the
-  // table renders identically to before any configuration.
   useEffect(() => {
     let alive = true;
     getSystemSettings(mockDb)
@@ -117,7 +113,6 @@ export default function EntitiesPage() {
     [displayFields],
   );
 
-  // Derive personalization narrowing.
   const personalizationClientIds =
     personalizationActive && user?.managed_client_ids?.length
       ? user.managed_client_ids
@@ -141,8 +136,17 @@ export default function EntitiesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Active phones grouped by entity_id — drives BOTH the count cell
-  // and the popover detail list.
+  // Map of all (unfiltered) entities by id — used for root-entity lookups
+  // in accordion headers and in renderEntityCell.
+  const rootEntityById = useMemo(() => {
+    const map = new Map();
+    for (const e of mockDb.entities) {
+      map.set(e.id, e);
+    }
+    return map;
+  }, [mockDb.entities]);
+
+  // Active phones grouped by entity_id.
   const phonesByEntity = useMemo(() => {
     const map = new Map();
     for (const p of mockDb.phones) {
@@ -153,10 +157,53 @@ export default function EntitiesPage() {
     return map;
   }, [mockDb.phones]);
 
+  // Group filtered items by root entity id. Root entity is sorted first
+  // within each group.
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const e of items) {
+      const rootId = e.target_entity_id ?? e.id;
+      if (!map.has(rootId)) map.set(rootId, []);
+      map.get(rootId).push(e);
+    }
+    return [...map.entries()].map(([rootId, members]) => {
+      members.sort((a, b) => {
+        if (a.id === rootId) return -1;
+        if (b.id === rootId) return 1;
+        return 0;
+      });
+      return { rootId, members };
+    });
+  }, [items]);
+
+  // Total phone count for a root entity group (across ALL its member
+  // entities, not just those visible after search filtering).
+  const groupPhoneCount = useCallback((rootId) => {
+    let total = 0;
+    for (const e of mockDb.entities) {
+      if (e.deleted_at) continue;
+      const eRootId = e.target_entity_id ?? e.id;
+      if (eRootId === rootId) {
+        total += (phonesByEntity.get(e.id) || []).length;
+      }
+    }
+    return total;
+  }, [mockDb.entities, phonesByEntity]);
+
+  const toggleGroup = (rootId) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      next.has(rootId) ? next.delete(rootId) : next.add(rootId);
+      return next;
+    });
+  };
+
   const openEntity = openPhonesFor
     ? items.find((e) => e.id === openPhonesFor)
     : null;
   const openPhones = openEntity ? (phonesByEntity.get(openEntity.id) || []) : [];
+
+  const ctx = { phonesByEntity, setOpenPhonesFor, rootEntityById };
 
   return (
     <section className="space-y-4" dir="rtl">
@@ -187,27 +234,74 @@ export default function EntitiesPage() {
               ))}
             </tr>
           </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={columns.length} className="px-3 py-8 text-center text-slate-400">…</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={columns.length} className="px-3 py-8 text-center text-slate-400">{ENTITIES_EMPTY}</td></tr>
-            ) : (
-              items.map((e) => (
-                <tr
-                  key={e.id}
-                  data-testid="entity-row"
-                  className="border-t border-slate-100 hover:bg-slate-50/60"
-                >
-                  {columns.map((col) => (
-                    <td key={col.key} className="px-3 py-2">
-                      {renderEntityCell(col.key, e, { phonesByEntity, setOpenPhonesFor })}
+
+          {loading ? (
+            <tbody>
+              <tr>
+                <td colSpan={columns.length} className="px-3 py-8 text-center text-slate-400">…</td>
+              </tr>
+            </tbody>
+          ) : groups.length === 0 ? (
+            <tbody>
+              <tr>
+                <td colSpan={columns.length} className="px-3 py-8 text-center text-slate-400">
+                  {ENTITIES_EMPTY}
+                </td>
+              </tr>
+            </tbody>
+          ) : (
+            groups.map(({ rootId, members }) => {
+              const rootEntity = rootEntityById.get(rootId);
+              const isExpanded = expandedGroups.has(rootId);
+              const phoneCount = groupPhoneCount(rootId);
+
+              return (
+                <tbody key={rootId}>
+                  {/* Accordion header row */}
+                  <tr
+                    className="border-t border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer select-none"
+                    onClick={() => toggleGroup(rootId)}
+                    data-testid={`entity-group-${rootId}`}
+                  >
+                    <td colSpan={columns.length} className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <ChevronRight
+                          className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                        />
+                        <span className="font-semibold text-slate-800 text-sm">
+                          {rootEntity?.full_name || rootId}
+                        </span>
+                        {rootEntity?.extra_data?.role && (
+                          <span className="text-xs text-slate-500 truncate hidden sm:inline">
+                            {rootEntity.extra_data.role}
+                          </span>
+                        )}
+                        <span className="me-auto" />
+                        <span className="text-xs text-slate-400 whitespace-nowrap">
+                          {members.length} ישויות · {phoneCount} טלפונים
+                        </span>
+                      </div>
                     </td>
+                  </tr>
+
+                  {/* Entity rows — shown when expanded */}
+                  {isExpanded && members.map((e) => (
+                    <tr
+                      key={e.id}
+                      data-testid="entity-row"
+                      className="border-t border-slate-100 hover:bg-slate-50/60"
+                    >
+                      {columns.map((col) => (
+                        <td key={col.key} className="px-3 py-2">
+                          {renderEntityCell(col.key, e, ctx)}
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </tr>
-              ))
-            )}
-          </tbody>
+                </tbody>
+              );
+            })
+          )}
         </table>
       </div>
 
@@ -223,12 +317,6 @@ export default function EntitiesPage() {
 }
 
 
-/**
- * PhonesPopover — compact modal listing the phones attached to one
- * entity. Kept simple because the count is small (5 phones is the
- * 99th-percentile case based on the seed); a virtualized scroller
- * would be overkill.
- */
 function PhonesPopover({ entity, phones, onClose }) {
   const name = entity.full_name || `#${entity.id}`;
   return (
