@@ -20,10 +20,7 @@ export async function runWorker(engineName, mockDb) {
         params: { worker_name: engineName },
       });
       mockDb.applyWorkerRun(engineName, data.processed_count);
-      await Promise.all([
-        mockDb.refetchPhones(),
-        mockDb.refetchActionLogs(),
-      ]);
+      await mockDb.refetchPhones();
       return data;
     } catch (err) {
       mockDb.setEngineExecuting(engineName, false);
@@ -35,9 +32,7 @@ export async function runWorker(engineName, mockDb) {
   mockDb.setEngineExecuting(engineName, true);
   await mockDelay(1500);
 
-  const pendingCount = engineName === 'retry'
-    ? mockDb.actionLogs.filter((l) => l.status === 'scheduled_retry').length
-    : mockDb.phones.filter((p) => p.verification_status === 'pending').length;
+  const pendingCount = mockDb.phones.filter((p) => p.verification_status === 'pending').length;
 
   const processedCount = Math.min(pendingCount, Math.ceil(Math.random() * 5) + 1);
   const startedAt      = new Date(Date.now() - 1500).toISOString();

@@ -38,32 +38,26 @@ import { formatDateTime } from '../../utils/formatDate';
 import {
   ARIA_TASK_DETAIL, ARIA_CLOSE_TASK_DRAWER,
   TASK_DRAWER_LABEL_PHONE, TASK_DRAWER_LABEL_CLIENT,
-  TASK_DRAWER_LABEL_ENTITY, TASK_DRAWER_LABEL_CREATED,
-  TASK_DRAWER_LABEL_UPDATED, TASK_DRAWER_LABEL_RESOLVED,
-  TASK_DRAWER_LABEL_REQUESTED, TASK_DRAWER_LABEL_RESOLVER,
-  TASK_DRAWER_SECTION_PAYLOAD, TASK_DRAWER_SECTION_SOURCE,
-  TASK_DRAWER_EMPTY_PAYLOAD, TASK_DRAWER_NO_SOURCE_LOG,
+  TASK_DRAWER_LABEL_ENTITY,
+  TASK_DRAWER_SECTION_PAYLOAD,
+  TASK_DRAWER_EMPTY_PAYLOAD,
   TASK_DRAWER_OPEN_PHONE, TASK_DRAWER_TERMINAL_NOTICE,
   TASK_DRAWER_BTN_RESOLVE, TASK_DRAWER_BTN_REJECT,
 } from '../../config/strings.he';
 
-const TERMINAL_STATUSES = new Set(['resolved', 'rejected']);
+const TERMINAL_STATUSES = new Set(['done', 'rejected']);
 
 
 export default function TaskDetailDrawer({ taskId, onClose }) {
-  const { tasks, actionLogs } = useMockData();
-  const navigate              = useNavigate();
-  const [resolveOutcome, setResolveOutcome] = useState(null); // null | 'resolved' | 'rejected'
+  const { tasks }    = useMockData();
+  const navigate     = useNavigate();
+  const [resolveOutcome, setResolveOutcome] = useState(null);
 
   if (taskId == null) return null;
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return null;
 
   const isTerminal = TERMINAL_STATUSES.has(task.status);
-
-  const sourceLog = task.source_action_log_id != null
-    ? actionLogs.find((l) => l.id === task.source_action_log_id)
-    : null;
 
   const handleOpenPhone = () => {
     if (task.phone_id != null) {
@@ -131,32 +125,9 @@ export default function TaskDetailDrawer({ taskId, onClose }) {
             </Fact>
             <Fact label={TASK_DRAWER_LABEL_ENTITY}>
               <span className="truncate">
-                #{task.entity_id ?? '—'} · {task.entity_type || '—'}
+                #{task.entity_id ?? '—'}
               </span>
             </Fact>
-            <Fact label={TASK_DRAWER_LABEL_REQUESTED}>
-              <span className="truncate max-w-[160px]" title={task.requested_by}>
-                {task.requested_by}
-              </span>
-            </Fact>
-            <Fact label={TASK_DRAWER_LABEL_CREATED}>
-              <span className="tabular-nums">{formatDateTime(task.created_at)}</span>
-            </Fact>
-            <Fact label={TASK_DRAWER_LABEL_UPDATED}>
-              <span className="tabular-nums">{formatDateTime(task.updated_at)}</span>
-            </Fact>
-            {task.resolved_at && (
-              <>
-                <Fact label={TASK_DRAWER_LABEL_RESOLVED}>
-                  <span className="tabular-nums">{formatDateTime(task.resolved_at)}</span>
-                </Fact>
-                <Fact label={TASK_DRAWER_LABEL_RESOLVER}>
-                  <span className="truncate max-w-[160px]" title={task.resolved_by || ''}>
-                    {task.resolved_by || '—'}
-                  </span>
-                </Fact>
-              </>
-            )}
           </dl>
 
           <button
@@ -177,14 +148,6 @@ export default function TaskDetailDrawer({ taskId, onClose }) {
               {TASK_DRAWER_SECTION_PAYLOAD}
             </h3>
             <ExtraDataKVList data={task.extra_data} />
-          </section>
-
-          {/* Source action log card (only when source_action_log_id is set) */}
-          <section className="bg-white rounded-md border border-slate-200 p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
-              {TASK_DRAWER_SECTION_SOURCE}
-            </h3>
-            <SourceActionLogCard log={sourceLog} hasRef={task.source_action_log_id != null} />
           </section>
 
           {/* Phase NOTIF-C — inline opt-in for alerts about this task.
@@ -285,35 +248,3 @@ function ExtraDataKVList({ data }) {
   );
 }
 
-/**
- * SourceActionLogCard — minimal context strip showing the ActionLog row
- * that spawned this task (remediation_failure flow). When the task has
- * no source_action_log_id (operator-opened approval_required flow), show
- * a friendly placeholder.
- */
-function SourceActionLogCard({ log, hasRef }) {
-  if (!hasRef) {
-    return <p className="text-xs text-slate-400">{TASK_DRAWER_NO_SOURCE_LOG}</p>;
-  }
-  if (!log) {
-    // hasRef === true but the log is not in the local cache — could happen
-    // if action_logs hasn't refetched, or if the log was filtered out.
-    return <p className="text-xs text-slate-400">#{'—'}</p>;
-  }
-  return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-      <Fact label="#">
-        <span className="font-mono tabular-nums">{log.id}</span>
-      </Fact>
-      <Fact label="type">
-        <span className="truncate">{log.action_type}</span>
-      </Fact>
-      <Fact label="status">
-        <span>{log.status}</span>
-      </Fact>
-      <Fact label="retry">
-        <span className="tabular-nums">{log.retry_count}</span>
-      </Fact>
-    </dl>
-  );
-}

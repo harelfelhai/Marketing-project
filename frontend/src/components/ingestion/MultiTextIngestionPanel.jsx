@@ -122,7 +122,7 @@ export default function MultiTextIngestionPanel() {
 
   const rootTargets = useMemo(
     () => visibleEntities.filter(
-      (e) => e.entity_type === 'target' && e.target_entity_id == null,
+      (e) => e.relation_type === 'primary' && e.target_entity_id == null,
     ),
     [visibleEntities],
   );
@@ -198,11 +198,11 @@ export default function MultiTextIngestionPanel() {
   const resolveEntityId = useCallback(async () => {
     if (form.mode === 'existing') return form.existingEntityId;
     if (form.mode === 'new') {
+      const parts = [form.newFirstName.trim(), form.newLastName.trim()].filter(Boolean);
       const created = await createEntity({
-        first_name:        form.newFirstName.trim(),
-        last_name:         form.newLastName.trim() || null,
-        relation_type:     form.newRelation,
-        target_entity_id:  form.newTargetId,
+        full_name:        parts.join(' ') || null,
+        relation_type:    form.newRelation,
+        target_entity_id: form.newTargetId,
       }, mockDb);
       return created.id;
     }
@@ -243,7 +243,6 @@ export default function MultiTextIngestionPanel() {
           const ph = await quickAttachPhone({
             phone_number:     cleaned,
             entity_id:        entityId,
-            ingestion_reason: reason,
           }, mockDb);
           phone_ids.push(ph.id);
           success_count += 1;
@@ -407,9 +406,7 @@ export default function MultiTextIngestionPanel() {
           {entitiesByClient.map((group) => (
             <optgroup key={String(group.clientId)} label={group.clientLabel}>
               {group.entities.map((e) => {
-                const name = [e.extra_data?.first_name, e.extra_data?.last_name]
-                  .filter(Boolean).join(' ');
-                const display = name || `#${e.id} (${e.entity_type})`;
+                const display = e.full_name || `#${e.id} (${e.relation_type})`;
                 return (
                   <option key={e.id} value={e.id}>{display}</option>
                 );

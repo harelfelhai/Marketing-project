@@ -63,24 +63,17 @@ export function applyFilters(tasks, filters) {
     // openOnly is seeded from /operations?open=true (ClientCard open-task
     // badge). Restricts the view to non-terminal statuses so the badge's
     // "N משימות פתוחות" promise matches what the table actually shows.
-    if (filters.openOnly && t.status !== 'pending' && t.status !== 'assigned') {
+    if (filters.openOnly && t.status !== 'pending') {
       return false;
     }
-    // Task Center default-hide: when `hideResolved` is on AND the
-    // operator has NOT chosen an explicit status filter, drop the
-    // terminal-state rows. Explicit `filters.status === 'resolved'`
-    // (the audit view) must NOT be silently shadowed by the toggle —
-    // matches the backend's exclude_terminal contract.
     if (filters.hideResolved && !filters.status) {
-      if (t.status === 'resolved' || t.status === 'rejected') return false;
+      if (t.status === 'done' || t.status === 'rejected') return false;
     }
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [
         t.phone_number   || '',
         t.client_name    || '',
-        t.requested_by   || '',
-        t.resolved_by    || '',
         String(t.client_id ?? ''),
       ].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;

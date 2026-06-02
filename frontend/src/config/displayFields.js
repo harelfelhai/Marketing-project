@@ -22,7 +22,7 @@ import {
   ENTITIES_COL_CLIENT, ENTITIES_COL_PHONES, ENTITIES_COL_CREATED,
   ENTITIES_COL_IDENTIFIER_1, ENTITIES_COL_IDENTIFIER_2,
   TABLE_HEADER_ASSOCIATION, TABLE_HEADER_VERIFICATION,
-  TABLE_HEADER_ACTIONS, TABLE_HEADER_UPDATED,
+  TABLE_HEADER_UPDATED,
   CLIENT_CARD_SECTION_METRICS, CLIENT_CARD_SECTION_VERDICTS,
   CLIENT_CARD_SECTION_SLA, CLIENT_CARD_SECTION_TASKS,
   SURFACE_LABEL_ENTITIES, SURFACE_LABEL_PHONES, SURFACE_LABEL_CLIENTS,
@@ -52,16 +52,15 @@ export const DISPLAY_SURFACES = {
       { key: 'created',      label: ENTITIES_COL_CREATED,      default: true },
     ],
   },
-  // Phone table — five columns. The phone column itself (phone_number +
-  // classification + priority) is the row's identity, so it is NOT
-  // toggleable; the other four are.
+  // Phone table — four columns. The phone column itself (phone_number +
+  // phone_type + score) is the row's identity, so it is NOT toggleable;
+  // the other three are.
   phones: {
     id: 'phones',
     label: SURFACE_LABEL_PHONES,
     columns: [
       { key: 'association',  label: TABLE_HEADER_ASSOCIATION,  default: true },
       { key: 'verification', label: TABLE_HEADER_VERIFICATION, default: true },
-      { key: 'actions',      label: TABLE_HEADER_ACTIONS,      default: true },
       { key: 'updated',      label: TABLE_HEADER_UPDATED,      default: true },
     ],
   },

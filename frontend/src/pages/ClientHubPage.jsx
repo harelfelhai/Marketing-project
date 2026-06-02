@@ -28,7 +28,7 @@ export default function ClientHubPage() {
     const set = new Set();
     for (const e of entities) {
       if (e.deleted_at) continue;
-      if (e.entity_type !== 'target') continue;
+      if (e.relation_type !== 'primary') continue;
       if (e.target_entity_id != null) continue;     // only ROOTS count
       if (e.client_id != null) set.add(String(e.client_id));
     }

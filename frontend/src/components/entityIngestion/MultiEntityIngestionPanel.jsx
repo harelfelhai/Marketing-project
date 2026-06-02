@@ -53,7 +53,7 @@ import {
   ENTITY_BULK_ERR_EMPTY_TEXT, ENTITY_BULK_ERR_MISSING_TARGET,
   ENTITY_BULK_GRID_HEADER_TOKEN, ENTITY_BULK_GRID_HEADER_FIRST,
   ENTITY_BULK_GRID_HEADER_LAST, ENTITY_BULK_GRID_HEADER_RELATION,
-  ENTITY_BULK_GRID_HEADER_TARGET, ENTITY_BULK_GRID_HEADER_STRONG_ID,
+  ENTITY_BULK_GRID_HEADER_TARGET,
   ENTITY_BULK_GRID_INHERIT, ENTITY_BULK_GRID_BACK, ENTITY_BULK_GRID_BACK_CONFIRM,
   ENTITY_BULK_GRID_REMOVE_ROW, ENTITY_BULK_GRID_ERR_FIRST,
   ENTITY_BULK_GRID_SUMMARY_ISSUES,
@@ -127,7 +127,7 @@ export default function MultiEntityIngestionPanel() {
   // One grouped picker (clients as <optgroup>) replaces both fields.
   const rootTargets = useMemo(
     () => mockDb.entities.filter(
-      (e) => e.entity_type === 'target' && e.target_entity_id == null,
+      (e) => e.relation_type === 'primary' && e.target_entity_id == null,
     ),
     [mockDb.entities],
   );
@@ -193,17 +193,12 @@ export default function MultiEntityIngestionPanel() {
     const rows = tokens.map((token) => {
       const { firstName, lastName } = parseName(token);
       return {
-        rowId:           freshRowId(),
-        rowToken:        token,
+        rowId:          freshRowId(),
+        rowToken:       token,
         firstName,
-        lastName:        lastName || '',
-        // UAT round-3: per-row optional strong identifier, matching the
-        // single-entry panel. Empty values are dropped at submit.
-        strongIdentifier: '',
-        relationType:    state.defaultRelation || null,
-        targetEntityId:  state.defaultTargetId
-                            ? state.defaultTargetId
-                            : null,
+        lastName:       lastName || '',
+        relationType:   state.defaultRelation || null,
+        targetEntityId: state.defaultTargetId ? state.defaultTargetId : null,
       };
     });
     setState((s) => ({ ...s, step: 'edit', rows, pasteErr: '', defaultsErr: {} }));
@@ -261,19 +256,13 @@ export default function MultiEntityIngestionPanel() {
       default_relation_type:    state.defaultRelation,
       default_target_entity_id: state.defaultTargetId,
       rows: state.rows.map((r) => {
-        const sid = (r.strongIdentifier || '').trim();
-        const row = {
+        const parts = [r.firstName.trim(), r.lastName.trim()].filter(Boolean);
+        return {
           row_token:        r.rowToken,
-          first_name:       r.firstName.trim(),
-          last_name:        r.lastName.trim() || null,
-          relation_type:    r.relationType,   // null = inherit
-          target_entity_id: r.targetEntityId, // null = inherit
+          full_name:        parts.join(' ') || null,
+          relation_type:    r.relationType,
+          target_entity_id: r.targetEntityId,
         };
-        // UAT round-3 — strong_identifier as a first-class top-level
-        // row field, matching the single-entry panel + the new
-        // Entity.strong_identifier column.
-        if (sid) row.strong_identifier = sid;
-        return row;
       }),
     };
 
@@ -461,7 +450,6 @@ export default function MultiEntityIngestionPanel() {
               <th className="px-2 py-1 text-right font-medium w-32">{ENTITY_BULK_GRID_HEADER_TOKEN}</th>
               <th className="px-2 py-1 text-right font-medium">{ENTITY_BULK_GRID_HEADER_FIRST}</th>
               <th className="px-2 py-1 text-right font-medium">{ENTITY_BULK_GRID_HEADER_LAST}</th>
-              <th className="px-2 py-1 text-right font-medium w-32">{ENTITY_BULK_GRID_HEADER_STRONG_ID}</th>
               <th className="px-2 py-1 text-right font-medium w-32">{ENTITY_BULK_GRID_HEADER_RELATION}</th>
               <th className="px-2 py-1 text-right font-medium w-28">{ENTITY_BULK_GRID_HEADER_TARGET}</th>
               <th className="px-2 py-1 w-8"></th>
@@ -500,17 +488,6 @@ export default function MultiEntityIngestionPanel() {
                       type="text"
                       value={r.lastName}
                       onChange={(e) => updateRow(r.rowId, { lastName: e.target.value })}
-                      className="block w-full h-8 px-2 rounded border border-slate-300 text-sm"
-                    />
-                  </td>
-                  <td className="px-2 py-1">
-                    {/* UAT round-3: optional strong identifier per row.
-                        Same field as the single-entry panel — empty
-                        cells are dropped at submit. */}
-                    <input
-                      type="text"
-                      value={r.strongIdentifier || ''}
-                      onChange={(e) => updateRow(r.rowId, { strongIdentifier: e.target.value })}
                       className="block w-full h-8 px-2 rounded border border-slate-300 text-sm"
                     />
                   </td>

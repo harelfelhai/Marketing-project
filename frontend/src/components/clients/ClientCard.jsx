@@ -10,9 +10,8 @@ import { ArrowUpRight, ClipboardList } from 'lucide-react';
 
 import { useMockData } from '../../contexts/MockDataContext';
 import { useUI }       from '../../contexts/UIContext';
-import Badge           from '../primitives/Badge';
-import ProgressBar     from '../primitives/ProgressBar';
-import { tierVariant } from '../../utils/classifyStatus';
+import Badge       from '../primitives/Badge';
+import ProgressBar from '../primitives/ProgressBar';
 import { resolveVisibleColumns } from '../../config/displayFields';
 import { getSystemSettings }     from '../../api/systemApi';
 import {
@@ -20,7 +19,6 @@ import {
   CLIENT_CARD_ACTIVE, CLIENT_CARD_PENDING, CLIENT_CARD_FAILED,
   CLIENT_CARD_GOOD, CLIENT_CARD_BAD, CLIENT_CARD_DECIDED, CLIENT_CARD_QUALITY_SLA,
   CLIENT_CARD_OPEN_TASKS, CLIENT_CARD_NO_OPEN_TASKS, CLIENT_CARD_OPEN_TASKS_TITLE,
-  SCORE_TIER_VALUE,
 } from '../../config/strings.he';
 
 // Fall back to all sections visible if settings haven't loaded yet — keeps
@@ -29,7 +27,7 @@ const _ALL_SECTIONS = new Set(['metrics', 'verdicts', 'sla', 'tasks']);
 
 export default function ClientCard({ client }) {
   const mockDb                       = useMockData();
-  const { getClientMetrics, phones } = mockDb;
+  const { getClientMetrics } = mockDb;
   const { seedClientFilter }         = useUI();
   const navigate                     = useNavigate();
 
@@ -52,16 +50,6 @@ export default function ClientCard({ client }) {
   const decided  = metrics.good + metrics.bad;
   const slaPct   = decided > 0 ? Math.round((metrics.good / decided) * 100) : 0;
   const slaWarn  = slaPct < client.sla_threshold_pct;
-
-  // Phase DY-3 — client tier is read off any phone for this client.
-  // The backend's server-side root-entity traversal puts the same
-  // customer_tier on every phone that rolls up to the client, so the
-  // first match is authoritative. Falls back to null when the client
-  // has no seeded phones yet (rare; first-card render before hydrate).
-  const tier = (
-    phones.find((p) => String(p.client_id) === String(client.id))
-    ?.customer_tier ?? null
-  );
 
   let alertDot;
   if (metrics.failed > 0) {
@@ -104,14 +92,6 @@ export default function ClientCard({ client }) {
             <h3 className="text-base font-semibold text-slate-900 truncate" title={client.name}>
               {client.name}
             </h3>
-            {/* Phase DY-3 — client tier indicator. Derived per-render
-                from any phone owned by this client (every phone for
-                client N reports the same tier). */}
-            {tier != null && (
-              <Badge variant={tierVariant(tier)} size="xs" className="shrink-0">
-                {SCORE_TIER_VALUE(tier)}
-              </Badge>
-            )}
           </div>
           <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 shrink-0" />
         </div>

@@ -60,21 +60,18 @@ export const ADMIN_TOAST_SAVED    = 'השינוי נשמר.';
 export const ADMIN_TOAST_DELETED  = 'הרשומה נמחקה (מחיקה רכה).';
 export const ADMIN_TOAST_RESTORED = 'הרשומה שוחזרה.';
 export const ADMIN_TOAST_ERROR    = (msg) => `שגיאה: ${msg}`;
-export const ADMIN_FIELD_FIRST_NAME    = 'שם פרטי';
-export const ADMIN_FIELD_LAST_NAME     = 'שם משפחה';
+export const ADMIN_FIELD_FULL_NAME     = 'שם מלא';
 export const ADMIN_FIELD_RELATION      = 'סוג קרבה';
 export const ADMIN_FIELD_PHONE_NUMBER  = 'מספר טלפון';
 export const ADMIN_FIELD_VERIFICATION  = 'סטטוס אימות';
-export const ADMIN_FIELD_STRONG_ID     = 'מזהה חזק';
+export const ADMIN_FIELD_IDENTIFIER_1  = 'מזהה 1';
+export const ADMIN_FIELD_IDENTIFIER_2  = 'מזהה 2';
 export const ADMIN_FIELD_CLIENT_ID     = 'מזהה לקוח';
 export const ADMIN_FIELD_TARGET_ENTITY = 'ישות-אב (מזהה)';
 export const ADMIN_FIELD_PHONE_ENTITY  = 'ישות בעלים (מזהה)';
 export const ADMIN_FIELD_CLASSIFICATION = 'סיווג';
 export const ADMIN_FIELD_INGEST_SOURCE = 'מקור הקליטה';
-export const ADMIN_FIELD_INGEST_REASON = 'סיבת הקליטה';
-export const ADMIN_FIELD_VERIF_SOURCE  = 'מקור האימות';
-export const ADMIN_FIELD_VERIF_REASON  = 'הערת אימות';
-export const ADMIN_COL_STRONG_ID       = 'מזהה חזק';
+export const ADMIN_COL_IDENTIFIER_1    = 'מזהה 1';
 
 // ProfilePage — UAT round-3 user profile editor.
 export const PROFILE_TITLE                  = 'הפרופיל שלי';

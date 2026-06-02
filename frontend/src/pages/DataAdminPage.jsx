@@ -40,13 +40,13 @@ import {
   ADMIN_CONFIRM_DELETE_ENTITY, ADMIN_CONFIRM_DELETE_PHONE,
   ADMIN_TOAST_SAVED, ADMIN_TOAST_DELETED, ADMIN_TOAST_RESTORED,
   ADMIN_TOAST_ERROR,
-  ADMIN_FIELD_FIRST_NAME, ADMIN_FIELD_LAST_NAME, ADMIN_FIELD_RELATION,
+  ADMIN_FIELD_FULL_NAME, ADMIN_FIELD_RELATION,
   ADMIN_FIELD_PHONE_NUMBER, ADMIN_FIELD_VERIFICATION,
-  ADMIN_FIELD_STRONG_ID, ADMIN_FIELD_CLIENT_ID, ADMIN_FIELD_TARGET_ENTITY,
+  ADMIN_FIELD_IDENTIFIER_1, ADMIN_FIELD_IDENTIFIER_2,
+  ADMIN_FIELD_CLIENT_ID, ADMIN_FIELD_TARGET_ENTITY,
   ADMIN_FIELD_PHONE_ENTITY, ADMIN_FIELD_CLASSIFICATION,
-  ADMIN_FIELD_INGEST_SOURCE, ADMIN_FIELD_INGEST_REASON,
-  ADMIN_FIELD_VERIF_SOURCE, ADMIN_FIELD_VERIF_REASON,
-  ADMIN_COL_STRONG_ID,
+  ADMIN_FIELD_INGEST_SOURCE,
+  ADMIN_COL_IDENTIFIER_1,
 } from '../config/strings.he';
 
 
@@ -196,7 +196,7 @@ function PersonsAdmin({ includeDeleted }) {
             <tr>
               <th className="text-start px-3 py-2 w-20">מזהה</th>
               <th className="text-start px-3 py-2">שם</th>
-              <th className="text-start px-3 py-2 w-32">{ADMIN_COL_STRONG_ID}</th>
+              <th className="text-start px-3 py-2 w-32">{ADMIN_COL_IDENTIFIER_1}</th>
               <th className="text-start px-3 py-2 w-32">סוג קרבה</th>
               <th className="text-start px-3 py-2 w-36">לקוח</th>
               <th className="text-start px-3 py-2 w-24">סטטוס</th>
@@ -216,7 +216,7 @@ function PersonsAdmin({ includeDeleted }) {
                 // (envelopes, in-progress drafts) show a soft "ללא שם"
                 // marker instead of falling back to the row id —
                 // operators were confused by the "#5" lookalike.
-                const fullName = [e.first_name, e.last_name].filter(Boolean).join(' ');
+                const fullName = e.full_name;
                 const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
                 const isDeleted = !!e.deleted_at;
                 return (
@@ -230,9 +230,9 @@ function PersonsAdmin({ includeDeleted }) {
                       {fullName || <span className="text-slate-400 italic">ללא שם</span>}
                     </td>
                     <td className="px-3 py-2 text-slate-700 font-mono text-xs">
-                      {e.strong_identifier || <span className="text-slate-300">—</span>}
+                      {e.identifier_1 || <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-slate-700">{e.entity_type}</td>
+                    <td className="px-3 py-2 text-slate-700">{e.relation_type}</td>
                     <td className="px-3 py-2 text-slate-700">{clientName}</td>
                     <td className="px-3 py-2 text-xs">
                       {isDeleted
@@ -293,7 +293,7 @@ function PersonsAdmin({ includeDeleted }) {
         <ConfirmModal
           title="מחיקת ישות"
           body={ADMIN_CONFIRM_DELETE_ENTITY(
-            [deleting.first_name, deleting.last_name].filter(Boolean).join(' ') || `#${deleting.id}`,
+            deleting.full_name || `#${deleting.id}`,
             activePhoneCountByEntity.get(deleting.id) || 0,
           )}
           onCancel={() => setDeleting(null)}
@@ -493,35 +493,35 @@ function EntityEditModal({ entity, onCancel, onSave }) {
   // UAT round-3: every operator-editable field is exposed here. The
   // internal id, audit timestamps and tombstone are intentionally not
   // surfaced — they're auto-managed.
-  const [firstName,        setFirstName]        = useState(entity.first_name || '');
-  const [lastName,         setLastName]         = useState(entity.last_name  || '');
-  const [relation,         setRelation]         = useState(entity.entity_type || 'family');
-  const [clientId,         setClientId]         = useState(
+  const [fullName,       setFullName]       = useState(entity.full_name || '');
+  const [relation,       setRelation]       = useState(entity.relation_type || 'family');
+  const [clientId,       setClientId]       = useState(
     entity.client_id != null ? String(entity.client_id) : '',
   );
-  const [targetEntityId,   setTargetEntityId]   = useState(
+  const [targetEntityId, setTargetEntityId] = useState(
     entity.target_entity_id != null ? String(entity.target_entity_id) : '',
   );
-  const [strongIdentifier, setStrongIdentifier] = useState(entity.strong_identifier || '');
+  const [identifier1,    setIdentifier1]    = useState(entity.identifier_1 || '');
+  const [identifier2,    setIdentifier2]    = useState(entity.identifier_2 || '');
 
   const handleSave = () =>
     onSave({
-      first_name:        firstName,
-      last_name:         lastName,
-      relation_type:     relation,
-      client_id:         clientId === '' ? null : clientId,
-      target_entity_id:  targetEntityId === '' ? null : targetEntityId,
-      strong_identifier: strongIdentifier,
+      full_name:        fullName,
+      relation_type:    relation,
+      client_id:        clientId === '' ? null : clientId,
+      target_entity_id: targetEntityId === '' ? null : targetEntityId,
+      identifier_1:     identifier1 || null,
+      identifier_2:     identifier2 || null,
     });
 
   return (
     <ModalScaffold onCancel={onCancel} testId="admin-entity-edit-modal" title="עריכת ישות">
-      <LabeledInput label={ADMIN_FIELD_FIRST_NAME}      value={firstName}        onChange={setFirstName} />
-      <LabeledInput label={ADMIN_FIELD_LAST_NAME}       value={lastName}         onChange={setLastName}  />
-      <LabeledInput label={ADMIN_FIELD_STRONG_ID}       value={strongIdentifier} onChange={setStrongIdentifier} />
-      <LabeledInput label={ADMIN_FIELD_RELATION}        value={relation}         onChange={setRelation}  />
-      <LabeledInput label={ADMIN_FIELD_CLIENT_ID}       value={clientId}         onChange={setClientId} />
-      <LabeledInput label={ADMIN_FIELD_TARGET_ENTITY}   value={targetEntityId}   onChange={setTargetEntityId} />
+      <LabeledInput label={ADMIN_FIELD_FULL_NAME}       value={fullName}       onChange={setFullName} />
+      <LabeledInput label={ADMIN_FIELD_RELATION}        value={relation}       onChange={setRelation}  />
+      <LabeledInput label={ADMIN_FIELD_IDENTIFIER_1}    value={identifier1}    onChange={setIdentifier1} />
+      <LabeledInput label={ADMIN_FIELD_IDENTIFIER_2}    value={identifier2}    onChange={setIdentifier2} />
+      <LabeledInput label={ADMIN_FIELD_CLIENT_ID}       value={clientId}       onChange={setClientId} />
+      <LabeledInput label={ADMIN_FIELD_TARGET_ENTITY}   value={targetEntityId} onChange={setTargetEntityId} />
       <ModalActions onCancel={onCancel} onSave={handleSave} />
     </ModalScaffold>
   );
@@ -536,35 +536,26 @@ function PhoneEditModal({ phone, onCancel, onSave }) {
   const [entityId,           setEntityId]           = useState(
     phone.entity_id != null ? String(phone.entity_id) : '',
   );
-  const [classification,     setClassification]     = useState(phone.classification_type || '');
+  const [phoneType,          setPhoneType]          = useState(phone.phone_type || '');
   const [ingestionSource,    setIngestionSource]    = useState(phone.ingestion_source || '');
-  const [ingestionReason,    setIngestionReason]    = useState(phone.ingestion_reason || '');
   const [verifStatus,        setVerifStatus]        = useState(phone.verification_status || 'pending');
-  const [verifSource,        setVerifSource]        = useState(phone.verification_source || '');
-  const [verifReason,        setVerifReason]        = useState(phone.verification_reason || '');
 
   const handleSave = () =>
     onSave({
-      phone_number:         number,
-      entity_id:            entityId === '' ? null : entityId,
-      classification_type:  classification,
-      ingestion_source:     ingestionSource,
-      ingestion_reason:     ingestionReason,
-      verification_status:  verifStatus,
-      verification_source:  verifSource,
-      verification_reason:  verifReason,
+      phone_number:        number,
+      entity_id:           entityId === '' ? null : entityId,
+      phone_type:          phoneType,
+      ingestion_source:    ingestionSource,
+      verification_status: verifStatus,
     });
 
   return (
     <ModalScaffold onCancel={onCancel} testId="admin-phone-edit-modal" title="עריכת טלפון">
       <LabeledInput label={ADMIN_FIELD_PHONE_NUMBER}     value={number}          onChange={setNumber} dir="ltr" />
       <LabeledInput label={ADMIN_FIELD_PHONE_ENTITY}     value={entityId}        onChange={setEntityId} />
-      <LabeledInput label={ADMIN_FIELD_CLASSIFICATION}   value={classification}  onChange={setClassification} />
+      <LabeledInput label={ADMIN_FIELD_CLASSIFICATION}   value={phoneType}       onChange={setPhoneType} />
       <LabeledInput label={ADMIN_FIELD_INGEST_SOURCE}    value={ingestionSource} onChange={setIngestionSource} />
-      <LabeledInput label={ADMIN_FIELD_INGEST_REASON}    value={ingestionReason} onChange={setIngestionReason} />
       <LabeledInput label={ADMIN_FIELD_VERIFICATION}     value={verifStatus}     onChange={setVerifStatus} />
-      <LabeledInput label={ADMIN_FIELD_VERIF_SOURCE}     value={verifSource}     onChange={setVerifSource} />
-      <LabeledInput label={ADMIN_FIELD_VERIF_REASON}     value={verifReason}     onChange={setVerifReason} />
       <ModalActions onCancel={onCancel} onSave={handleSave} />
     </ModalScaffold>
   );

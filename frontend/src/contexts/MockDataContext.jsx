@@ -17,7 +17,6 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { buildInitialDb, deriveClientMetrics } from '../mock/mockData';
 import { MOCK_MODE } from '../api/client';
 import { listPhones, getPhoneDetail }     from '../api/phonesApi';
-import { listActionLogs }                  from '../api/actionsApi';
 import { listTasks, getTaskDetail }        from '../api/tasksApi';
 import { listEntities }                    from '../api/entityApi';
 import { CLIENT_REGISTRY } from '../config/clientRegistry';
@@ -41,7 +40,6 @@ const EMPTY_DB = {
   clients:    [],
   entities:   [],
   phones:     [],
-  actionLogs: [],
   tasks:      [],
   engines:    {
     retry:        { executing: false, lastRunAt: null, lastProcessedCount: 0 },
@@ -123,30 +121,27 @@ export function MockDataProvider({ children }) {
     // GET /entities boot fetch so the entities slice is authoritative.
     Promise.allSettled([
       listPhones({ pageSize: 200 }),
-      listActionLogs({ pageSize: 500 }),
       listTasks({ pageSize: 500 }),
       listEntities({}, /* mockDb */ null),
     ])
-      .then(([phonesRes, logsRes, tasksRes, entitiesRes]) => {
+      .then(([phonesRes, tasksRes, entitiesRes]) => {
         const phonesData   = phonesRes.status   === 'fulfilled' ? phonesRes.value   : [];
-        const logsData     = logsRes.status     === 'fulfilled' ? logsRes.value     : [];
         const tasksData    = tasksRes.status    === 'fulfilled' ? tasksRes.value    : [];
         const entitiesData = entitiesRes.status === 'fulfilled' ? entitiesRes.value : [];
 
         setDb((prev) => ({
           ...prev,
-          phones:     phonesData,
-          actionLogs: logsData,
-          tasks:      tasksData,
-          entities:   entitiesData,
-          clients:    CLIENT_REGISTRY,
+          phones:   phonesData,
+          tasks:    tasksData,
+          entities: entitiesData,
+          clients:  CLIENT_REGISTRY,
         }));
       })
       .finally(() => setLoading(false));
   }, []);
 
   // Expose raw state slices
-  const { clients, entities, phones, actionLogs, tasks, engines } = db;
+  const { clients, entities, phones, tasks, engines } = db;
 
   // ---------------------------------------------------------------------------
   // refetchPhones — re-hydrates phones + entities from the server.
@@ -156,31 +151,7 @@ export function MockDataProvider({ children }) {
   const refetchPhones = useCallback(async () => {
     if (MOCK_MODE) return;
     const phonesData = await listPhones({ pageSize: 200 });
-    const entityMap  = new Map();
-    phonesData.forEach((p) => {
-      if (!entityMap.has(p.entity_id)) {
-        entityMap.set(p.entity_id, {
-          id:          p.entity_id,
-          entity_type: p.entity_type,
-          client_id:   p.client_id,
-        });
-      }
-    });
-    setDb((prev) => ({
-      ...prev,
-      phones:   phonesData,
-      entities: Array.from(entityMap.values()),
-    }));
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // refetchActionLogs — re-hydrates action logs from the server.
-  // No-op in mock mode.
-  // ---------------------------------------------------------------------------
-  const refetchActionLogs = useCallback(async () => {
-    if (MOCK_MODE) return;
-    const logsData = await listActionLogs({ pageSize: 500 });
-    setDb((prev) => ({ ...prev, actionLogs: logsData }));
+    setDb((prev) => ({ ...prev, phones: phonesData }));
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -208,44 +179,7 @@ export function MockDataProvider({ children }) {
         ? prev.phones.map((p) => (p.id === flatPhone.id ? flatPhone : p))
         : [...prev.phones, flatPhone];
 
-      // Keep the synthetic entities list consistent with the JOIN data
-      // that now lives on the merged phone row.
-      const entityMap = new Map(prev.entities.map((e) => [e.id, e]));
-      if (flatPhone.entity_id != null) {
-        entityMap.set(flatPhone.entity_id, {
-          id:          flatPhone.entity_id,
-          entity_type: flatPhone.entity_type,
-          client_id:   flatPhone.client_id,
-        });
-      }
-      return { ...prev, phones, entities: Array.from(entityMap.values()) };
-    });
-  }, []);
-
-  const mergeLogsByPhoneId = useCallback((phoneId, freshLogs) => {
-    if (phoneId == null) return;
-    setDb((prev) => {
-      const others = prev.actionLogs.filter((l) => l.phone_id !== phoneId);
-      return { ...prev, actionLogs: [...others, ...freshLogs] };
-    });
-  }, []);
-
-  // spliceActionLog — replace-by-id or append a SINGLE ActionLog that the
-  // server has already delivered to us inside another response body.
-  //
-  // Today's only caller is patchPhone, which can receive a
-  // PhoneUpdateResponse.triggered_action when ActionDataTriggerService
-  // fires a re-dispatch as a side-effect of the PATCH. The log is server-
-  // authoritative (just delivered inline rather than via a follow-up GET),
-  // so splicing it into the cache is consistent with §7.5 — not optimistic.
-  const spliceActionLog = useCallback((log) => {
-    if (!log || log.id == null) return;
-    setDb((prev) => {
-      const exists = prev.actionLogs.some((l) => l.id === log.id);
-      const next = exists
-        ? prev.actionLogs.map((l) => (l.id === log.id ? log : l))
-        : [...prev.actionLogs, log];
-      return { ...prev, actionLogs: next };
+      return { ...prev, phones };
     });
   }, []);
 
@@ -257,24 +191,14 @@ export function MockDataProvider({ children }) {
   const refetchPhoneById = useCallback(async (id) => {
     if (MOCK_MODE || id == null) return;
     const detail = await getPhoneDetail(id);
-    const { entity, action_timeline, ...rest } = detail;
+    const { entity, ...rest } = detail;
     const flat = {
       ...rest,
-      entity_type: entity?.entity_type,
       client_id:   entity?.client_id,
       client_name: entity?.client_name,
     };
     mergePhoneById(flat);
   }, [mergePhoneById]);
-
-  // refetchLogsForPhone — narrow refetch for log-touching mutations.
-  // Uses GET /actions/logs?phone_id=... (filter-as-view per §3.3) rather
-  // than a dedicated endpoint, so no backend changes are required.
-  const refetchLogsForPhone = useCallback(async (phoneId) => {
-    if (MOCK_MODE || phoneId == null) return;
-    const fresh = await listActionLogs({ phone_id: phoneId });
-    mergeLogsByPhoneId(phoneId, fresh);
-  }, [mergeLogsByPhoneId]);
 
   // ---------------------------------------------------------------------------
   // Phase DX — Pipeline tasks cache slice.
@@ -328,26 +252,20 @@ export function MockDataProvider({ children }) {
       const now = new Date().toISOString();
 
       const newEntity = {
-        id:          nextEntityId,
-        entity_type: payload.entity_type || 'target',
-        client_id:   payload.client_id || null,
-        extra_data:  payload.entity_extra || {},
+        id:            nextEntityId,
+        relation_type: 'primary',
+        client_id:     payload.client_id || null,
+        extra_data:    payload.entity_extra || {},
       };
 
       const newPhone = {
         id:                  nextPhoneId,
         entity_id:           nextEntityId,
         phone_number:        payload.phone_number,
-        classification_type: payload.classification_type || null,
+        phone_type:          payload.phone_type || null,
         ingestion_source:    payload.ingestion_source,
-        ingestion_reason:    payload.ingestion_reason || null,
-        ingested_at:         now,
         verification_status: 'pending',
-        verification_source: null,
-        verification_reason: null,
-        verified_at:         null,
-        created_at:          now,
-        updated_at:          now,
+        score:               null,
         extra_data:          {},
       };
 
@@ -387,44 +305,24 @@ export function MockDataProvider({ children }) {
         );
       }
 
-      const nextId = _uid('ent');
-      const now    = new Date().toISOString();
-
-      const firstName = String(payload.first_name || '').trim();
-      const lastRaw   = payload.last_name == null ? null : String(payload.last_name).trim();
-      const lastName  = lastRaw || null;
-
-      // Names land in extra_data alongside any caller-supplied keys.
-      // The structured fields are the canonical source — they win on
-      // conflict with stale keys inside extra_data.
-      const mergedExtra = { ...(payload.extra_data || {}), first_name: firstName };
-      if (lastName) mergedExtra.last_name = lastName;
-
-      // UAT round-3 — strong_identifier on its own top-level field.
-      const sid = payload.strong_identifier
-        ? String(payload.strong_identifier).trim() || null
-        : null;
+      const nextId  = _uid('ent');
+      const fullName = String(payload.full_name || '').trim() || null;
 
       const newEntity = {
-        id:                nextId,
-        client_id:         target.client_id,             // inherited
-        relation_type:     'associated',
-        entity_type:       payload.relation_type,
-        target_entity_id:  target.id,
-        strong_identifier: sid,
-        extra_data:        mergedExtra,
-        created_at:        now,
-        updated_at:        now,
+        id:               nextId,
+        client_id:        target.client_id,
+        relation_type:    payload.relation_type,
+        target_entity_id: target.id,
+        full_name:        fullName,
+        extra_data:       payload.extra_data || {},
       };
 
       result = {
         id:               newEntity.id,
         client_id:        newEntity.client_id,
-        relation_type:    newEntity.entity_type,   // operator-facing label = entity_type
+        relation_type:    newEntity.relation_type,
         target_entity_id: newEntity.target_entity_id,
-        first_name:       firstName,
-        last_name:        lastName,
-        created_at:       now,
+        full_name:        fullName,
       };
 
       return { ...prev, entities: [...prev.entities, newEntity] };
@@ -482,9 +380,9 @@ export function MockDataProvider({ children }) {
         const rowNum = idx + 1;
         const token  = (row.row_token || '').slice(0, 200);
 
-        const first = String(row.first_name || '').trim();
+        const first = String(row.full_name || row.first_name || '').trim();
         if (!first) {
-          failedRows.push({ row: rowNum, input: token, error: 'first_name is required' });
+          failedRows.push({ row: rowNum, input: token, error: 'full_name is required' });
           return;
         }
 
@@ -516,36 +414,27 @@ export function MockDataProvider({ children }) {
           return;
         }
 
-        const lastRaw = row.last_name == null ? null : String(row.last_name).trim();
         candidates.push({
           row: rowNum,
           rowToken: row.row_token || '',
-          firstName: first,
-          lastName: lastRaw || null,
+          fullName: first,
           relation,
           target: tgt,
         });
       });
 
       // Pass 2 — build new entities.
-      // ids are generated per row below (string ids).
       const now  = new Date().toISOString();
       const newEntities = candidates.map((c) => {
-        const extra = {
-          first_name:         c.firstName,
-          bulk_submission_id: submissionId,
-        };
-        if (c.lastName) extra.last_name = c.lastName;
+        const extra = { bulk_submission_id: submissionId };
         if (c.rowToken) extra.row_token = c.rowToken;
         const ent = {
           id:               _uid('ent'),
           client_id:        c.target.client_id,
-          relation_type:    'associated',
-          entity_type:      c.relation,
+          relation_type:    c.relation,
           target_entity_id: c.target.id,
+          full_name:        c.fullName || null,
           extra_data:       extra,
-          created_at:       now,
-          updated_at:       now,
         };
         return ent;
       });
@@ -578,7 +467,7 @@ export function MockDataProvider({ children }) {
   // file) so the API client surfaces them as 422-equivalent toasts.
   // -------------------------------------------------------------------------
   const applyEntityBulkUploadCsv = useCallback((csvText) => {
-    const REQUIRED = ['first_name', 'relation_type', 'target_entity_id'];
+    const REQUIRED = ['full_name', 'relation_type', 'target_entity_id'];
     const ASSOCIATED = new Set(['family', 'friend', 'colleague', 'spouse']);
     const INPUT_CAP = 200;
 
@@ -632,9 +521,9 @@ export function MockDataProvider({ children }) {
         const rowNum = idx + 1;
         const echo   = JSON.stringify(row).slice(0, INPUT_CAP);
 
-        const first = String(row.first_name || '').trim();
+        const first = String(row.full_name || '').trim();
         if (!first) {
-          failedRows.push({ row: rowNum, input: echo, error: 'Missing first_name' });
+          failedRows.push({ row: rowNum, input: echo, error: 'Missing full_name' });
           return;
         }
         const relation = String(row.relation_type || '').trim();
@@ -666,30 +555,21 @@ export function MockDataProvider({ children }) {
           });
           return;
         }
-        const lastRaw = row.last_name == null ? null : String(row.last_name).trim();
         candidates.push({
-          row: rowNum, firstName: first, lastName: lastRaw || null,
+          row: rowNum, fullName: first,
           relation, target: tgt,
         });
       });
 
-      // ids are generated per row below (string ids).
       const now  = new Date().toISOString();
       const newEntities = candidates.map((c) => {
-        const extra = {
-          first_name:         c.firstName,
-          bulk_submission_id: submissionId,
-        };
-        if (c.lastName) extra.last_name = c.lastName;
         const ent = {
           id:               _uid('ent'),
           client_id:        c.target.client_id,
-          relation_type:    'associated',
-          entity_type:      c.relation,
+          relation_type:    c.relation,
           target_entity_id: c.target.id,
-          extra_data:       extra,
-          created_at:       now,
-          updated_at:       now,
+          full_name:        c.fullName || null,
+          extra_data:       { bulk_submission_id: submissionId },
         };
         return ent;
       });
@@ -784,11 +664,10 @@ export function MockDataProvider({ children }) {
       const now = new Date().toISOString();
 
       const newEntity = {
-        id:                nextEntityId,
-        entity_type:       payload.entity_type || 'target',
-        relation_type:     payload.entity_type === 'target' ? 'primary' : 'associated',
-        client_id:         payload.client_id ?? null,
-        target_entity_id:  payload.target_entity_id ?? null,
+        id:               nextEntityId,
+        relation_type:    payload.relation_type === 'primary' ? 'primary' : 'associated',
+        client_id:        payload.client_id ?? null,
+        target_entity_id: payload.target_entity_id ?? null,
         extra_data: {
           ...(payload.entity_extra || {}),
           bulk_submission_id: submissionId,
@@ -801,19 +680,10 @@ export function MockDataProvider({ children }) {
           id,
           entity_id:           nextEntityId,
           phone_number:        normalized,
-          classification_type: null,
+          phone_type:          null,
           ingestion_source:    payload.ingestion_source,
-          ingestion_reason:    payload.ingestion_reason || null,
-          ingested_at:         now,
           verification_status: 'pending',
-          verification_source: null,
-          verification_reason: null,
-          verified_at:         null,
-          created_at:          now,
-          updated_at:          now,
-          confidence_score:    0,
-          priority_score:      0,
-          priority_updated_at: null,
+          score:               null,
           extra_data: {
             ...(payload.phone_extra_shared || {}),
             bulk_submission_id: submissionId,
@@ -856,7 +726,7 @@ export function MockDataProvider({ children }) {
   // The caller (bulkIngestUpload) surfaces these as endpoint-level errors.
   // -------------------------------------------------------------------------
   const applyBulkUploadCsv = useCallback((csvText) => {
-    const REQUIRED = ['phone_number', 'client_id', 'entity_type', 'ingestion_source'];
+    const REQUIRED = ['phone_number', 'client_id', 'relation_type', 'ingestion_source'];
     const PHONE_CLEAN = /[^\d+]/g;
     const PHONE_REGEX = /^\+?\d{7,15}$/;
     const INPUT_CAP   = 200;
@@ -901,7 +771,7 @@ export function MockDataProvider({ children }) {
     const seenPhones = new Map();
 
     const safeInputStr = (row) => {
-      const parts = REQUIRED.concat(['target_entity_id', 'ingestion_reason'])
+      const parts = REQUIRED.concat(['target_entity_id'])
         .map((c) => (row[c] != null && row[c] !== '' ? `${c}=${row[c]}` : null))
         .filter(Boolean);
       return (parts.join(' | ') || '(empty row)').slice(0, INPUT_CAP);
@@ -920,7 +790,7 @@ export function MockDataProvider({ children }) {
         failedRows.push({ row: rowIdx, input: rawPhone.slice(0, INPUT_CAP), error: 'Invalid phone format' });
         return;
       }
-      const missingFields = ['entity_type', 'ingestion_source'].filter((c) => !row[c]);
+      const missingFields = ['relation_type', 'ingestion_source'].filter((c) => !row[c]);
       // client_id may legitimately be "0" — treat presence-of-value as the test.
       if (row.client_id === '' || row.client_id == null) missingFields.unshift('client_id');
       if (missingFields.length) {
@@ -989,8 +859,7 @@ export function MockDataProvider({ children }) {
 
         newEntities.push({
           id:               entityId,
-          entity_type:      row.entity_type,
-          relation_type:    row.entity_type === 'target' ? 'primary' : 'associated',
+          relation_type:    row.relation_type === 'primary' ? 'primary' : 'associated',
           client_id:        row.client_id,
           target_entity_id: row.target_entity_id,
           extra_data:       { bulk_submission_id: submissionId },
@@ -1000,19 +869,10 @@ export function MockDataProvider({ children }) {
           id:                  phoneId,
           entity_id:           entityId,
           phone_number:        row._normalized_phone,
-          classification_type: null,
+          phone_type:          null,
           ingestion_source:    row.ingestion_source,
-          ingestion_reason:    row.ingestion_reason || null,
-          ingested_at:         now,
           verification_status: 'pending',
-          verification_source: null,
-          verification_reason: null,
-          verified_at:         null,
-          created_at:          now,
-          updated_at:          now,
-          confidence_score:    0,
-          priority_score:      0,
-          priority_updated_at: null,
+          score:               null,
           extra_data:          { bulk_submission_id: submissionId },
         });
 
@@ -1055,7 +915,7 @@ export function MockDataProvider({ children }) {
   // -------------------------------------------------------------------------
   // applyVerdict
   // -------------------------------------------------------------------------
-  const applyVerdict = useCallback((phoneId, status, reason, operatorId) => {
+  const applyVerdict = useCallback((phoneId, status, operatorId) => {
     setDb((prev) => ({
       ...prev,
       phones: prev.phones.map((p) =>
@@ -1063,10 +923,6 @@ export function MockDataProvider({ children }) {
           ? {
               ...p,
               verification_status: status,
-              verification_source: 'manual',
-              verification_reason: reason || null,
-              verified_at:         new Date().toISOString(),
-              updated_at:          new Date().toISOString(),
               extra_data:          { ...p.extra_data, last_verdict_by: operatorId },
             }
           : p
@@ -1084,138 +940,52 @@ export function MockDataProvider({ children }) {
   // -------------------------------------------------------------------------
   const applyTwoAxisVerdict = useCallback((phoneId, payload, operatorId) => {
     setDb((prev) => {
-      const now = new Date().toISOString();
       const phoneIdx = prev.phones.findIndex((p) => p.id === phoneId);
       if (phoneIdx === -1) return prev;
-      const phone   = { ...prev.phones[phoneIdx] };
+      const phone    = { ...prev.phones[phoneIdx] };
       const ownerIdx = prev.entities.findIndex((e) => e.id === phone.entity_id);
-      const entity  = ownerIdx !== -1 ? { ...prev.entities[ownerIdx] } : null;
-      const isEnvelopeAtStart = entity?.entity_type === 'social_envelope';
+      const entity   = ownerIdx !== -1 ? { ...prev.entities[ownerIdx] } : null;
 
-      // ---- Phone axis (envelope-aware DY-4-D propagation) ----
+      // Phone axis: drives confidence score
       if (payload.phone_axis === 'confirm') {
-        phone.confidence_score      = 100;
-        phone.confidence_updated_at = now;
-        if (isEnvelopeAtStart) {
-          // Phone-in-network = person-to-target for envelopes.
-          phone.verification_status = 'verified_good';
-          phone.verification_source = 'manual';
-          phone.verification_reason = payload.reason || 'Operator confirmed phone is in target network';
-          phone.verified_at         = now;
-        }
+        phone.score = 1.0;
+        phone.verification_status = 'verified';
       } else if (payload.phone_axis === 'refute') {
-        phone.confidence_score      = 0;
-        phone.confidence_updated_at = now;
-        phone.priority_score        = 0;
-        if (isEnvelopeAtStart) {
-          phone.verification_status = 'verified_bad';
-          phone.verification_source = 'manual';
-          phone.verification_reason = payload.reason || 'Operator rejected envelope placement';
-          phone.verified_at         = now;
-          if (entity) entity.target_entity_id = null;
-        }
-      }
-
-      // ---- Relation axis (Vector A only; UI hides for envelopes) ----
-      if (payload.relation_axis === 'confirm') {
-        phone.verification_status = 'verified_good';
-        phone.verification_source = 'manual';
-        phone.verification_reason = payload.reason || 'Operator confirmed relation';
-        phone.verified_at         = now;
-      } else if (payload.relation_axis === 'refute') {
-        phone.verification_status = 'verified_bad';
-        phone.verification_source = 'manual';
-        phone.verification_reason = payload.reason || 'Operator severed relation';
-        phone.verified_at         = now;
+        phone.score = 0.0;
+        phone.verification_status = 'rejected';
         if (entity) entity.target_entity_id = null;
       }
 
-      // ---- Identification (envelope → named / identified_envelope) ----
-      if (payload.identification && isEnvelopeAtStart && entity) {
-        const ident = payload.identification;
-        const rel   = ident.relation;
-        if (rel === 'unrelated') {
-          entity.entity_type        = 'unrelated';
-          phone.verification_status = 'verified_bad';
-          phone.verification_source = 'manual';
-          phone.verification_reason = payload.reason || 'Operator identified owner as unrelated';
-          phone.verified_at         = now;
-          entity.target_entity_id   = null;
-        } else if (rel) {
-          entity.entity_type        = rel;
-          phone.verification_status = 'verified_good';
-          phone.verification_source = 'manual';
-          phone.verification_reason = payload.reason || `Operator identified owner with relation '${rel}'`;
-          phone.verified_at         = now;
-        } else {
-          entity.entity_type = 'identified_envelope';
-          // Propagate verified_good iff the phone-in-network was previously
-          // OR concurrently confirmed (confidence_score >= 80 after this submit).
-          if (phone.confidence_score != null && phone.confidence_score >= 80) {
-            phone.verification_status = 'verified_good';
-            phone.verification_source = 'manual';
-            phone.verification_reason = payload.reason || 'Operator named owner; envelope previously confirmed';
-            phone.verified_at         = now;
-          }
-          // else: leave verification_status untouched.
-        }
-        entity.extra_data = {
-          ...(entity.extra_data || {}),
-          ...(ident.first_name ? { first_name: ident.first_name } : {}),
-          ...(ident.last_name  ? { last_name:  ident.last_name  } : {}),
-        };
+      // Relation axis
+      if (payload.relation_axis === 'confirm') {
+        phone.verification_status = 'verified';
+      } else if (payload.relation_axis === 'refute') {
+        phone.verification_status = 'rejected';
+        if (entity) entity.target_entity_id = null;
       }
 
-      // Operator attribution stamp (mirrors the backend's audit trail).
-      phone.extra_data  = { ...(phone.extra_data || {}), last_verdict_by: operatorId };
-      phone.updated_at  = now;
+      // Identification: update entity relation_type + full_name
+      if (payload.identification && entity) {
+        const ident = payload.identification;
+        if (ident.relation === 'unrelated') {
+          entity.relation_type      = 'unrelated';
+          phone.verification_status = 'rejected';
+          entity.target_entity_id   = null;
+        } else if (ident.relation) {
+          entity.relation_type      = ident.relation;
+          phone.verification_status = 'verified';
+        }
+        if (ident.full_name) entity.full_name = ident.full_name;
+      }
 
-      const phones   = [...prev.phones];
+      phone.extra_data = { ...(phone.extra_data || {}), last_verdict_by: operatorId };
+
+      const phones = [...prev.phones];
       phones[phoneIdx] = phone;
       const entities = [...prev.entities];
       if (entity && ownerIdx !== -1) entities[ownerIdx] = entity;
       return { ...prev, phones, entities };
     });
-  }, []);
-
-  // -------------------------------------------------------------------------
-  // applyRetryNow
-  // -------------------------------------------------------------------------
-  const applyRetryNow = useCallback((logId, operatorId) => {
-    // Phase AUTH-B: prefer the current mock user.
-    const op = _currentOperatorUsername(operatorId);
-    setDb((prev) => {
-      const original = prev.actionLogs.find((l) => l.id === logId);
-      if (!original) return prev;
-
-      const nextId = _uid('log');
-      const now    = new Date().toISOString();
-
-      const retryLog = {
-        id:           nextId,
-        phone_id:     original.phone_id,
-        action_type:  original.action_type,
-        status:       'sent',
-        requested_at: now,
-        executed_at:  now,
-        retry_count:  0,
-        retry_after:  null,
-        extra_data:   { force_retried_by_operator: op, manual_retry_of: logId },
-      };
-
-      const updatedLogs = prev.actionLogs.map((l) =>
-        l.id === logId ? { ...l, status: 'superseded', updated_at: now } : l
-      );
-
-      return { ...prev, actionLogs: [...updatedLogs, retryLog] };
-    });
-  }, [_currentOperatorUsername]);
-
-  // -------------------------------------------------------------------------
-  // applyTriggerAction
-  // -------------------------------------------------------------------------
-  const applyTriggerAction = useCallback((newLog) => {
-    setDb((prev) => ({ ...prev, actionLogs: [...prev.actionLogs, newLog] }));
   }, []);
 
   // -------------------------------------------------------------------------
@@ -1265,24 +1035,14 @@ export function MockDataProvider({ children }) {
       const entity = phone ? prev.entities.find((e) => e.id === phone.entity_id) : null;
 
       const newTask = {
-        id:                   nextId,
-        phone_id:             payload.phone_id,
-        source_action_log_id: payload.source_action_log_id ?? null,
-        task_type:            payload.task_type,
-        status:               'pending',
-        // Phase AUTH-B: prefer the current mock user; fall back to
-        // the body field for automation-style callers.
-        requested_by:         _currentOperatorUsername(payload.requested_by),
-        resolved_by:          null,
-        created_at:           now,
-        updated_at:           now,
-        resolved_at:          null,
-        extra_data:           payload.extra_data ?? null,
-        // JOIN-shape echo so consumers see identical structure to real mode.
-        phone_number:         phone?.phone_number ?? null,
-        entity_id:            phone?.entity_id    ?? null,
-        entity_type:          entity?.entity_type ?? null,
-        client_id:            entity?.client_id   ?? null,
+        id:           nextId,
+        phone_id:     payload.phone_id,
+        task_type:    payload.task_type,
+        status:       'pending',
+        extra_data:   payload.extra_data ?? null,
+        phone_number: phone?.phone_number ?? null,
+        entity_id:    phone?.entity_id    ?? null,
+        client_id:    entity?.client_id   ?? null,
       };
       return { ...prev, tasks: [...prev.tasks, newTask] };
     });
@@ -1295,34 +1055,21 @@ export function MockDataProvider({ children }) {
   // resolution_note into extra_data — same shape the backend service produces.
   // -------------------------------------------------------------------------
   const applyResolveTask = useCallback((taskId, body) => {
-    // Phase AUTH-B: resolved_by comes from the current mock user
-    // when set, falling back to the body field for backward compat
-    // with tests that still pass operator_id explicitly.
-    const operator = _currentOperatorUsername(body.operator_id);
     setDb((prev) => ({
       ...prev,
       tasks: prev.tasks.map((t) => {
         if (t.id !== taskId) return t;
-        const now = new Date().toISOString();
         const merged = {
           ...(t.extra_data || {}),
           resolution_outcome: body.outcome,
-          resolved_by:        operator,
         };
         if (body.resolution_note != null) {
           merged.resolution_note = body.resolution_note;
         }
-        return {
-          ...t,
-          status:      body.outcome,
-          resolved_by: operator,
-          resolved_at: now,
-          updated_at:  now,
-          extra_data:  merged,
-        };
+        return { ...t, status: body.outcome, extra_data: merged };
       }),
     }));
-  }, [_currentOperatorUsername]);
+  }, []);
 
   // -------------------------------------------------------------------------
   // applyBulkResolveTasks — mock-mode parity for POST /api/v1/tasks/bulk-status.
@@ -1335,15 +1082,11 @@ export function MockDataProvider({ children }) {
   // Returns BulkResolveTaskResponse-shaped object.
   // -------------------------------------------------------------------------
   const applyBulkResolveTasks = useCallback((body) => {
-    const TERMINAL = new Set(['resolved', 'rejected']);
-    // Phase AUTH-B: resolve the operator once at the top.
-    const operator = _currentOperatorUsername(body.operator_id);
+    const TERMINAL = new Set(['done', 'rejected']);
     let result;
     setDb((prev) => {
       const successIds = [];
       const failedRows = [];
-      const now = new Date().toISOString();
-
       const updatedTasks = prev.tasks.map((t) => t);  // shallow array copy
       for (const tid of (body.task_ids || [])) {
         const idx = updatedTasks.findIndex((t) => t.id === tid);
@@ -1368,18 +1111,14 @@ export function MockDataProvider({ children }) {
         const merged = {
           ...(existing.extra_data || {}),
           resolution_outcome: body.outcome,
-          resolved_by:        operator,
         };
         if (body.resolution_note != null) {
           merged.resolution_note = body.resolution_note;
         }
         updatedTasks[idx] = {
           ...existing,
-          status:      body.outcome,
-          resolved_by: operator,
-          resolved_at: now,
-          updated_at:  now,
-          extra_data:  merged,
+          status:     body.outcome,
+          extra_data: merged,
         };
         successIds.push(tid);
       }
@@ -1393,7 +1132,7 @@ export function MockDataProvider({ children }) {
       return { ...prev, tasks: updatedTasks };
     });
     return result;
-  }, [_currentOperatorUsername]);
+  }, []);
 
   // -------------------------------------------------------------------------
   // Phase NOTIF — mock-mode parity for the 5 notification endpoints.
@@ -1707,20 +1446,15 @@ export function MockDataProvider({ children }) {
   // way the backend WHERE clause does.
 
   const _entityToView = useCallback((e) => {
-    const extra = e.extra_data || {};
     return {
       id:               e.id,
       client_id:        e.client_id,
-      entity_type:      e.entity_type,
+      relation_type:    e.relation_type,
       target_entity_id: e.target_entity_id,
-      first_name:       extra.first_name ?? null,
-      last_name:        extra.last_name ?? null,
-      // UAT round-3 — first-class column. Legacy rows might still
-      // carry the value inside extra_data; fall back to that.
-      strong_identifier: e.strong_identifier ?? extra.strong_identifier ?? null,
-      extra_data:       extra,
-      created_at:       e.created_at ?? null,
-      updated_at:       e.updated_at ?? null,
+      full_name:        e.full_name ?? null,
+      identifier_1:     e.identifier_1 ?? null,
+      identifier_2:     e.identifier_2 ?? null,
+      extra_data:       e.extra_data || {},
       deleted_at:       e.deleted_at ?? null,
     };
   }, []);
@@ -1735,15 +1469,14 @@ export function MockDataProvider({ children }) {
       const set = new Set(filters.clientIds.map(String));
       rows = rows.filter((e) => set.has(String(e.client_id)));
     }
-    if (filters.entityType) {
-      rows = rows.filter((e) => e.entity_type === filters.entityType);
+    if (filters.relationType) {
+      rows = rows.filter((e) => e.relation_type === filters.relationType);
     }
     if (filters.q) {
       const needle = String(filters.q).toLowerCase();
       rows = rows.filter((e) => {
-        const fn = (e.extra_data?.first_name || '').toLowerCase();
-        const ln = (e.extra_data?.last_name  || '').toLowerCase();
-        return `${fn} ${ln} ${e.id}`.includes(needle);
+        const name = (e.full_name || '').toLowerCase();
+        return `${name} ${e.id}`.includes(needle);
       });
     }
     return rows.map(_entityToView);
@@ -1763,27 +1496,15 @@ export function MockDataProvider({ children }) {
       if (idx === -1) throw new Error(`Entity ${id} not found`);
       const existing = prev.entities[idx];
       if (existing.deleted_at) throw new Error(`Entity ${id} not found`);
-      const nextExtra = { ...(existing.extra_data || {}) };
-      if (body.first_name !== undefined && body.first_name !== null) {
-        nextExtra.first_name = body.first_name.trim();
-      }
-      if (body.last_name !== undefined && body.last_name !== null) {
-        nextExtra.last_name = body.last_name.trim() || null;
-      }
-      // UAT round-3 — strong_identifier is a top-level Entity field.
-      let nextStrongId = existing.strong_identifier;
-      if (body.strong_identifier !== undefined && body.strong_identifier !== null) {
-        const sid = String(body.strong_identifier).trim();
-        nextStrongId = sid || null;
-      }
       const next = {
         ...existing,
-        entity_type:       body.relation_type ?? existing.entity_type,
-        target_entity_id:  body.target_entity_id ?? existing.target_entity_id,
-        client_id:         body.client_id ?? existing.client_id,
-        extra_data:        nextExtra,
-        strong_identifier: nextStrongId,
-        updated_at:        new Date().toISOString(),
+        relation_type:    body.relation_type    ?? existing.relation_type,
+        full_name:        body.full_name        ?? existing.full_name,
+        identifier_1:     body.identifier_1     ?? existing.identifier_1,
+        identifier_2:     body.identifier_2     ?? existing.identifier_2,
+        target_entity_id: body.target_entity_id ?? existing.target_entity_id,
+        client_id:        body.client_id        ?? existing.client_id,
+        extra_data:       { ...(existing.extra_data || {}), ...(body.extra_data || {}) },
       };
       snapshot = next;
       const entities = prev.entities.slice();
@@ -1894,10 +1615,10 @@ export function MockDataProvider({ children }) {
       if (prev.phones[idx].deleted_at) throw new Error(`Phone ${id} not found`);
       const next = {
         ...prev.phones[idx],
-        ...(body.phone_number != null        ? { phone_number:        body.phone_number.trim() } : {}),
-        ...(body.classification_type != null ? { classification_type: body.classification_type } : {}),
+        ...(body.phone_number        != null ? { phone_number:        body.phone_number.trim() } : {}),
+        ...(body.phone_type          != null ? { phone_type:          body.phone_type          } : {}),
         ...(body.verification_status != null ? { verification_status: body.verification_status } : {}),
-        updated_at: new Date().toISOString(),
+        ...(body.score               != null ? { score:               body.score               } : {}),
       };
       snapshot = next;
       const phones = prev.phones.slice();
@@ -1940,35 +1661,18 @@ export function MockDataProvider({ children }) {
       const nextId = _uid('ent');
       const now = new Date().toISOString();
       const ent = {
-        id: nextId,
-        // Two-level model: an envelope is a MEMBER of the client root, so it
-        // points at the root via target_entity_id. client_id is derived
-        // (== clientId) and materialised here for consumers that read it.
-        client_id: clientId,
-        entity_type: 'social_envelope',
+        id:               nextId,
+        client_id:        clientId,
+        relation_type:    'associated',
         target_entity_id: clientId,
-        extra_data: {},
-        created_at: now,
-        updated_at: now,
-        deleted_at: null,
+        extra_data:       {},
+        deleted_at:       null,
       };
       snapshot = ent;
       return { ...prev, entities: [...prev.entities, ent] };
     });
-    return {
-      id: snapshot.id,
-      client_id: snapshot.client_id,
-      entity_type: snapshot.entity_type,
-      target_entity_id: snapshot.target_entity_id,
-      first_name: null,
-      last_name: null,
-      strong_identifier: null,
-      extra_data: {},
-      created_at: snapshot.created_at,
-      updated_at: snapshot.updated_at,
-      deleted_at: null,
-    };
-  }, []);
+    return _entityToView(snapshot);
+  }, [_entityToView]);
 
   const applyQuickAttachPhone = useCallback((body) => {
     // UAT round-3 fix: return a Promise that resolves AFTER the setDb
@@ -1988,22 +1692,16 @@ export function MockDataProvider({ children }) {
         const nextId = _uid('ph');
         const now = new Date().toISOString();
         const ph = {
-          id: nextId,
-          entity_id: body.entity_id,
-          phone_number: String(body.phone_number || '').trim(),
-          classification_type: null,
-          ingestion_source: 'manual',
-          ingestion_reason: (body.ingestion_reason || '').trim() || null,
+          id:                  nextId,
+          entity_id:           body.entity_id,
+          phone_number:        String(body.phone_number || '').trim(),
+          phone_type:          null,
+          ingestion_source:    'manual',
           verification_status: 'pending',
-          priority_score: null,
-          customer_tier: null,
-          ingested_at: now,
-          created_at: now,
-          updated_at: now,
-          deleted_at: null,
-          extra_data: {},
-          client_id: ent.client_id,
-          entity_type: ent.entity_type,
+          score:               null,
+          deleted_at:          null,
+          extra_data:          {},
+          client_id:           ent.client_id,
         };
         resolve(ph);
         return { ...prev, phones: [...prev.phones, ph] };
@@ -2044,8 +1742,8 @@ export function MockDataProvider({ children }) {
   // Derived helpers
   // -------------------------------------------------------------------------
   const getClientMetrics = useCallback(
-    (clientId) => deriveClientMetrics(clientId, phones, actionLogs, entities, tasks),
-    [phones, actionLogs, entities, tasks]
+    (clientId) => deriveClientMetrics(clientId, phones, entities, tasks),
+    [phones, entities, tasks]
   );
 
   const getEntityById = useCallback(
@@ -2056,11 +1754,6 @@ export function MockDataProvider({ children }) {
   const getPhoneById = useCallback(
     (phoneId) => phones.find((p) => p.id === phoneId) || null,
     [phones]
-  );
-
-  const getLogsForPhone = useCallback(
-    (phoneId) => actionLogs.filter((l) => l.phone_id === phoneId),
-    [actionLogs]
   );
 
   const getClientForPhone = useCallback(
@@ -2133,22 +1826,16 @@ export function MockDataProvider({ children }) {
     clients,
     entities,
     phones,
-    actionLogs,
     tasks,
     engines,
     loading,
     // Invalidation / refetch (real-API mode — no-op in mock mode)
     refetchPhones,
-    refetchActionLogs,
     refetchTasks,
     refetchEntities,
     // Phase D / DX — narrowed refetches (real-API mode only; no-op in mock mode).
-    // Consumers should prefer these over the wholesale refetches when the
-    // mutation scope is a single id.
     refetchPhoneById,
-    refetchLogsForPhone,
     refetchTaskById,
-    spliceActionLog,
     // Mutators (mock mode — apply*; real-API mode — used only for engine UI state)
     applyIngest,
     applyCreateEntity,
@@ -2159,8 +1846,6 @@ export function MockDataProvider({ children }) {
     applyPatchPhone,
     applyVerdict,
     applyTwoAxisVerdict,
-    applyRetryNow,
-    applyTriggerAction,
     applyWorkerRun,
     applyOpenTask,
     applyResolveTask,
@@ -2200,7 +1885,6 @@ export function MockDataProvider({ children }) {
     getClientMetrics,
     getEntityById,
     getPhoneById,
-    getLogsForPhone,
     getClientForPhone,
   };
 
@@ -2229,27 +1913,10 @@ export function useMockData() {
 
 function _mockFilterPhones(db, f) {
   let rows = (db.phones || []).slice();
-  // Materialize each row with the JOIN fields the backend includes —
-  // entity_type, client_id, customer_tier (pulled from the root
-  // target's extra_data when this row is associated, else from its
-  // own extra_data).
+  // Materialize each row with the client_id JOIN field.
   rows = rows.map((p) => {
     const ent = db.entities.find((e) => e.id === p.entity_id);
-    const root = ent && ent.target_entity_id != null
-      ? db.entities.find((e) => e.id === ent.target_entity_id)
-      : ent;
-    let customerTier = null;
-    const tierSrc = (root && root.extra_data) || (ent && ent.extra_data);
-    if (tierSrc && tierSrc.customer_tier != null) {
-      const parsed = Number(tierSrc.customer_tier);
-      customerTier = Number.isFinite(parsed) ? parsed : null;
-    }
-    return {
-      ...p,
-      entity_type:   ent?.entity_type ?? null,
-      client_id:     ent?.client_id   ?? null,
-      customer_tier: customerTier,
-    };
+    return { ...p, client_id: p.client_id ?? ent?.client_id ?? null };
   });
 
   if (f.verification_status) {
@@ -2258,16 +1925,12 @@ function _mockFilterPhones(db, f) {
   if (f.ingestion_source) {
     rows = rows.filter((r) => r.ingestion_source === f.ingestion_source);
   }
-  if (f.entity_type) {
-    rows = rows.filter((r) => r.entity_type === f.entity_type);
-  }
-  if (f.classification_type) {
-    rows = rows.filter((r) => r.classification_type === f.classification_type);
+  if (f.phone_type) {
+    rows = rows.filter((r) => r.phone_type === f.phone_type);
   }
   if (f.client_id != null && f.client_id !== '') {
     rows = rows.filter((r) => String(r.client_id) === String(f.client_id));
   }
-  // Phase AUTH-C — multi-value personalization filter parity.
   if (f.client_ids?.length) {
     const allowed = new Set(f.client_ids.map(String));
     rows = rows.filter((r) => allowed.has(String(r.client_id)));
@@ -2283,8 +1946,6 @@ function _mockFilterPhones(db, f) {
       return hay.includes(needle);
     });
   }
-  // Newest-first to match the backend's ORDER BY ingested_at DESC.
-  rows.sort((a, b) => new Date(b.ingested_at) - new Date(a.ingested_at));
   return rows;
 }
 
@@ -2307,22 +1968,19 @@ function _mockFilterTasks(db, f) {
     rows = rows.filter((r) => allowed.has(String(r.client_id)));
   }
   if (f.exclude_terminal && !f.status) {
-    // Mirrors the backend: explicit status filter wins.
-    rows = rows.filter((r) => r.status !== 'resolved' && r.status !== 'rejected');
+    rows = rows.filter((r) => r.status !== 'done' && r.status !== 'rejected');
   }
   if (f.q) {
     const needle = String(f.q).toLowerCase();
     rows = rows.filter((r) => {
       const hay = [
         r.phone_number || '',
-        r.requested_by || '',
-        r.resolved_by  || '',
         String(r.client_id ?? ''),
       ].join(' ').toLowerCase();
       return hay.includes(needle);
     });
   }
-  rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  rows.sort((a, b) => String(b.id).localeCompare(String(a.id)));
   return rows;
 }
 

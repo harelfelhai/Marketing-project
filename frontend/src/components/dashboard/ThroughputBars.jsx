@@ -3,7 +3,6 @@
  */
 
 import { useMemo } from 'react';
-import { useMockData } from '../../contexts/MockDataContext';
 import { formatDate }  from '../../utils/formatDate';
 import { THROUGHPUT_HEADING, THROUGHPUT_SUBTITLE, THROUGHPUT_TOOLTIP } from '../../config/strings.he';
 
@@ -32,9 +31,7 @@ function buildDays(actionLogs) {
 }
 
 export default function ThroughputBars() {
-  const { actionLogs } = useMockData();
-
-  const days   = useMemo(() => buildDays(actionLogs), [actionLogs]);
+  const days   = useMemo(() => buildDays([]), []);
   const maxVal = Math.max(...days.map((d) => d.count), 1);
 
   return (

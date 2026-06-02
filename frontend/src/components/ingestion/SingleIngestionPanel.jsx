@@ -126,7 +126,7 @@ export default function SingleIngestionPanel({ active }) {
   // valid candidates for the "new entity's" target_entity_id.
   const rootTargets = useMemo(
     () => visibleEntities.filter(
-      (e) => e.entity_type === 'target' && e.target_entity_id == null,
+      (e) => e.relation_type === 'primary' && e.target_entity_id == null,
     ),
     [visibleEntities],
   );
@@ -210,11 +210,11 @@ export default function SingleIngestionPanel({ active }) {
     if (form.mode === 'existing') return form.existingEntityId;
 
     if (form.mode === 'new') {
+      const parts = [form.newFirstName.trim(), form.newLastName.trim()].filter(Boolean);
       const created = await createEntity({
-        first_name:        form.newFirstName.trim(),
-        last_name:         form.newLastName.trim() || null,
-        relation_type:     form.newRelation,
-        target_entity_id:  form.newTargetId,
+        full_name:        parts.join(' ') || null,
+        relation_type:    form.newRelation,
+        target_entity_id: form.newTargetId,
       }, mockDb);
       return created.id;
     }
@@ -238,7 +238,6 @@ export default function SingleIngestionPanel({ active }) {
       const created = await quickAttachPhone({
         phone_number:     cleaned,
         entity_id:        entityId,
-        ingestion_reason: form.reason.trim() || null,
       }, mockDb);
 
       pushToast({ variant: 'success', message: INGEST_TOAST_SUCCESS });
@@ -348,9 +347,7 @@ export default function SingleIngestionPanel({ active }) {
           {entitiesByClient.map((group) => (
             <optgroup key={String(group.clientId)} label={group.clientLabel}>
               {group.entities.map((e) => {
-                const name = [e.extra_data?.first_name, e.extra_data?.last_name]
-                  .filter(Boolean).join(' ');
-                const display = name || `#${e.id} (${e.entity_type})`;
+                const display = e.full_name || `#${e.id} (${e.relation_type})`;
                 return (
                   <option key={e.id} value={e.id}>{display}</option>
                 );

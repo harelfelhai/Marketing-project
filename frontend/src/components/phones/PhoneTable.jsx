@@ -38,19 +38,14 @@ const SKELETON_ROW_COUNT = 8;
  * mounting the React tree. The component still uses it via the same
  * call signature; production bundle is unaffected.
  */
-export function applyFilters(phones, entities, clients, actionLogs, filters) {
+export function applyFilters(phones, entities, clients, filters) {
   const entityById = new Map(entities.map((e) => [e.id, e]));
   const clientById = new Map(clients.map((c) => [c.id, c]));
-  const logsByPhone = actionLogs.reduce((acc, l) => {
-    (acc[l.phone_id] ||= []).push(l);
-    return acc;
-  }, {});
 
   const rows = phones.map((phone) => {
     const entity = entityById.get(phone.entity_id);
     const client = entity ? clientById.get(entity.client_id) : null;
-    const logs   = logsByPhone[phone.id] || [];
-    return { phone, entity, client, logs };
+    return { phone, entity, client };
   });
 
   // Phase AUTH-C — multi-value personalization filter. When the
@@ -71,9 +66,9 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
     // an integer. A strict `!==` always tripped, emptying the table.
     // Stringify both sides to match the §5.1 cross-link coercion rule.
     if (filters.clientId && String(entity?.client_id) !== String(filters.clientId))               return false;
-    if (filters.verificationStatus && phone.verification_status   !== filters.verificationStatus) return false;
-    if (filters.ingestionSource    && phone.ingestion_source      !== filters.ingestionSource)    return false;
-    if (filters.classificationType && phone.classification_type   !== filters.classificationType) return false;
+    if (filters.verificationStatus && phone.verification_status !== filters.verificationStatus) return false;
+    if (filters.ingestionSource    && phone.ingestion_source    !== filters.ingestionSource)    return false;
+    if (filters.phoneType          && phone.phone_type          !== filters.phoneType)          return false;
     if (filters.search) {
       const q = filters.search.toLowerCase().trim();
       const hay = [
@@ -92,31 +87,21 @@ export function applyFilters(phones, entities, clients, actionLogs, filters) {
   // toggle re-sorts the in-memory rows without a network round-trip.
   // Same NULLS-LAST + id-DESC tiebreaker as the backend's ORDER BY so
   // mock-mode and real-mode produce identical visible ordering.
-  const sortBy = filters.sortBy || 'priority';
-  if (sortBy === 'ingested_at') {
-    filtered.sort((a, b) => {
-      const da = new Date(a.phone.ingested_at).getTime();
-      const db = new Date(b.phone.ingested_at).getTime();
-      if (da !== db) return db - da;
-      return b.phone.id - a.phone.id;
-    });
-  } else {
-    filtered.sort((a, b) => {
-      const aHas = a.phone.priority_score != null;
-      const bHas = b.phone.priority_score != null;
-      if (aHas !== bHas) return aHas ? -1 : 1;                   // NULLS LAST
-      if (aHas && bHas && a.phone.priority_score !== b.phone.priority_score) {
-        return b.phone.priority_score - a.phone.priority_score;  // DESC
-      }
-      return b.phone.id - a.phone.id;                            // tiebreaker
-    });
-  }
+  filtered.sort((a, b) => {
+    const aHas = a.phone.score != null;
+    const bHas = b.phone.score != null;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    if (aHas && bHas && a.phone.score !== b.phone.score) {
+      return b.phone.score - a.phone.score;
+    }
+    return String(b.phone.id).localeCompare(String(a.phone.id));
+  });
   return filtered;
 }
 
 export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   const mockDb = useMockData();
-  const { phones, entities, clients, actionLogs, loading } = mockDb;
+  const { phones, entities, clients, loading } = mockDb;
   const { phoneFilters } = useUI();
 
   // Configurable display fields — driven by /system/settings → display_fields.
@@ -150,8 +135,8 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
   );
 
   const rows = useMemo(
-    () => applyFilters(phones, entities, clients, actionLogs, effectiveFilters),
-    [phones, entities, clients, actionLogs, effectiveFilters]
+    () => applyFilters(phones, entities, clients, effectiveFilters),
+    [phones, entities, clients, effectiveFilters]
   );
 
   return (
@@ -182,13 +167,12 @@ export default function PhoneTable({ selectedId, onSelect, clientIds }) {
               </td>
             </tr>
           ) : (
-            rows.map(({ phone, entity, client, logs }) => (
+            rows.map(({ phone, entity, client }) => (
               <PhoneRow
                 key={phone.id}
                 phone={phone}
                 entity={entity}
                 client={client}
-                logs={logs}
                 isSelected={selectedId === phone.id}
                 onSelect={onSelect}
                 visibleKeys={visibleKeys}

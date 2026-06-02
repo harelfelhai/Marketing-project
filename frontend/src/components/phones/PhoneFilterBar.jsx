@@ -9,26 +9,20 @@ import { Search, X } from 'lucide-react';
 
 import { useUI }       from '../../contexts/UIContext';
 import { useMockData } from '../../contexts/MockDataContext';
-import { CLASSIFICATION_TYPES } from '../../mock/mockData';
+import { PHONE_TYPES } from '../../mock/mockData';
 import {
   FILTER_SEARCH_PLACEHOLDER, FILTER_ALL_CLIENTS, FILTER_ALL_STATUSES,
   FILTER_STATUS_PENDING, FILTER_STATUS_GOOD, FILTER_STATUS_BAD,
   FILTER_ALL_SOURCES, FILTER_SOURCE_API, FILTER_SOURCE_MANUAL,
   FILTER_SOURCE_IMPORT, FILTER_SOURCE_PARTNER, FILTER_ALL_CLASSIFICATIONS,
   FILTER_BTN_CLEAR,
-  FILTER_SORT_LABEL_PRIORITY, FILTER_SORT_LABEL_INGESTED_AT,
 } from '../../config/strings.he';
 
-const SORT_OPTIONS = [
-  { value: 'priority',     label: FILTER_SORT_LABEL_PRIORITY },
-  { value: 'ingested_at',  label: FILTER_SORT_LABEL_INGESTED_AT },
-];
-
 const VERIFICATION_OPTIONS = [
-  { value: '',              label: FILTER_ALL_STATUSES },
-  { value: 'pending',       label: FILTER_STATUS_PENDING },
-  { value: 'verified_good', label: FILTER_STATUS_GOOD },
-  { value: 'verified_bad',  label: FILTER_STATUS_BAD },
+  { value: '',         label: FILTER_ALL_STATUSES },
+  { value: 'pending',  label: FILTER_STATUS_PENDING },
+  { value: 'verified', label: FILTER_STATUS_GOOD },
+  { value: 'rejected', label: FILTER_STATUS_BAD },
 ];
 
 const SOURCE_OPTIONS = [
@@ -47,7 +41,7 @@ export default function PhoneFilterBar() {
     phoneFilters.clientId           ||
     phoneFilters.verificationStatus ||
     phoneFilters.ingestionSource    ||
-    phoneFilters.classificationType ||
+    phoneFilters.phoneType          ||
     phoneFilters.search;
 
   const selectClass =
@@ -102,26 +96,15 @@ export default function PhoneFilterBar() {
         ))}
       </select>
 
-      {/* Classification Type */}
+      {/* Phone Type */}
       <select
-        value={phoneFilters.classificationType}
-        onChange={(e) => updatePhoneFilters({ classificationType: e.target.value })}
+        value={phoneFilters.phoneType}
+        onChange={(e) => updatePhoneFilters({ phoneType: e.target.value })}
         className={selectClass}
       >
         <option value="">{FILTER_ALL_CLASSIFICATIONS}</option>
-        {CLASSIFICATION_TYPES.map((t) => (
+        {(PHONE_TYPES || []).map((t) => (
           <option key={t} value={t}>{t.toUpperCase()}</option>
-        ))}
-      </select>
-
-      {/* Sort (Phase DY-3) */}
-      <select
-        value={phoneFilters.sortBy || 'priority'}
-        onChange={(e) => updatePhoneFilters({ sortBy: e.target.value })}
-        className={selectClass}
-      >
-        {SORT_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
 

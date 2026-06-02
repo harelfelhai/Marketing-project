@@ -43,7 +43,7 @@ export default function PhoneGridPage() {
     if (phoneFilters.clientId !== '' && phoneFilters.clientId != null) f.client_id = phoneFilters.clientId;
     if (phoneFilters.verificationStatus)                                f.verification_status = phoneFilters.verificationStatus;
     if (phoneFilters.ingestionSource)                                   f.ingestion_source    = phoneFilters.ingestionSource;
-    if (phoneFilters.classificationType)                                f.classification_type = phoneFilters.classificationType;
+    if (phoneFilters.phoneType)                                          f.phone_type          = phoneFilters.phoneType;
     if (phoneFilters.search)                                            f.q                   = phoneFilters.search.trim();
     if (personalizationClientIds)                                       f.client_ids          = personalizationClientIds;
     return f;

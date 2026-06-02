@@ -45,18 +45,20 @@ function renderEntityCell(key, e, ctx) {
   switch (key) {
     case 'id':
       return <span className="text-slate-500 font-mono text-xs">#{e.id}</span>;
-    case 'name': {
-      const fullName = [e.first_name, e.last_name].filter(Boolean).join(' ');
-      return fullName
-        ? <span className="text-slate-900">{fullName}</span>
+    case 'name':
+      return e.full_name
+        ? <span className="text-slate-900">{e.full_name}</span>
         : <span className="text-slate-400 italic">ללא שם</span>;
-    }
-    case 'strong_identifier':
-      return e.strong_identifier
-        ? <span className="text-slate-700 font-mono text-xs">{e.strong_identifier}</span>
+    case 'identifier_1':
+      return e.identifier_1
+        ? <span className="text-slate-700 font-mono text-xs">{e.identifier_1}</span>
+        : <span className="text-slate-300">—</span>;
+    case 'identifier_2':
+      return e.identifier_2
+        ? <span className="text-slate-700 font-mono text-xs">{e.identifier_2}</span>
         : <span className="text-slate-300">—</span>;
     case 'relation':
-      return <span className="text-slate-700">{e.entity_type}</span>;
+      return <span className="text-slate-700">{e.relation_type}</span>;
     case 'client': {
       const clientName = getClientById(e.client_id)?.name || `Client ${e.client_id}`;
       return <span className="text-slate-700">{clientName}</span>;
@@ -82,11 +84,7 @@ function renderEntityCell(key, e, ctx) {
       );
     }
     case 'created':
-      return (
-        <span className="text-slate-500 text-xs">
-          {e.created_at ? new Date(e.created_at).toLocaleDateString('he-IL') : '—'}
-        </span>
-      );
+      return <span className="text-slate-300">—</span>;
     default:
       return null;
   }
@@ -232,7 +230,7 @@ export default function EntitiesPage() {
  * would be overkill.
  */
 function PhonesPopover({ entity, phones, onClose }) {
-  const name = [entity.first_name, entity.last_name].filter(Boolean).join(' ') || `#${entity.id}`;
+  const name = entity.full_name || `#${entity.id}`;
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-4"
@@ -274,7 +272,7 @@ function PhonesPopover({ entity, phones, onClose }) {
                 </div>
                 <span className="text-xs text-slate-600 whitespace-nowrap">
                   {ENTITIES_PHONES_POPOVER_CONFIDENCE(
-                    p.confidence_score != null ? Math.round(p.confidence_score * 100) : null,
+                    p.score != null ? Math.round(p.score * 100) : null,
                   )}
                 </span>
               </li>

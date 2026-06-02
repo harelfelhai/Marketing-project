@@ -1,13 +1,12 @@
 /**
- * SystemOpsPage — engine cockpit + health strip + failed-action recovery.
+ * SystemOpsPage — engine cockpit + pipeline health strip.
  */
 
-import EngineControlCard  from '../components/ops/EngineControlCard';
+import EngineControlCard   from '../components/ops/EngineControlCard';
 import PipelineHealthStrip from '../components/ops/PipelineHealthStrip';
-import FailedActionsTable  from '../components/ops/FailedActionsTable';
 import {
   PAGE_SYSTEM_OPS_TITLE, PAGE_SYSTEM_OPS_SUB,
-  PAGE_SYSTEM_OPS_ENGINES, PAGE_SYSTEM_OPS_HEALTH, PAGE_SYSTEM_OPS_RECOVERY,
+  PAGE_SYSTEM_OPS_ENGINES, PAGE_SYSTEM_OPS_HEALTH,
 } from '../config/strings.he';
 
 export default function SystemOpsPage() {
@@ -35,14 +34,6 @@ export default function SystemOpsPage() {
           {PAGE_SYSTEM_OPS_HEALTH}
         </h2>
         <PipelineHealthStrip />
-      </div>
-
-      {/* Failed Actions */}
-      <div>
-        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">
-          {PAGE_SYSTEM_OPS_RECOVERY}
-        </h2>
-        <FailedActionsTable />
       </div>
     </section>
   );

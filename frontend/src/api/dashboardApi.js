@@ -16,30 +16,15 @@ export async function getDashboardMetrics(mockDb) {
 
   await mockDelay(300);
 
-  const { phones, actionLogs } = mockDb;
-  const now = new Date();
+  const { phones } = mockDb;
 
   const phones_by_verification_status = phones.reduce((acc, p) => {
     acc[p.verification_status] = (acc[p.verification_status] || 0) + 1;
     return acc;
   }, {});
 
-  const actions_by_status = actionLogs.reduce((acc, l) => {
-    acc[l.status] = (acc[l.status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const retryQueue     = actionLogs.filter((l) => l.status === 'scheduled_retry');
-  const overdue_retries = retryQueue.filter(
-    (l) => l.retry_after && new Date(l.retry_after) < now
-  ).length;
-
   return {
     total_phones:                  phones.length,
     phones_by_verification_status,
-    total_actions:                 actionLogs.length,
-    actions_by_status,
-    retry_queue_depth:             retryQueue.length,
-    overdue_retries,
   };
 }

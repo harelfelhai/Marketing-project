@@ -28,7 +28,7 @@ import { useUI }                from '../../contexts/UIContext';
 import NotificationOptInPanel   from '../notifications/NotificationOptInPanel';
 import {
   ENTITY_FIELD_FIRST_NAME, ENTITY_FIELD_LAST_NAME,
-  ENTITY_FIELD_RELATION, ENTITY_FIELD_TARGET, ENTITY_FIELD_STRONG_ID,
+  ENTITY_FIELD_RELATION, ENTITY_FIELD_TARGET,
   ENTITY_PLACEHOLDER_PICK,
   ENTITY_TARGET_LIST_EMPTY,
   ENTITY_OPTION_FAMILY, ENTITY_OPTION_FRIEND,
@@ -51,11 +51,10 @@ const RELATION_OPTIONS = [
 ];
 
 const EMPTY_FORM = {
-  firstName:        '',
-  lastName:         '',
-  relation:         'family',     // sensible default — most common pick
-  targetId:         '',
-  strongIdentifier: '',
+  firstName: '',
+  lastName:  '',
+  relation:  'family',
+  targetId:  '',
 };
 
 export default function SingleEntityPanel({ active }) {
@@ -80,16 +79,9 @@ export default function SingleEntityPanel({ active }) {
     }
   }, [active]);
 
-  // All root targets — the entities the operator can attach a new
-  // person to. Defined as entity_type='target' AND target_entity_id is
-  // null. UAT round-3: the previous two-dropdown UX (client → target)
-  // was redundant because picking a target IMPLIES the client. We now
-  // render a single grouped picker (`<optgroup>` per client) — the
-  // operator sees every target with its owning client as the group
-  // header, and picks one in one click.
   const rootTargets = useMemo(
     () => mockDb.entities.filter(
-      (e) => e.entity_type === 'target' && e.target_entity_id == null,
+      (e) => e.relation_type === 'primary' && e.target_entity_id == null,
     ),
     [mockDb.entities],
   );
@@ -133,16 +125,11 @@ export default function SingleEntityPanel({ active }) {
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    // UAT round-3: strong_identifier moved to a first-class column on
-    // Entity. Send as a top-level payload field; empty values get
-    // dropped server-side.
-    const sid = form.strongIdentifier.trim();
+    const parts = [form.firstName.trim(), form.lastName.trim()].filter(Boolean);
     const payload = {
-      first_name:        form.firstName.trim(),
-      last_name:         form.lastName.trim() || null,
-      relation_type:     form.relation,
-      target_entity_id:  form.targetId || null,
-      ...(sid ? { strong_identifier: sid } : {}),
+      full_name:        parts.join(' ') || null,
+      relation_type:    form.relation,
+      target_entity_id: form.targetId || null,
     };
 
     setSubmitting(true);
@@ -178,9 +165,7 @@ export default function SingleEntityPanel({ active }) {
   // or close out.
   // ===========================================================================
   if (createdEntity) {
-    const fullName = [createdEntity.first_name, createdEntity.last_name]
-      .filter(Boolean)
-      .join(' ');
+    const fullName = createdEntity.full_name || '';
     return (
       <div className="space-y-4" data-testid="entity-success-panel">
         <div className="flex items-start gap-3 rounded-md bg-emerald-50 border border-emerald-200 p-4">
@@ -262,15 +247,6 @@ export default function SingleEntityPanel({ active }) {
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </SelectField>
-
-      {/* Optional "strong identifier" — non-DB external id. Stored
-          inside extra_data on the backend; an empty value is dropped. */}
-      <Field
-        id="entity-strong-id"
-        label={ENTITY_FIELD_STRONG_ID}
-        value={form.strongIdentifier}
-        onChange={(v) => handleChange('strongIdentifier', v)}
-      />
 
       {/* Single grouped target picker — clients are <optgroup> labels.
           UAT round-3: replaced the previous client→target two-step

@@ -53,6 +53,8 @@ export const CLASSIFICATION_TYPES = [
   'type_d',
 ];
 
+export const PHONE_TYPES = CLASSIFICATION_TYPES;
+
 // ---------------------------------------------------------------------------
 // Entities — two-level model.
 //
@@ -72,62 +74,53 @@ const _now = new Date('2026-05-17T10:00:00Z');
 const _daysAgo = (d) => new Date(_now - d * 86400000).toISOString();
 
 export const SEED_ENTITIES = [
-  // ===== Client Alpha — root id 1 + envelope (ids 1-8, 88) =====
-  { id: 'ent-1',  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Alpha',  region: 'north' } },
-  { id: 'ent-2',  entity_type: 'family',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 1', region: 'north' } },
-  { id: 'ent-3',  entity_type: 'friend',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 2', region: 'south' } },
-  { id: 'ent-4',  entity_type: 'colleague',       target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 3', region: 'east'  } },
-  { id: 'ent-5',  entity_type: 'spouse',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 4', region: 'west'  } },
-  { id: 'ent-6',  entity_type: 'family',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 5', region: 'north' } },
-  { id: 'ent-7',  entity_type: 'friend',          target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 6', region: 'south' } },
-  { id: 'ent-8',  entity_type: 'colleague',       target_entity_id: 'ent-1',    extra_data: { first_name: 'Alpha Relative 7', region: 'east'  } },
-  // ===== Client Beta — root id 9 + envelope (ids 9-16, 91) =====
-  { id: 'ent-9',  entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Beta',   region: 'west'  } },
-  { id: 'ent-10', entity_type: 'family',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 1',  region: 'north' } },
-  { id: 'ent-11', entity_type: 'friend',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 2',  region: 'east'  } },
-  { id: 'ent-12', entity_type: 'colleague',       target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 3',  region: 'south' } },
-  { id: 'ent-13', entity_type: 'spouse',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 4',  region: 'north' } },
-  { id: 'ent-14', entity_type: 'family',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 5',  region: 'west'  } },
-  { id: 'ent-15', entity_type: 'friend',          target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 6',  region: 'east'  } },
-  { id: 'ent-16', entity_type: 'colleague',       target_entity_id: 'ent-9',    extra_data: { first_name: 'Beta Relative 7',  region: 'south' } },
+  // ===== Client Alpha — root id 1 + envelope (ids 1-8) =====
+  { id: 'ent-1',  relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Alpha',       extra_data: { region: 'north' } },
+  { id: 'ent-2',  relation_type: 'family',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 1',   extra_data: { region: 'north' } },
+  { id: 'ent-3',  relation_type: 'friend',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 2',   extra_data: { region: 'south' } },
+  { id: 'ent-4',  relation_type: 'colleague', target_entity_id: 'ent-1',    full_name: 'Alpha Relative 3',   extra_data: { region: 'east'  } },
+  { id: 'ent-5',  relation_type: 'family',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 4',   extra_data: { region: 'west'  } },
+  { id: 'ent-6',  relation_type: 'family',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 5',   extra_data: { region: 'north' } },
+  { id: 'ent-7',  relation_type: 'friend',    target_entity_id: 'ent-1',    full_name: 'Alpha Relative 6',   extra_data: { region: 'south' } },
+  { id: 'ent-8',  relation_type: 'colleague', target_entity_id: 'ent-1',    full_name: 'Alpha Relative 7',   extra_data: { region: 'east'  } },
+  // ===== Client Beta — root id 9 (ids 9-16) =====
+  { id: 'ent-9',  relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Beta',        extra_data: { region: 'west'  } },
+  { id: 'ent-10', relation_type: 'family',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 1',    extra_data: { region: 'north' } },
+  { id: 'ent-11', relation_type: 'friend',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 2',    extra_data: { region: 'east'  } },
+  { id: 'ent-12', relation_type: 'colleague', target_entity_id: 'ent-9',    full_name: 'Beta Relative 3',    extra_data: { region: 'south' } },
+  { id: 'ent-13', relation_type: 'family',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 4',    extra_data: { region: 'north' } },
+  { id: 'ent-14', relation_type: 'family',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 5',    extra_data: { region: 'west'  } },
+  { id: 'ent-15', relation_type: 'friend',    target_entity_id: 'ent-9',    full_name: 'Beta Relative 6',    extra_data: { region: 'east'  } },
+  { id: 'ent-16', relation_type: 'colleague', target_entity_id: 'ent-9',    full_name: 'Beta Relative 7',    extra_data: { region: 'south' } },
   // ===== Client Gamma — root id 17 (ids 17-23) =====
-  { id: 'ent-17', entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Gamma',  region: 'north' } },
-  { id: 'ent-18', entity_type: 'family',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 1', region: 'east'  } },
-  { id: 'ent-19', entity_type: 'friend',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 2', region: 'west'  } },
-  { id: 'ent-20', entity_type: 'colleague',       target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 3', region: 'south' } },
-  { id: 'ent-21', entity_type: 'spouse',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 4', region: 'north' } },
-  { id: 'ent-22', entity_type: 'family',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 5', region: 'east'  } },
-  { id: 'ent-23', entity_type: 'friend',          target_entity_id: 'ent-17',   extra_data: { first_name: 'Gamma Relative 6', region: 'west'  } },
+  { id: 'ent-17', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Gamma',       extra_data: { region: 'north' } },
+  { id: 'ent-18', relation_type: 'family',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 1',   extra_data: { region: 'east'  } },
+  { id: 'ent-19', relation_type: 'friend',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 2',   extra_data: { region: 'west'  } },
+  { id: 'ent-20', relation_type: 'colleague', target_entity_id: 'ent-17',   full_name: 'Gamma Relative 3',   extra_data: { region: 'south' } },
+  { id: 'ent-21', relation_type: 'family',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 4',   extra_data: { region: 'north' } },
+  { id: 'ent-22', relation_type: 'family',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 5',   extra_data: { region: 'east'  } },
+  { id: 'ent-23', relation_type: 'friend',    target_entity_id: 'ent-17',   full_name: 'Gamma Relative 6',   extra_data: { region: 'west'  } },
   // ===== Client Delta — root id 24 (ids 24-32) =====
-  { id: 'ent-24', entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Delta',  region: 'south' } },
-  { id: 'ent-25', entity_type: 'family',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 1', region: 'north' } },
-  { id: 'ent-26', entity_type: 'friend',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 2', region: 'east'  } },
-  { id: 'ent-27', entity_type: 'colleague',       target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 3', region: 'west'  } },
-  { id: 'ent-28', entity_type: 'spouse',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 4', region: 'south' } },
-  { id: 'ent-29', entity_type: 'family',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 5', region: 'north' } },
-  { id: 'ent-30', entity_type: 'friend',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 6', region: 'east'  } },
-  { id: 'ent-31', entity_type: 'colleague',       target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 7', region: 'west'  } },
-  { id: 'ent-32', entity_type: 'spouse',          target_entity_id: 'ent-24',   extra_data: { first_name: 'Delta Relative 8', region: 'south' } },
+  { id: 'ent-24', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Delta',       extra_data: { region: 'south' } },
+  { id: 'ent-25', relation_type: 'family',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 1',   extra_data: { region: 'north' } },
+  { id: 'ent-26', relation_type: 'friend',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 2',   extra_data: { region: 'east'  } },
+  { id: 'ent-27', relation_type: 'colleague', target_entity_id: 'ent-24',   full_name: 'Delta Relative 3',   extra_data: { region: 'west'  } },
+  { id: 'ent-28', relation_type: 'family',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 4',   extra_data: { region: 'south' } },
+  { id: 'ent-29', relation_type: 'family',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 5',   extra_data: { region: 'north' } },
+  { id: 'ent-30', relation_type: 'friend',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 6',   extra_data: { region: 'east'  } },
+  { id: 'ent-31', relation_type: 'colleague', target_entity_id: 'ent-24',   full_name: 'Delta Relative 7',   extra_data: { region: 'west'  } },
+  { id: 'ent-32', relation_type: 'family',    target_entity_id: 'ent-24',   full_name: 'Delta Relative 8',   extra_data: { region: 'south' } },
   // ===== Client Epsilon — root id 33 (ids 33-40) =====
-  { id: 'ent-33', entity_type: 'target',          target_entity_id: null, extra_data: { first_name: 'Client Epsilon', region: 'north' } },
-  { id: 'ent-34', entity_type: 'family',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 1', region: 'east'  } },
-  { id: 'ent-35', entity_type: 'friend',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 2', region: 'west'  } },
-  { id: 'ent-36', entity_type: 'colleague',       target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 3', region: 'south' } },
-  { id: 'ent-37', entity_type: 'spouse',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 4', region: 'north' } },
-  { id: 'ent-38', entity_type: 'family',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 5', region: 'east'  } },
-  { id: 'ent-39', entity_type: 'friend',          target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 6', region: 'west'  } },
-  { id: 'ent-40', entity_type: 'colleague',       target_entity_id: 'ent-33',   extra_data: { first_name: 'Epsilon Relative 7', region: 'south' } },
-
-  // Phase DY-4 — social_envelope entities (Vector B). target_entity_id
-  // points at the owning root so the row sits inside that client's
-  // queue. Identity unknown at ingest; the operator's audit either
-  // confirms placement, identifies the owner, or refutes the surfacing.
-  { id: 'ent-88', entity_type: 'social_envelope',
-    target_entity_id: 'ent-1',
-    extra_data: { envelope_id: 'EP-088', scrape_source: 'social_cluster_alpha' } },
-  { id: 'ent-91', entity_type: 'social_envelope',
-    target_entity_id: 'ent-9',
-    extra_data: { envelope_id: 'EP-091', scrape_source: 'co_occurrence_beta' } },
+  { id: 'ent-33', relation_type: 'primary',   target_entity_id: null,       full_name: 'Client Epsilon',     extra_data: { region: 'north' } },
+  { id: 'ent-34', relation_type: 'family',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 1', extra_data: { region: 'east'  } },
+  { id: 'ent-35', relation_type: 'friend',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 2', extra_data: { region: 'west'  } },
+  { id: 'ent-36', relation_type: 'colleague', target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 3', extra_data: { region: 'south' } },
+  { id: 'ent-37', relation_type: 'family',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 4', extra_data: { region: 'north' } },
+  { id: 'ent-38', relation_type: 'family',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 5', extra_data: { region: 'east'  } },
+  { id: 'ent-39', relation_type: 'friend',    target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 6', extra_data: { region: 'west'  } },
+  { id: 'ent-40', relation_type: 'colleague', target_entity_id: 'ent-33',   full_name: 'Epsilon Relative 7', extra_data: { region: 'south' } },
+  { id: 'ent-88', relation_type: 'friend',    target_entity_id: 'ent-1',    full_name: null,                 extra_data: { envelope_id: 'EP-088' } },
+  { id: 'ent-91', relation_type: 'friend',    target_entity_id: 'ent-9',    full_name: null,                 extra_data: { envelope_id: 'EP-091' } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -138,596 +131,262 @@ export const SEED_PHONES = [
   // --- Alpha phones (entity_ids 1-8) ---
   {
     id: 'ph-1',  entity_id: 'ent-1',  phone_number: '+15550000001',
-    classification_type: 'type_a', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(10),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Confirmed via operator review',
-    verified_at: _daysAgo(8), created_at: _daysAgo(10), updated_at: _daysAgo(8),
-    extra_data: { priority: 'high', campaign: 'Q2-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.92,
+    extra_data: { campaign: 'Q2-2026' },
   },
   {
     id: 'ph-2',  entity_id: 'ent-2',  phone_number: '+15550000002',
-    classification_type: 'type_b', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(9),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(9), updated_at: _daysAgo(9),
-    extra_data: { priority: 'medium', notes: 'Awaiting first contact' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.45,
+    extra_data: { notes: 'Awaiting first contact' },
   },
   {
     id: 'ph-3',  entity_id: 'ent-3',  phone_number: '+15550000003',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'referral', ingested_at: _daysAgo(8),
-    verification_status: 'verified_bad', verification_source: 'automated',
-    verification_reason: 'Number disconnected',
-    verified_at: _daysAgo(6), created_at: _daysAgo(8), updated_at: _daysAgo(6),
-    extra_data: { priority: 'low', notes: 'Disconnected number confirmed' },
+    phone_type: 'work', ingestion_source: 'api',
+    verification_status: 'rejected', score: 0.12,
+    extra_data: { notes: 'Disconnected number confirmed' },
   },
   {
     id: 'ph-4',  entity_id: 'ent-4',  phone_number: '+15550000004',
-    classification_type: 'type_a', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(7),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(7), updated_at: _daysAgo(7),
-    extra_data: { priority: 'high', batch: 'import-2026-05-10' },
+    phone_type: 'mobile', ingestion_source: 'import',
+    verification_status: 'pending', score: 0.60,
+    extra_data: { batch: 'import-2026-05-10' },
   },
   {
     id: 'ph-5',  entity_id: 'ent-5',  phone_number: '+15550000005',
-    classification_type: 'type_d', ingestion_source: 'api',
-    ingestion_reason: 'partner_feed', ingested_at: _daysAgo(6),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Verified by senior operator',
-    verified_at: _daysAgo(5), created_at: _daysAgo(6), updated_at: _daysAgo(5),
-    extra_data: { priority: 'high', partner: 'partner-01' },
+    phone_type: 'home', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.88,
+    extra_data: { partner: 'partner-01' },
   },
   {
     id: 'ph-6',  entity_id: 'ent-6',  phone_number: '+15550000006',
-    classification_type: 'type_b', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(5),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(5), updated_at: _daysAgo(5),
-    extra_data: { priority: 'medium' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.50,
+    extra_data: {},
   },
   {
     id: 'ph-7',  entity_id: 'ent-7',  phone_number: '+15550000007',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(4),
-    verification_status: 'verified_good', verification_source: 'automated',
-    verification_reason: 'Passed automated quality check',
-    verified_at: _daysAgo(3), created_at: _daysAgo(4), updated_at: _daysAgo(3),
-    extra_data: { priority: 'low', campaign: 'Q2-2026' },
+    phone_type: 'work', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.75,
+    extra_data: { campaign: 'Q2-2026' },
   },
   {
     id: 'ph-8',  entity_id: 'ent-8',  phone_number: '+15550000008',
-    classification_type: 'type_a', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(3),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(3), updated_at: _daysAgo(3),
-    extra_data: { priority: 'high', batch: 'import-2026-05-14' },
+    phone_type: 'mobile', ingestion_source: 'import',
+    verification_status: 'pending', score: 0.55,
+    extra_data: { batch: 'import-2026-05-14' },
   },
   // --- Beta phones (entity_ids 9-16) ---
   {
     id: 'ph-9',  entity_id: 'ent-9',  phone_number: '+15550000009',
-    classification_type: 'type_b', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(12),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Operator confirmed contact',
-    verified_at: _daysAgo(10), created_at: _daysAgo(12), updated_at: _daysAgo(10),
-    extra_data: { priority: 'medium', campaign: 'Q1-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.78,
+    extra_data: { campaign: 'Q1-2026' },
   },
   {
     id: 'ph-10', entity_id: 'ent-10', phone_number: '+15550000010',
-    classification_type: 'type_a', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(11),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(11), updated_at: _daysAgo(11),
-    extra_data: { priority: 'high' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.65,
+    extra_data: {},
   },
   {
     id: 'ph-11', entity_id: 'ent-11', phone_number: '+15550000011',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'referral', ingested_at: _daysAgo(10),
-    verification_status: 'verified_bad', verification_source: 'automated',
-    verification_reason: 'Failed quality threshold',
-    verified_at: _daysAgo(8), created_at: _daysAgo(10), updated_at: _daysAgo(8),
-    extra_data: { priority: 'low', failure_code: 'QC-403' },
+    phone_type: 'work', ingestion_source: 'api',
+    verification_status: 'rejected', score: 0.20,
+    extra_data: { failure_code: 'QC-403' },
   },
   {
     id: 'ph-12', entity_id: 'ent-12', phone_number: '+15550000012',
-    classification_type: 'type_d', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(9),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(9), updated_at: _daysAgo(9),
-    extra_data: { priority: 'medium', batch: 'import-2026-05-08' },
+    phone_type: 'home', ingestion_source: 'import',
+    verification_status: 'pending', score: 0.48,
+    extra_data: { batch: 'import-2026-05-08' },
   },
   {
     id: 'ph-13', entity_id: 'ent-13', phone_number: '+15550000013',
-    classification_type: 'type_a', ingestion_source: 'api',
-    ingestion_reason: 'partner_feed', ingested_at: _daysAgo(8),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Verified clean number',
-    verified_at: _daysAgo(7), created_at: _daysAgo(8), updated_at: _daysAgo(7),
-    extra_data: { priority: 'high', partner: 'partner-02' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.85,
+    extra_data: { partner: 'partner-02' },
   },
   {
     id: 'ph-14', entity_id: 'ent-14', phone_number: '+15550000014',
-    classification_type: 'type_b', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(6),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(6), updated_at: _daysAgo(6),
-    extra_data: { priority: 'low' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.40,
+    extra_data: {},
   },
   {
     id: 'ph-15', entity_id: 'ent-15', phone_number: '+15550000015',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(4),
-    verification_status: 'verified_good', verification_source: 'automated',
-    verification_reason: 'Automated pass — score 0.92',
-    verified_at: _daysAgo(3), created_at: _daysAgo(4), updated_at: _daysAgo(3),
-    extra_data: { priority: 'medium', campaign: 'Q2-2026', score: 0.92 },
+    phone_type: 'work', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.92,
+    extra_data: { campaign: 'Q2-2026' },
   },
   {
     id: 'ph-16', entity_id: 'ent-16', phone_number: '+15550000016',
-    classification_type: 'type_d', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(2),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(2), updated_at: _daysAgo(2),
-    extra_data: { priority: 'medium', batch: 'import-2026-05-15' },
+    phone_type: 'mobile', ingestion_source: 'import',
+    verification_status: 'pending', score: 0.42,
+    extra_data: { batch: 'import-2026-05-15' },
   },
   // --- Gamma phones (entity_ids 17-23) ---
   {
     id: 'ph-17', entity_id: 'ent-17', phone_number: '+15550000017',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(14),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Confirmed by team lead',
-    verified_at: _daysAgo(12), created_at: _daysAgo(14), updated_at: _daysAgo(12),
-    extra_data: { priority: 'high', campaign: 'Q1-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.90,
+    extra_data: { campaign: 'Q1-2026' },
   },
   {
     id: 'ph-18', entity_id: 'ent-18', phone_number: '+15550000018',
-    classification_type: 'type_a', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(13),
-    verification_status: 'verified_bad', verification_source: 'manual',
-    verification_reason: 'Invalid number format',
-    verified_at: _daysAgo(11), created_at: _daysAgo(13), updated_at: _daysAgo(11),
-    extra_data: { priority: 'low', failure_reason: 'invalid_format' },
+    phone_type: 'home', ingestion_source: 'manual',
+    verification_status: 'rejected', score: 0.15,
+    extra_data: { failure_reason: 'invalid_format' },
   },
   {
     id: 'ph-19', entity_id: 'ent-19', phone_number: '+15550000019',
-    classification_type: 'type_b', ingestion_source: 'api',
-    ingestion_reason: 'referral', ingested_at: _daysAgo(11),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(11), updated_at: _daysAgo(11),
-    extra_data: { priority: 'medium' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.52,
+    extra_data: {},
   },
   {
     id: 'ph-20', entity_id: 'ent-20', phone_number: '+15550000020',
-    classification_type: 'type_d', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(9),
-    verification_status: 'verified_good', verification_source: 'automated',
-    verification_reason: 'High confidence score',
-    verified_at: _daysAgo(8), created_at: _daysAgo(9), updated_at: _daysAgo(8),
-    extra_data: { priority: 'high', score: 0.97, batch: 'import-2026-05-08' },
+    phone_type: 'work', ingestion_source: 'import',
+    verification_status: 'verified', score: 0.97,
+    extra_data: { batch: 'import-2026-05-08' },
   },
   {
     id: 'ph-21', entity_id: 'ent-21', phone_number: '+15550000021',
-    classification_type: 'type_a', ingestion_source: 'api',
-    ingestion_reason: 'partner_feed', ingested_at: _daysAgo(7),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(7), updated_at: _daysAgo(7),
-    extra_data: { priority: 'high', partner: 'partner-03' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.68,
+    extra_data: { partner: 'partner-03' },
   },
   {
     id: 'ph-22', entity_id: 'ent-22', phone_number: '+15550000022',
-    classification_type: 'type_c', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(5),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(5), updated_at: _daysAgo(5),
-    extra_data: { priority: 'low' },
+    phone_type: 'work', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.35,
+    extra_data: {},
   },
   {
     id: 'ph-23', entity_id: 'ent-23', phone_number: '+15550000023',
-    classification_type: 'type_b', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(3),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Manual review passed',
-    verified_at: _daysAgo(2), created_at: _daysAgo(3), updated_at: _daysAgo(2),
-    extra_data: { priority: 'medium', campaign: 'Q2-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.80,
+    extra_data: { campaign: 'Q2-2026' },
   },
   // --- Delta phones (entity_ids 24-32) ---
   {
     id: 'ph-24', entity_id: 'ent-24', phone_number: '+15550000024',
-    classification_type: 'type_d', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(15),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Cleared by auditor',
-    verified_at: _daysAgo(13), created_at: _daysAgo(15), updated_at: _daysAgo(13),
-    extra_data: { priority: 'high', campaign: 'Q1-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.88,
+    extra_data: { campaign: 'Q1-2026' },
   },
   {
     id: 'ph-25', entity_id: 'ent-25', phone_number: '+15550000025',
-    classification_type: 'type_a', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(14),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(14), updated_at: _daysAgo(14),
-    extra_data: { priority: 'medium', batch: 'import-2026-05-03' },
+    phone_type: 'home', ingestion_source: 'import',
+    verification_status: 'pending', score: 0.55,
+    extra_data: { batch: 'import-2026-05-03' },
   },
   {
     id: 'ph-26', entity_id: 'ent-26', phone_number: '+15550000026',
-    classification_type: 'type_b', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(12),
-    verification_status: 'verified_bad', verification_source: 'automated',
-    verification_reason: 'Number on suppression list',
-    verified_at: _daysAgo(10), created_at: _daysAgo(12), updated_at: _daysAgo(10),
-    extra_data: { priority: 'low', suppression_code: 'SUP-007' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'rejected', score: 0.10,
+    extra_data: { suppression_code: 'SUP-007' },
   },
   {
     id: 'ph-27', entity_id: 'ent-27', phone_number: '+15550000027',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'referral', ingested_at: _daysAgo(10),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(10), updated_at: _daysAgo(10),
-    extra_data: { priority: 'medium' },
+    phone_type: 'work', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.58,
+    extra_data: {},
   },
   {
     id: 'ph-28', entity_id: 'ent-28', phone_number: '+15550000028',
-    classification_type: 'type_d', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(8),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Passed manual spot check',
-    verified_at: _daysAgo(7), created_at: _daysAgo(8), updated_at: _daysAgo(7),
-    extra_data: { priority: 'high', batch: 'import-2026-05-09' },
+    phone_type: 'mobile', ingestion_source: 'import',
+    verification_status: 'verified', score: 0.82,
+    extra_data: { batch: 'import-2026-05-09' },
   },
   {
     id: 'ph-29', entity_id: 'ent-29', phone_number: '+15550000029',
-    classification_type: 'type_a', ingestion_source: 'api',
-    ingestion_reason: 'partner_feed', ingested_at: _daysAgo(6),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(6), updated_at: _daysAgo(6),
-    extra_data: { priority: 'low', partner: 'partner-01' },
+    phone_type: 'home', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.38,
+    extra_data: { partner: 'partner-01' },
   },
   {
     id: 'ph-30', entity_id: 'ent-30', phone_number: '+15550000030',
-    classification_type: 'type_b', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(4),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(4), updated_at: _daysAgo(4),
-    extra_data: { priority: 'medium' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.47,
+    extra_data: {},
   },
   {
     id: 'ph-31', entity_id: 'ent-31', phone_number: '+15550000031',
-    classification_type: 'type_c', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(2),
-    verification_status: 'verified_good', verification_source: 'automated',
-    verification_reason: 'Auto-cleared score 0.89',
-    verified_at: _daysAgo(1), created_at: _daysAgo(2), updated_at: _daysAgo(1),
-    extra_data: { priority: 'high', campaign: 'Q2-2026', score: 0.89 },
+    phone_type: 'work', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.89,
+    extra_data: { campaign: 'Q2-2026' },
   },
   {
     id: 'ph-32', entity_id: 'ent-32', phone_number: '+15550000032',
-    classification_type: 'type_d', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(1),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(1), updated_at: _daysAgo(1),
-    extra_data: { priority: 'low', batch: 'import-2026-05-16' },
+    phone_type: 'mobile', ingestion_source: 'import',
+    verification_status: 'pending', score: 0.33,
+    extra_data: { batch: 'import-2026-05-16' },
   },
   // --- Epsilon phones (entity_ids 33-40) ---
   {
     id: 'ph-33', entity_id: 'ent-33', phone_number: '+15550000033',
-    classification_type: 'type_a', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(16),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Cleared by compliance team',
-    verified_at: _daysAgo(14), created_at: _daysAgo(16), updated_at: _daysAgo(14),
-    extra_data: { priority: 'high', campaign: 'Q1-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'verified', score: 0.91,
+    extra_data: { campaign: 'Q1-2026' },
   },
   {
     id: 'ph-34', entity_id: 'ent-34', phone_number: '+15550000034',
-    classification_type: 'type_b', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(15),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(15), updated_at: _daysAgo(15),
-    extra_data: { priority: 'medium' },
+    phone_type: 'home', ingestion_source: 'manual',
+    verification_status: 'pending', score: 0.44,
+    extra_data: {},
   },
   {
     id: 'ph-35', entity_id: 'ent-35', phone_number: '+15550000035',
-    classification_type: 'type_c', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(13),
-    verification_status: 'verified_bad', verification_source: 'automated',
-    verification_reason: 'Score below minimum threshold',
-    verified_at: _daysAgo(11), created_at: _daysAgo(13), updated_at: _daysAgo(11),
-    extra_data: { priority: 'low', score: 0.31, batch: 'import-2026-05-04' },
+    phone_type: 'work', ingestion_source: 'import',
+    verification_status: 'rejected', score: 0.31,
+    extra_data: { batch: 'import-2026-05-04' },
   },
   {
     id: 'ph-36', entity_id: 'ent-36', phone_number: '+15550000036',
-    classification_type: 'type_d', ingestion_source: 'api',
-    ingestion_reason: 'referral', ingested_at: _daysAgo(11),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(11), updated_at: _daysAgo(11),
-    extra_data: { priority: 'high' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.62,
+    extra_data: {},
   },
   {
     id: 'ph-37', entity_id: 'ent-37', phone_number: '+15550000037',
-    classification_type: 'type_a', ingestion_source: 'manual',
-    ingestion_reason: 'direct_entry', ingested_at: _daysAgo(9),
-    verification_status: 'verified_good', verification_source: 'manual',
-    verification_reason: 'Direct verification call made',
-    verified_at: _daysAgo(8), created_at: _daysAgo(9), updated_at: _daysAgo(8),
-    extra_data: { priority: 'medium' },
+    phone_type: 'mobile', ingestion_source: 'manual',
+    verification_status: 'verified', score: 0.76,
+    extra_data: {},
   },
   {
     id: 'ph-38', entity_id: 'ent-38', phone_number: '+15550000038',
-    classification_type: 'type_b', ingestion_source: 'api',
-    ingestion_reason: 'partner_feed', ingested_at: _daysAgo(7),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(7), updated_at: _daysAgo(7),
-    extra_data: { priority: 'low', partner: 'partner-02' },
+    phone_type: 'home', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.39,
+    extra_data: { partner: 'partner-02' },
   },
   {
     id: 'ph-39', entity_id: 'ent-39', phone_number: '+15550000039',
-    classification_type: 'type_c', ingestion_source: 'import',
-    ingestion_reason: 'bulk_import', ingested_at: _daysAgo(5),
-    verification_status: 'verified_good', verification_source: 'automated',
-    verification_reason: 'Batch auto-cleared',
-    verified_at: _daysAgo(4), created_at: _daysAgo(5), updated_at: _daysAgo(4),
-    extra_data: { priority: 'high', score: 0.94, batch: 'import-2026-05-12' },
+    phone_type: 'work', ingestion_source: 'import',
+    verification_status: 'verified', score: 0.94,
+    extra_data: { batch: 'import-2026-05-12' },
   },
   {
     id: 'ph-40', entity_id: 'ent-40', phone_number: '+15550000040',
-    classification_type: 'type_d', ingestion_source: 'api',
-    ingestion_reason: 'campaign_signup', ingested_at: _daysAgo(2),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(2), updated_at: _daysAgo(2),
-    extra_data: { priority: 'medium', campaign: 'Q2-2026' },
+    phone_type: 'mobile', ingestion_source: 'api',
+    verification_status: 'pending', score: 0.50,
+    extra_data: { campaign: 'Q2-2026' },
   },
-
-  // Phase DY-4 — Vector B envelope phones. Identity unknown; the
-  // owning entity is a 'social_envelope' placeholder. buildInitialDb()
-  // injects customer_tier + priority_score via the same path as named
-  // entities, so these rows participate in the priority sort normally.
-  //
-  // Domain invariant: every phone carries a classification_type (the
-  // source / algorithm is proprietary, out of scope for the open repo).
-  // We pick generic CLASSIFICATION_TYPES tokens to honour the invariant.
-
-  // EP-088 — raw envelope, untouched. Demonstrates "📡 ◌ 🔍 ◇".
-  {
-    id: 'ph-88', entity_id: 'ent-88', phone_number: '+15559000088',
-    classification_type: 'type_b', ingestion_source: 'automated',
-    ingestion_reason: 'Surfaced via social-cluster scrape.',
-    ingested_at: _daysAgo(6),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(6), updated_at: _daysAgo(6),
+  { id: 'ph-88', entity_id: 'ent-88', phone_number: '+15559000088',
+    phone_type: 'mobile', ingestion_source: 'automated',
+    verification_status: 'pending', score: 0.45,
     extra_data: { source_cluster: 'cluster-44' },
-    // confidence omitted → uses _seededConfidence() default
   },
-  // EP-091 — phone-in-network confirmed but owner unknown.
-  // Demonstrates "📡 ● 🔍 ◇" — your specific scenario.
-  {
-    id: 'ph-91', entity_id: 'ent-91', phone_number: '+15559000091',
-    classification_type: 'type_a', ingestion_source: 'automated',
-    ingestion_reason: 'Surfaced via co-occurrence cluster.',
-    ingested_at: _daysAgo(5),
-    verification_status: 'pending', verification_source: null,
-    verification_reason: null, verified_at: null,
-    created_at: _daysAgo(5), updated_at: _daysAgo(4),
-    extra_data: { source_cluster: 'cluster-71', operator_note: 'Confirmed phone is in target network; identity pending.' },
-    confidence_score: 100,   // operator-confirmed envelope placement
-    confidence_updated_at: _daysAgo(4),
+  { id: 'ph-91', entity_id: 'ent-91', phone_number: '+15559000091',
+    phone_type: 'mobile', ingestion_source: 'automated',
+    verification_status: 'pending', score: 0.72,
+    extra_data: { source_cluster: 'cluster-71' },
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Action Logs — mix of sent / failed / scheduled_retry / delivered
-// ---------------------------------------------------------------------------
-
-export const SEED_ACTION_LOGS = [
-  // Phone 1 — successful pipeline
-  {
-    id: 'log-1',  phone_id: 'ph-1',  action_type: 'outreach_a', status: 'sent',
-    requested_at: _daysAgo(10), executed_at: _daysAgo(10),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01', result: 'delivered' },
-  },
-  // Phone 2 — pending, action queued
-  {
-    id: 'log-2',  phone_id: 'ph-2',  action_type: 'outreach_b', status: 'scheduled_retry',
-    requested_at: _daysAgo(9), executed_at: null,
-    retry_count: 1, retry_after: _daysAgo(-1),
-    extra_data: { operator_id: 'mock_operator_01', error_detail: 'Temporary timeout on first attempt' },
-  },
-  // Phone 3 — failed
-  {
-    id: 'log-3',  phone_id: 'ph-3',  action_type: 'outreach_a', status: 'failed',
-    requested_at: _daysAgo(8), executed_at: _daysAgo(8),
-    retry_count: 3, retry_after: null,
-    extra_data: {
-      operator_id: 'mock_operator_01',
-      error_detail: 'Max retries exceeded — carrier rejection',
-      stack_trace: 'ActionExecutionError: carrier rejected\n  at dispatch (dispatcher.py:112)\n  at RetryEngine.run (retry.py:88)',
-    },
-  },
-  // Phone 4 — sent
-  {
-    id: 'log-4',  phone_id: 'ph-4',  action_type: 'outreach_c', status: 'sent',
-    requested_at: _daysAgo(7), executed_at: _daysAgo(7),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 5 — two logs: first failed, retry succeeded
-  {
-    id: 'log-5',  phone_id: 'ph-5',  action_type: 'outreach_b', status: 'failed',
-    requested_at: _daysAgo(6), executed_at: _daysAgo(6),
-    retry_count: 1, retry_after: null,
-    extra_data: {
-      operator_id: 'mock_operator_01',
-      error_detail: 'Connection refused',
-      stack_trace: 'ConnectionError: refused\n  at handler.execute (dispatcher.py:77)',
-    },
-  },
-  {
-    id: 'log-6',  phone_id: 'ph-5',  action_type: 'outreach_b', status: 'sent',
-    requested_at: _daysAgo(5), executed_at: _daysAgo(5),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 7 — sent
-  {
-    id: 'log-7',  phone_id: 'ph-7',  action_type: 'outreach_a', status: 'sent',
-    requested_at: _daysAgo(4), executed_at: _daysAgo(4),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 9 — Beta, sent
-  {
-    id: 'log-8',  phone_id: 'ph-9',  action_type: 'outreach_c', status: 'sent',
-    requested_at: _daysAgo(12), executed_at: _daysAgo(12),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 10 — Beta, failed
-  {
-    id: 'log-9',  phone_id: 'ph-10', action_type: 'outreach_a', status: 'failed',
-    requested_at: _daysAgo(11), executed_at: _daysAgo(11),
-    retry_count: 2, retry_after: null,
-    extra_data: {
-      operator_id: 'mock_operator_01',
-      error_detail: 'Handler returned non-200 status',
-      stack_trace: 'HTTPError: 503 Service Unavailable\n  at BaseActionHandler.execute',
-    },
-  },
-  // Phone 11 — Beta, failed
-  {
-    id: 'log-10', phone_id: 'ph-11', action_type: 'outreach_b', status: 'failed',
-    requested_at: _daysAgo(10), executed_at: _daysAgo(10),
-    retry_count: 3, retry_after: null,
-    extra_data: {
-      operator_id: 'mock_operator_01',
-      error_detail: 'Number flagged as invalid',
-      stack_trace: 'ValidationError: phone_number invalid\n  at validate (ingestion.py:44)',
-    },
-  },
-  // Phone 13 — Beta, sent
-  {
-    id: 'log-11', phone_id: 'ph-13', action_type: 'outreach_c', status: 'sent',
-    requested_at: _daysAgo(8), executed_at: _daysAgo(8),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 15 — Beta, sent
-  {
-    id: 'log-12', phone_id: 'ph-15', action_type: 'outreach_a', status: 'sent',
-    requested_at: _daysAgo(4), executed_at: _daysAgo(4),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 17 — Gamma, sent
-  {
-    id: 'log-13', phone_id: 'ph-17', action_type: 'outreach_b', status: 'sent',
-    requested_at: _daysAgo(14), executed_at: _daysAgo(14),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 19 — Gamma, scheduled_retry
-  {
-    id: 'log-14', phone_id: 'ph-19', action_type: 'outreach_c', status: 'scheduled_retry',
-    requested_at: _daysAgo(11), executed_at: null,
-    retry_count: 2, retry_after: _daysAgo(-2),
-    extra_data: { operator_id: 'mock_operator_01', error_detail: 'Rate limit hit — backing off' },
-  },
-  // Phone 20 — Gamma, sent
-  {
-    id: 'log-15', phone_id: 'ph-20', action_type: 'outreach_a', status: 'sent',
-    requested_at: _daysAgo(9), executed_at: _daysAgo(9),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 24 — Delta, sent
-  {
-    id: 'log-16', phone_id: 'ph-24', action_type: 'outreach_d', status: 'sent',
-    requested_at: _daysAgo(15), executed_at: _daysAgo(15),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 26 — Delta, failed
-  {
-    id: 'log-17', phone_id: 'ph-26', action_type: 'outreach_a', status: 'failed',
-    requested_at: _daysAgo(12), executed_at: _daysAgo(12),
-    retry_count: 3, retry_after: null,
-    extra_data: {
-      operator_id: 'mock_operator_01',
-      error_detail: 'Suppression list match — blocked',
-      stack_trace: 'SuppressionError: number blocked\n  at check_suppression (dispatcher.py:55)',
-    },
-  },
-  // Phone 28 — Delta, sent
-  {
-    id: 'log-18', phone_id: 'ph-28', action_type: 'outreach_b', status: 'sent',
-    requested_at: _daysAgo(8), executed_at: _daysAgo(8),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 31 — Delta, sent
-  {
-    id: 'log-19', phone_id: 'ph-31', action_type: 'outreach_c', status: 'sent',
-    requested_at: _daysAgo(2), executed_at: _daysAgo(2),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 33 — Epsilon, sent
-  {
-    id: 'log-20', phone_id: 'ph-33', action_type: 'outreach_d', status: 'sent',
-    requested_at: _daysAgo(16), executed_at: _daysAgo(16),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 35 — Epsilon, failed
-  {
-    id: 'log-21', phone_id: 'ph-35', action_type: 'outreach_a', status: 'failed',
-    requested_at: _daysAgo(13), executed_at: _daysAgo(13),
-    retry_count: 3, retry_after: null,
-    extra_data: {
-      operator_id: 'mock_operator_01',
-      error_detail: 'Quality score too low for dispatch',
-      stack_trace: 'QualityGateError: score 0.31 < 0.50\n  at quality_check (verification.py:33)',
-    },
-  },
-  // Phone 37 — Epsilon, sent
-  {
-    id: 'log-22', phone_id: 'ph-37', action_type: 'outreach_b', status: 'sent',
-    requested_at: _daysAgo(9), executed_at: _daysAgo(9),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-  // Phone 39 — Epsilon, sent
-  {
-    id: 'log-23', phone_id: 'ph-39', action_type: 'outreach_c', status: 'sent',
-    requested_at: _daysAgo(5), executed_at: _daysAgo(5),
-    retry_count: 0, retry_after: null,
-    extra_data: { operator_id: 'mock_operator_01' },
-  },
-];
+// ActionLog model was removed. Empty export kept for import compatibility.
+export const SEED_ACTION_LOGS = [];
 
 // ---------------------------------------------------------------------------
 // Lead Form Schema — mirrors GET /api/v1/schema/lead-form response shape
@@ -812,109 +471,67 @@ export const SEED_FORM_SCHEMA = {
 export const SEED_TASKS = [
   {
     id: 'task-1',
-    phone_id: 'ph-2',
-    source_action_log_id: null,
-    task_type: 'remediation_failure',
-    status: 'pending',
-    requested_by: 'automation:retry_engine',
-    resolved_by: null,
-    created_at: _daysAgo(0.75),
-    updated_at: _daysAgo(0.75),
-    resolved_at: null,
+    phone_id:    'ph-2',
+    phone_number: '+15550000002',
+    entity_id:   'ent-2',
+    task_type:   'remediation_failure',
+    status:      'pending',
+    client_id:   'ent-1',
     extra_data: {
       failure_category: 'provider_blocked',
       suggested_remediation: 'Escalate to carrier for unblock review.',
     },
-    // JOIN convenience fields (inlined to match real-mode payload).
-    phone_number: '+14155550102',
-    entity_id:    'ent-2',
-    entity_type:  'family',
-    client_id:    'ent-1',
   },
   {
     id: 'task-2',
-    phone_id: 'ph-9',
-    source_action_log_id: null,
-    task_type: 'remediation_failure',
-    status: 'assigned',
-    requested_by: 'automation:retry_engine',
-    resolved_by: null,
-    created_at: _daysAgo(0.5),
-    updated_at: _daysAgo(0.4),
-    resolved_at: null,
+    phone_id:    'ph-9',
+    phone_number: '+15550000009',
+    entity_id:   'ent-9',
+    task_type:   'remediation_failure',
+    status:      'pending',
+    client_id:   'ent-9',
     extra_data: {
       failure_category: 'quota_exceeded',
       suggested_remediation: 'Retry tomorrow after quota reset.',
     },
-    phone_number: '+14155550109',
-    entity_id:    'ent-9',
-    entity_type:  'target',
-    client_id:    'ent-9',
   },
   {
     id: 'task-3',
-    phone_id: 'ph-17',
-    source_action_log_id: null,
-    task_type: 'approval_required',
-    status: 'pending',
-    requested_by: 'mock_operator_02',
-    resolved_by: null,
-    created_at: _daysAgo(0.25),
-    updated_at: _daysAgo(0.25),
-    resolved_at: null,
+    phone_id:    'ph-17',
+    phone_number: '+15550000017',
+    entity_id:   'ent-17',
+    task_type:   'approval_required',
+    status:      'pending',
+    client_id:   'ent-17',
     extra_data: {
-      requested_action_type: 'action_type_b',
       operator_note: 'Customer requested call-back outside of normal cadence.',
     },
-    phone_number: '+14155550117',
-    entity_id:    'ent-17',
-    entity_type:  'target',
-    client_id:    'ent-17',
   },
   {
     id: 'task-4',
-    phone_id: 'ph-25',
-    source_action_log_id: null,
-    task_type: 'manual_recommendation',
-    status: 'resolved',
-    requested_by: 'automation:verification_engine',
-    resolved_by: 'mock_admin_01',
-    created_at: _daysAgo(0.18),
-    updated_at: _daysAgo(0.1),
-    resolved_at: _daysAgo(0.1),
+    phone_id:    'ph-25',
+    phone_number: '+15550000025',
+    entity_id:   'ent-25',
+    task_type:   'manual_recommendation',
+    status:      'done',
+    client_id:   'ent-24',
     extra_data: {
       recommendation: 'Flag for manual quality review.',
-      resolution_outcome: 'resolved',
-      resolved_by: 'mock_admin_01',
-      resolution_note: 'Confirmed reachable; marked verified_good.',
+      resolution_note: 'Confirmed reachable; marked verified.',
     },
-    phone_number: '+14155550125',
-    entity_id:    'ent-25',
-    entity_type:  'family',
-    client_id:    'ent-24',
   },
   {
     id: 'task-5',
-    phone_id: 'ph-33',
-    source_action_log_id: null,
-    task_type: 'approval_required',
-    status: 'rejected',
-    requested_by: 'mock_operator_02',
-    resolved_by: 'mock_admin_01',
-    created_at: _daysAgo(0.08),
-    updated_at: _daysAgo(0.05),
-    resolved_at: _daysAgo(0.05),
+    phone_id:    'ph-33',
+    phone_number: '+15550000033',
+    entity_id:   'ent-33',
+    task_type:   'approval_required',
+    status:      'rejected',
+    client_id:   'ent-33',
     extra_data: {
-      requested_action_type: 'action_type_a',
       operator_note: 'One more retry attempt before abandoning.',
-      resolution_outcome: 'rejected',
-      resolved_by: 'mock_admin_01',
       resolution_note: 'Carrier intercept is permanent; do not retry.',
     },
-    phone_number: '+14155550133',
-    entity_id:    'ent-33',
-    entity_type:  'target',
-    client_id:    'ent-33',
   },
 ];
 
@@ -944,42 +561,28 @@ export const DEFAULT_ENGINE_STATES = {
 export function deriveClientMetrics(
   clientId,
   phones,
-  actionLogs,
+  _actionLogs,
   entities = SEED_ENTITIES,
   tasks    = [],
 ) {
   const clientPhones = phones.filter((p) => {
-    // Real-API mode: client_id is embedded directly on the phone (from the JOIN).
     if (p.client_id != null) return String(p.client_id) === String(clientId);
-    // Mock mode: resolve via entity lookup. client_id is derived
-    // (target_entity_id ?? id) in case raw SEED_ENTITIES are passed.
     const entity = entities.find((e) => e.id === p.entity_id);
     if (!entity) return false;
     const eClientId = entity.client_id ?? entity.target_entity_id ?? entity.id;
     return String(eClientId) === String(clientId);
   });
 
-  const total     = clientPhones.length;
-  const pending   = clientPhones.filter((p) => p.verification_status === 'pending').length;
-  const good      = clientPhones.filter((p) => p.verification_status === 'verified_good').length;
-  const bad       = clientPhones.filter((p) => p.verification_status === 'verified_bad').length;
+  const total    = clientPhones.length;
+  const pending  = clientPhones.filter((p) => p.verification_status === 'pending').length;
+  const good     = clientPhones.filter((p) => p.verification_status === 'verified').length;
+  const bad      = clientPhones.filter((p) => p.verification_status === 'rejected').length;
 
-  const phoneIds  = new Set(clientPhones.map((p) => p.id));
-  const failed    = actionLogs.filter(
-    (l) => l.status === 'failed' && phoneIds.has(l.phone_id)
-  ).length;
-
-  // Phase DX — open task count for this client (pending + assigned).
-  // Each task carries client_id from the backend JOIN so we filter directly
-  // without re-resolving through phones/entities — matches the real-mode
-  // shape produced by taskAdapter.enrichTask.
   const openTasks = tasks.filter(
-    (t) =>
-      (t.status === 'pending' || t.status === 'assigned') &&
-      String(t.client_id) === String(clientId),
+    (t) => t.status === 'pending' && String(t.client_id) === String(clientId),
   ).length;
 
-  return { total, pending, good, bad, failed, openTasks };
+  return { total, pending, good, bad, failed: 0, openTasks };
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,40 +611,12 @@ export function buildInitialDb() {
     };
   });
 
-  // Phase DY — inject scoring fields into every phone. Real mode receives
-  // these from the backend response (column defaults + scoring service).
-  // Mock mode computes a deterministic priority from the row's confidence
-  // and the owning entity's tier so the UI's priority sort produces
-  // visible, predictable ordering.
   const phones = structuredClone(SEED_PHONES).map((p) => {
     const entity = entities.find((e) => e.id === p.entity_id);
-    // For envelopes we walk one hop up to the root for tier; for any
-    // entity with no target_entity_id, the entity IS the root.
-    const root   = entity?.target_entity_id != null
-      ? entities.find((e) => e.id === entity.target_entity_id) || entity
-      : entity;
-    const tier         = root?.extra_data?.customer_tier ?? null;
-    const relationType = entity?.entity_type ?? 'target';
-    const confidence   = p.confidence_score ?? _seededConfidence(p.id);
     return {
       ...p,
-      // Flat JOIN convenience fields — mock equivalents of the backend's
-      // server-side root-entity traversal. Frontend consumers (PhoneRow,
-      // PhoneDetailDrawer, ClientCard) read these off the phone row
-      // directly without needing to walk the entity graph themselves.
-      client_id:             entity?.client_id      ?? null,
-      entity_type:           entity?.entity_type    ?? null,
-      customer_tier:         tier,
-      confidence_score:      confidence,
-      confidence_updated_at: p.confidence_updated_at ?? null,
-      // Mock priority — mirrors the hybrid formula coefficients from
-      // backend modules/mock_scoring.py (α=0.6, β=0.4) for visual parity.
-      // Envelope rows get a LOWER relation_weight (0.5 — same as the
-      // backend's _MOCK_RELATION_WEIGHTS for social_envelope, see
-      // backend/modules/mock_scoring.py) so envelope priorities sit
-      // below named-entity priorities all else being equal.
-      priority_score:        _mockComputePriority(confidence, relationType, tier),
-      priority_updated_at:   p.priority_updated_at ?? _nowIso(),
+      client_id:    entity?.client_id ?? null,
+      relation_type: entity?.relation_type ?? null,
     };
   });
 
@@ -1049,7 +624,7 @@ export function buildInitialDb() {
     clients:    structuredClone(SEED_CLIENTS),
     entities,
     phones,
-    actionLogs: structuredClone(SEED_ACTION_LOGS),
+    actionLogs: [],
     tasks:      structuredClone(SEED_TASKS),
     engines:    structuredClone(DEFAULT_ENGINE_STATES),
     // Phase NOTIF — subscriptions + deliveries seeded empty.
@@ -1091,38 +666,3 @@ export const SEED_SYSTEM_SETTINGS = {
 };
 
 
-// ---------------------------------------------------------------------------
-// Phase DY — mock scoring helpers (mirror backend modules/mock_scoring.py).
-// Lookup tables here are intentionally a subset of the backend's tables —
-// just enough to drive visible mock-mode priority ordering. Internal teams
-// running real mode never hit this code path.
-// ---------------------------------------------------------------------------
-
-const _MOCK_RELATION_WEIGHTS = {
-  target: 1.0, family: 0.7, friend: 0.5, colleague: 0.4,
-  // Phase DY-4 — envelope sits below all confirmed relations because
-  // it is the algorithm's guess at proximity, not a known link.
-  social_envelope: 0.5,
-};
-const _MOCK_TIER_WEIGHTS     = { 1: 1.0, 2: 0.7, 3: 0.4 };
-const _MOCK_ALPHA            = 0.6;
-const _MOCK_BETA             = 0.4;
-const _MOCK_UNKNOWN_REL      = 0.5;
-const _MOCK_UNKNOWN_TIER     = 0.5;
-
-function _mockComputePriority(confidence, relationType, tier) {
-  const rel  = relationType != null ? (_MOCK_RELATION_WEIGHTS[relationType] ?? _MOCK_UNKNOWN_REL) : _MOCK_UNKNOWN_REL;
-  const tw   = tier != null ? (_MOCK_TIER_WEIGHTS[tier] ?? _MOCK_UNKNOWN_TIER) : _MOCK_UNKNOWN_TIER;
-  return Number(confidence) * (_MOCK_ALPHA * rel + _MOCK_BETA * tw);
-}
-
-// Deterministic confidence per phone id so the seed produces a stable
-// spread across mock loads. Spans 30..95 in 5-point steps cycled mod 14.
-function _seededConfidence(phoneId) {
-  const STEPS = [85, 70, 60, 90, 45, 95, 30, 80, 55, 65, 75, 40, 50, 35];
-  return STEPS[(phoneId - 1) % STEPS.length];
-}
-
-function _nowIso() {
-  return new Date().toISOString();
-}

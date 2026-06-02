@@ -23,8 +23,6 @@ import {
 } from '../../utils/classifyStatus';
 import { formatRelative } from '../../utils/formatDate';
 import {
-  TASK_ROW_REQUESTED_BY,
-  TASK_ROW_RESOLVED_BY,
   TASK_ROW_ENTITY_LINE,
   TASK_ROW_SELECT_ARIA,
 } from '../../config/strings.he';
@@ -88,9 +86,9 @@ export default function TaskRow({ task, isSelected, onSelect, isChecked, onToggl
           </span>
           <span
             className="text-xs text-slate-500 truncate"
-            title={TASK_ROW_ENTITY_LINE(task.entity_id, task.entity_type || '—')}
+            title={TASK_ROW_ENTITY_LINE(task.entity_id, task.task_type || '—')}
           >
-            {TASK_ROW_ENTITY_LINE(task.entity_id, task.entity_type || '—')}
+            {TASK_ROW_ENTITY_LINE(task.entity_id, task.task_type || '—')}
           </span>
         </div>
       </td>
@@ -110,26 +108,12 @@ export default function TaskRow({ task, isSelected, onSelect, isChecked, onToggl
         </div>
       </td>
 
-      {/* Column 4 — status badge + attribution captions */}
+      {/* Column 4 — status badge */}
       <td className="px-4 py-3 align-middle">
         <div className="flex flex-col gap-1 items-start min-w-0">
           <Badge variant={taskStatusVariant(task.status)} size="sm">
             {taskStatusLabel(task.status)}
           </Badge>
-          <span
-            className="text-[10px] text-slate-500 truncate max-w-[260px]"
-            title={task.requested_by}
-          >
-            {TASK_ROW_REQUESTED_BY(task.requested_by)}
-          </span>
-          {task.resolved_by && (
-            <span
-              className="text-[10px] text-emerald-700 truncate max-w-[260px]"
-              title={task.resolved_by}
-            >
-              {TASK_ROW_RESOLVED_BY(task.resolved_by)}
-            </span>
-          )}
         </div>
       </td>
 

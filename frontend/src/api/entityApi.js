@@ -168,9 +168,9 @@ export async function getEntityBulkTemplate() {
     // CSV mirror of the backend template's "data" sheet — header +
     // two example rows operators can replace with real data.
     const csvLines = [
-      'first_name,relation_type,target_entity_id,last_name',
-      'Jane,family,1,Doe',
-      'Sam,colleague,1,Chen',
+      'full_name,relation_type,target_entity_id',
+      'Jane Doe,family,1',
+      'Sam Chen,colleague,1',
     ];
     blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
     filename = 'bulk_entities_template.csv';
@@ -208,7 +208,7 @@ export async function listEntities(filters = {}, mockDb) {
     const params = {};
     if (filters.clientId != null && filters.clientId !== '') params.client_id = filters.clientId;
     if (filters.clientIds?.length)                            params.client_ids = filters.clientIds;
-    if (filters.entityType)                                   params.entity_type = filters.entityType;
+    if (filters.relationType)                                  params.relation_type = filters.relationType;
     if (filters.includeDeleted)                               params.include_deleted = true;
     if (filters.q)                                            params.q = filters.q;
     const { data } = await apiClient.get('/entities', { params });
