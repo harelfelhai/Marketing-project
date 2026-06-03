@@ -28,8 +28,8 @@ function makeMockDb(initialTasks = []) {
       { id: 2, entity_id: 2, phone_number: '+15552222222' },
     ],
     entities: [
-      { id: 1, entity_type: 'target', client_id: 1 },
-      { id: 2, entity_type: 'target', client_id: 2 },
+      { id: 1, entity_type: 'target', root_entity_id: 1 },
+      { id: 2, entity_type: 'target', root_entity_id: 2 },
     ],
     applyOpenTask: vi.fn(function (payload) {
       const nextId = Math.max(0, ...this.tasks.map((t) => t.id)) + 1;
@@ -51,7 +51,7 @@ function makeMockDb(initialTasks = []) {
         phone_number: phone?.phone_number ?? null,
         entity_id:    phone?.entity_id    ?? null,
         entity_type:  entity?.entity_type ?? null,
-        client_id:    entity?.client_id   ?? null,
+        root_entity_id:    entity?.root_entity_id   ?? null,
       });
     }),
     applyResolveTask: vi.fn(function (id, body) {
@@ -79,9 +79,9 @@ describe('listTasks (mock mode)', () => {
   let db;
   beforeEach(() => {
     db = makeMockDb([
-      { id: 1, status: 'pending',  task_type: 'remediation_failure', phone_id: 1, client_id: 1, created_at: '2026-05-01T00:00:00Z' },
-      { id: 2, status: 'resolved', task_type: 'approval_required',   phone_id: 1, client_id: 1, created_at: '2026-05-02T00:00:00Z' },
-      { id: 3, status: 'rejected', task_type: 'approval_required',   phone_id: 2, client_id: 2, created_at: '2026-05-03T00:00:00Z' },
+      { id: 1, status: 'pending',  task_type: 'remediation_failure', phone_id: 1, root_entity_id: 1, created_at: '2026-05-01T00:00:00Z' },
+      { id: 2, status: 'resolved', task_type: 'approval_required',   phone_id: 1, root_entity_id: 1, created_at: '2026-05-02T00:00:00Z' },
+      { id: 3, status: 'rejected', task_type: 'approval_required',   phone_id: 2, root_entity_id: 2, created_at: '2026-05-03T00:00:00Z' },
     ]);
   });
 
@@ -127,7 +127,7 @@ describe('listTasks (mock mode)', () => {
 describe('getTaskDetail (mock mode)', () => {
   it('returns the enriched task by id', async () => {
     const db = makeMockDb([
-      { id: 42, client_id: 1, status: 'pending', task_type: 'approval_required' },
+      { id: 42, root_entity_id: 1, status: 'pending', task_type: 'approval_required' },
     ]);
     const result = await getTaskDetail(42, db);
     expect(result.id).toBe(42);
@@ -176,7 +176,7 @@ describe('openTask (mock mode)', () => {
     expect(result.phone_number).toBe('+15552222222');
     expect(result.entity_id).toBe(2);
     expect(result.entity_type).toBe('target');
-    expect(result.client_id).toBe(2);
+    expect(result.root_entity_id).toBe(2);
   });
 });
 

@@ -26,7 +26,7 @@ class VerificationStrategy(BaseVerificationStrategy):
     every evaluated number is trivially marked as good.
     """
 
-    def evaluate_quality(self, phone_id: int) -> VerificationVerdict:
+    def evaluate_quality(self, phone_id: str) -> VerificationVerdict:
         """
         Mock evaluation: unconditionally returns a "verified_good" verdict.
 

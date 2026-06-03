@@ -72,6 +72,9 @@ describe('Phase E1-C — bulk-text ingestion modal', () => {
   });
 
   it('happy path: 3 valid numbers ingest cleanly and render success card', async () => {
+    // UAT round-3: the panel was rewritten to mirror the single-form
+    // shape (existing/new/envelope mode). Default mode is "existing";
+    // pick the first available entity, paste 3 numbers, submit.
     const user = userEvent.setup();
     renderApp({ route: '/' });
     await openModalAndSwitchToMultiText(user);
@@ -81,19 +84,15 @@ describe('Phase E1-C — bulk-text ingestion modal', () => {
       '+14155556001, +14155556002, +14155556003',
     );
 
-    // Fill envelope context fields. The client select pulls from CLIENT_REGISTRY.
-    await user.selectOptions(screen.getByLabelText(/^לקוח/), '1');
-    await user.selectOptions(screen.getByLabelText(/^סוג ישות/), 'family');
-    await user.selectOptions(screen.getByLabelText(/^מקור הקליטה/), 'manual');
+    const existingSel = screen.getByTestId('bulk-existing-entity');
+    const options = Array.from(existingSel.querySelectorAll('option')).filter((o) => o.value !== '');
+    await user.selectOptions(existingSel, options[0].value);
 
-    await user.click(screen.getByRole('button', { name: /קלוט אצווה/ }));
+    await user.click(screen.getByTestId('bulk-submit'));
 
     // The success card lands; the form is replaced with the summary panel.
     const panel = await screen.findByTestId('bulk-result-panel');
-    // The "no failed rows" empty-state message confirms all 3 succeeded
-    // (failed_count must be 0 for the empty-state to render).
     expect(within(panel).getByText(/אין שורות שנכשלו/)).toBeInTheDocument();
-    // The "New Batch" button is wired up for the reset flow.
     expect(screen.getByRole('button', { name: /אצווה חדשה/ })).toBeInTheDocument();
   });
 
@@ -106,19 +105,17 @@ describe('Phase E1-C — bulk-text ingestion modal', () => {
       await screen.findByLabelText(/מספרי טלפון/),
       '+14155556101, NOTAPHONE, +14155556102',
     );
-    await user.selectOptions(screen.getByLabelText(/^לקוח/), '1');
-    await user.selectOptions(screen.getByLabelText(/^סוג ישות/), 'family');
-    await user.selectOptions(screen.getByLabelText(/^מקור הקליטה/), 'manual');
 
-    await user.click(screen.getByRole('button', { name: /קלוט אצווה/ }));
+    const existingSel = screen.getByTestId('bulk-existing-entity');
+    const options = Array.from(existingSel.querySelectorAll('option')).filter((o) => o.value !== '');
+    await user.selectOptions(existingSel, options[0].value);
+
+    await user.click(screen.getByTestId('bulk-submit'));
 
     const panel = await screen.findByTestId('bulk-result-panel');
-    // Scope to the failed-rows table to avoid colliding with stat-card values.
     const table = within(panel).getByRole('table');
-    // The failed row echoes its raw input.
     const noPhoneCell = within(table).getByText('NOTAPHONE');
     expect(noPhoneCell.tagName).toBe('TD');
-    // The same row's first cell carries the 1-based index (2nd token).
     const indexCell = noPhoneCell.previousElementSibling;
     expect(indexCell.textContent).toBe('2');
   });

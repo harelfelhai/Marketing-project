@@ -7,17 +7,20 @@
  */
 
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, Phone, Activity, ClipboardList, BarChart3 } from 'lucide-react';
+import { LayoutGrid, Phone, Activity, ClipboardList, BarChart3, Users, Settings } from 'lucide-react';
 import {
   NAV_CLIENT_HUB, NAV_PHONE_GRID, NAV_SYSTEM_OPS, NAV_OPERATIONS, NAV_DASHBOARD,
+  NAV_ENTITIES, NAV_DATA_ADMIN,
 } from '../../config/strings.he';
 
 const TABS = [
   { to: '/',           label: NAV_CLIENT_HUB, icon: LayoutGrid },
+  { to: '/entities',   label: NAV_ENTITIES,   icon: Users },
   { to: '/phones',     label: NAV_PHONE_GRID, icon: Phone },
   { to: '/ops',        label: NAV_SYSTEM_OPS, icon: Activity },
   { to: '/operations', label: NAV_OPERATIONS, icon: ClipboardList },
   { to: '/dashboard',  label: NAV_DASHBOARD,  icon: BarChart3 },
+  { to: '/admin',      label: NAV_DATA_ADMIN, icon: Settings },
 ];
 
 const baseClasses   = 'inline-flex items-center gap-2 h-14 px-3 text-sm font-medium border-b-2 transition-colors';

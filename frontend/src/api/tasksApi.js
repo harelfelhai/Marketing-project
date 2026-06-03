@@ -35,6 +35,8 @@ export async function listTasks(filters = {}, mockDb) {
     if (filters.status)    params.status    = filters.status;
     if (filters.taskType)  params.task_type = filters.taskType;
     if (filters.phoneId)   params.phone_id  = filters.phoneId;
+    // Phase AUTH-C — multi-value personalization filter.
+    if (filters.rootEntityIds?.length) params.root_entity_ids = filters.rootEntityIds;
 
     const { data }  = await apiClient.get('/tasks', { params });
     const { items } = unwrapPage(data);
@@ -47,6 +49,10 @@ export async function listTasks(filters = {}, mockDb) {
   if (filters.status)   rows = rows.filter((t) => t.status    === filters.status);
   if (filters.taskType) rows = rows.filter((t) => t.task_type === filters.taskType);
   if (filters.phoneId)  rows = rows.filter((t) => t.phone_id  === filters.phoneId);
+  if (filters.rootEntityIds?.length) {
+    const allowed = new Set(filters.rootEntityIds.map(String));
+    rows = rows.filter((t) => allowed.has(String(t.root_entity_id)));
+  }
   rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   return enrichTaskList(rows);
 }
@@ -89,13 +95,17 @@ export async function getTaskDetail(id, mockDb) {
  */
 export async function openTask(body, mockDb) {
   if (!MOCK_MODE) {
-    const { data } = await apiClient.post('/tasks', {
+    // Phase AUTH-B: requested_by is OPTIONAL on the wire. The
+    // backend reads from current_user when a session is present;
+    // automation callers (no session) still set it explicitly.
+    const payload = {
       phone_id:             body.phone_id,
       task_type:            body.task_type,
-      requested_by:         body.requested_by,
       source_action_log_id: body.source_action_log_id ?? null,
       extra_data:           body.extra_data           ?? null,
-    });
+    };
+    if (body.requested_by) payload.requested_by = body.requested_by;
+    const { data } = await apiClient.post('/tasks', payload);
     await mockDb.refetchTasks();
     return enrichTask(data);
   }
@@ -126,8 +136,9 @@ export async function openTask(body, mockDb) {
  */
 export async function resolveTask(id, body, mockDb) {
   if (!MOCK_MODE) {
+    // Phase AUTH-B: operator_id is server-derived from the session.
+    // The wire body only carries outcome + optional resolution_note.
     const { data } = await apiClient.post(`/tasks/${id}/resolve`, {
-      operator_id:     body.operator_id,
       outcome:         body.outcome,
       resolution_note: body.resolution_note ?? null,
     });
@@ -139,4 +150,35 @@ export async function resolveTask(id, body, mockDb) {
   mockDb.applyResolveTask(id, body);
   const updated = mockDb.tasks.find((t) => t.id === id);
   return enrichTask(updated);
+}
+
+
+/**
+ * bulkUpdateTasks — settle many tasks in one request (Task Center bulk).
+ *
+ * Hits POST /api/v1/tasks/bulk-status. Per-task failures (already
+ * terminal, missing) land in the response's `failed_rows`; only
+ * request-shape errors (empty `task_ids`, invalid `outcome`) raise 4xx.
+ *
+ * @param {object} body   - { task_ids: number[], operator_id: string,
+ *                             outcome: 'resolved'|'rejected',
+ *                             resolution_note?: string }.
+ * @param {object} mockDb - MockDataContext value.
+ * @returns {Promise<object>} BulkResolveTaskResponse-shaped object:
+ *   { success_count, failed_count, success_ids, failed_rows }.
+ */
+export async function bulkUpdateTasks(body, mockDb) {
+  if (!MOCK_MODE) {
+    // Phase AUTH-B: operator_id is server-derived from the session.
+    const { data } = await apiClient.post('/tasks/bulk-status', {
+      task_ids:        body.task_ids,
+      outcome:         body.outcome,
+      resolution_note: body.resolution_note ?? null,
+    });
+    await mockDb.refetchTasks();
+    return data;
+  }
+
+  await mockDelay(500);
+  return mockDb.applyBulkResolveTasks(body);
 }

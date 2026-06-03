@@ -20,16 +20,10 @@ export default function SlaIndicator() {
   const { phones } = useMockData();
 
   const { meanHours, sampleSize } = useMemo(() => {
-    const decided = phones.filter((p) => p.verified_at && p.ingested_at);
-    if (decided.length === 0) return { meanHours: null, sampleSize: 0 };
-
-    const totalMs = decided.reduce((sum, p) => {
-      return sum + (new Date(p.verified_at) - new Date(p.ingested_at));
-    }, 0);
-
-    const meanMs    = totalMs / decided.length;
-    const meanHours = parseFloat((meanMs / 3600000).toFixed(1));
-    return { meanHours, sampleSize: decided.length };
+    const decided = phones.filter(
+      (p) => p.verification_status === 'verified' || p.verification_status === 'rejected',
+    );
+    return { meanHours: null, sampleSize: decided.length };
   }, [phones]);
 
   const isWarn  = meanHours !== null && meanHours > SLA_WARN_HOURS;

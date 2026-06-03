@@ -1,118 +1,227 @@
 """
-app/api/v1/endpoints/system.py — Domain D: System Worker Controls.
+app/api/v1/endpoints/system.py — Domain D: System Settings & Controls.
 
-Endpoint:
-    POST /api/v1/system/workers/run?worker_name=retry|verification
-
-Purpose:
-    Allows a technical administrator to immediately trigger one synchronous
-    execution cycle of a background worker loop — outside of the APScheduler
-    tick. Designed for two operational scenarios:
-
-        - `worker_name=retry`:
-            After an external vendor outage is resolved, flush the entire
-            scheduled-retry queue without waiting for the next scheduler tick.
-
-        - `worker_name=verification`:
-            On-demand batch evaluation of all currently eligible phone numbers.
-            Useful for testing, maintenance, and ad-hoc audit runs.
-
-SYNCHRONOUS CONTRACT:
-    The endpoint blocks until the worker batch completes. This is intentional —
-    the current engine implementations are synchronous and the response carries
-    the processed_count for observability. If queue depth grows to a point
-    where HTTP timeout becomes a concern, migrate to an async job-queue pattern
-    and expose a status-polling endpoint. That is a future problem, not now.
+Endpoints:
+    GET  /api/v1/system/settings                    — Read system settings
+    PUT  /api/v1/system/settings                    — Update storage backend
+    PUT  /api/v1/system/settings/display-fields     — Set visible fields for a surface
+    PUT  /api/v1/system/settings/display-labels      — Override column labels for a surface
+    PUT  /api/v1/system/settings/filter-fields      — Set active filters for a surface
+    PUT  /api/v1/system/settings/custom-filters     — Set admin-defined custom filters
+    PUT  /api/v1/system/settings/ingestion-fields   — Set admin-defined dynamic ingestion fields
+    PUT  /api/v1/system/settings/mongo-url          — Configure MongoDB URL
+    GET  /api/v1/system/settings/vocabulary/{name}  — Get vocabulary list
+    PUT  /api/v1/system/settings/vocabulary/{name}  — Update vocabulary list
 """
 
-from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
-from app.api.deps import get_retry_engine, get_verification_engine
-from app.schemas.api_contracts import WorkerRunResponse
-from services.dispatcher import RetryEngine
-from services.verification import VerificationEngine
+from app.api.deps import (
+    get_system_settings_service,
+    require_admin,
+)
+from app.schemas.api_contracts import (
+    ApiConfigUpdate,
+    CustomFiltersUpdate,
+    DisplayFieldsUpdate,
+    DisplayLabelsUpdate,
+    FilterFieldsUpdate,
+    IngestionFieldsUpdate,
+    MongoUrlUpdate,
+    SystemSettingsResponse,
+    SystemSettingsUpdate,
+    VocabularyResponse,
+    VocabularyUpdate,
+)
+from models.user import User
+from services.system_settings import SystemSettingsService
 
 router = APIRouter()
 
-_VALID_WORKER_NAMES = ("retry", "verification")
+
+# ---------------------------------------------------------------------------
+# System Settings — admin-only infrastructure controls
+# ---------------------------------------------------------------------------
 
 
-@router.post(
-    "/workers/run",
-    response_model=WorkerRunResponse,
-    summary="Trigger a background worker loop synchronously",
+@router.get(
+    "/settings",
+    response_model=SystemSettingsResponse,
+    summary="Read the operator-editable system settings",
+)
+def get_system_settings(
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    return SystemSettingsResponse(**svc.get())
+
+
+@router.put(
+    "/settings",
+    response_model=SystemSettingsResponse,
+    summary="Update the system settings (e.g. switch storage backend)",
+)
+def update_system_settings(
+    body: SystemSettingsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_storage_backend(body.storage_backend))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/display-fields",
+    response_model=SystemSettingsResponse,
+    summary="Set which fields a surface displays",
+)
+def update_display_fields(
+    body: DisplayFieldsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_display_fields(body.surface, body.fields))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/display-labels",
+    response_model=SystemSettingsResponse,
+    summary="Override the column labels a surface displays",
+)
+def update_display_labels(
+    body: DisplayLabelsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_display_labels(body.surface, body.labels))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/filter-fields",
+    response_model=SystemSettingsResponse,
+    summary="Set which filters are active on a surface",
+)
+def update_filter_fields(
+    body: FilterFieldsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_filter_fields(body.surface, body.fields))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/custom-filters",
+    response_model=SystemSettingsResponse,
+    summary="Set the admin-defined custom filters for a surface",
+)
+def update_custom_filters(
+    body: CustomFiltersUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_custom_filters(body.surface, body.filters))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/ingestion-fields",
+    response_model=SystemSettingsResponse,
+    summary="Set the admin-defined dynamic ingestion fields for a surface",
+)
+def update_ingestion_fields(
+    body: IngestionFieldsUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_ingestion_fields(body.surface, body.fields))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/mongo-url",
+    response_model=SystemSettingsResponse,
+    summary="Configure the MongoDB connection URL",
+)
+def update_mongo_url(
+    body: MongoUrlUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_mongo_url(body.url))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/api-config",
+    response_model=SystemSettingsResponse,
+    summary="Configure the HTTP/REST (api) storage backend",
+)
+def update_api_config(
+    body: ApiConfigUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_api_config(body.model_dump(exclude_none=True)))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.get(
+    "/settings/vocabulary/{name}",
+    response_model=VocabularyResponse,
+    summary="Get a vocabulary list by name",
     description=(
-        "Runs one execution cycle of the named background worker and returns "
-        "a summary of what was processed. Blocks until the batch completes. "
-        "\n\n"
-        "**`?worker_name=retry`**: Invokes `RetryEngine.process_scheduled_retries()`. "
-        "Scans all ActionLog rows in 'scheduled_retry' status with `retry_after <= now`, "
-        "claims each atomically, and re-dispatches via the registered handler. "
-        "Returns the count of rows successfully re-dispatched. "
-        "\n\n"
-        "**`?worker_name=verification`**: Invokes `VerificationEngine.process_eligible_numbers()`. "
-        "Evaluates all PhoneNumbers that are pending verification and have accumulated "
-        "enough Phase 2 history (last sent action older than `verification_window_days`). "
-        "Returns the count of numbers successfully evaluated and updated."
+        "Returns the current list for one of the operator-editable vocabularies: "
+        "'relation_types', 'phone_types', or 'task_types'."
     ),
 )
-def run_worker(
-    worker_name: str = Query(
-        ...,
-        description=(
-            "Name of the background worker to run. "
-            "Must be 'retry' (RetryEngine) or 'verification' (VerificationEngine)."
-        ),
+def get_vocabulary(
+    name: str,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> VocabularyResponse:
+    try:
+        items = svc.get_vocabulary(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return VocabularyResponse(name=name, items=items)
+
+
+@router.put(
+    "/settings/vocabulary/{name}",
+    response_model=VocabularyResponse,
+    summary="Update a vocabulary list",
+    description=(
+        "Persists a new list for one of the operator-editable vocabularies: "
+        "'relation_types', 'phone_types', or 'task_types'."
     ),
-    retry_engine: RetryEngine = Depends(get_retry_engine),
-    verification_engine: VerificationEngine = Depends(get_verification_engine),
-) -> WorkerRunResponse:
-    """
-    Synchronously execute one tick of the specified background worker.
-
-    The `worker_name` parameter selects which engine to invoke:
-        - "retry":        `RetryEngine.process_scheduled_retries()`
-        - "verification": `VerificationEngine.process_eligible_numbers()`
-
-    Both methods are synchronous and return an integer processed count.
-    The endpoint records timestamps immediately before and after execution
-    so the caller can observe wall-clock duration.
-
-    Args:
-        worker_name        (str):               Must be 'retry' or 'verification'.
-        retry_engine       (RetryEngine):       Injected via FastAPI Depends.
-        verification_engine (VerificationEngine): Injected via FastAPI Depends.
-
-    Returns:
-        WorkerRunResponse: Worker name, processed count, and start/end timestamps.
-
-    Raises:
-        HTTPException 422: worker_name is not one of the accepted values.
-    """
-    if worker_name not in _VALID_WORKER_NAMES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Invalid worker_name '{worker_name}'. "
-                f"Accepted values: {_VALID_WORKER_NAMES}."
-            ),
-        )
-
-    started_at = datetime.utcnow()
-
-    if worker_name == "retry":
-        processed_count = retry_engine.process_scheduled_retries()
-    else:
-        # worker_name == "verification" (already validated above)
-        processed_count = verification_engine.process_eligible_numbers()
-
-    completed_at = datetime.utcnow()
-
-    return WorkerRunResponse(
-        worker_name=worker_name,
-        processed_count=processed_count,
-        started_at=started_at,
-        completed_at=completed_at,
-    )
+)
+def update_vocabulary(
+    name: str,
+    body: VocabularyUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> VocabularyResponse:
+    try:
+        svc.set_vocabulary(name, body.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return VocabularyResponse(name=name, items=svc.get_vocabulary(name))

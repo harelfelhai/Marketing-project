@@ -3,50 +3,51 @@ app/api/v1/endpoints/tasks.py — Domain E: Operations Task Queue (Phase DX).
 
 Endpoints:
     GET  /api/v1/tasks                — Paginated task list with filter-as-view.
-    GET  /api/v1/tasks/{task_id}      — Single-task detail (same shape as list item).
+    GET  /api/v1/tasks/{task_id}      — Single-task detail.
     POST /api/v1/tasks                — Open a new pending task.
     POST /api/v1/tasks/{task_id}/resolve  — Terminally settle a task.
-
-FILTER-AS-VIEW PATTERN
------------------------
-Same convention as `/phones` and `/actions/logs`. The OperationsQueue UI
-reaches its sub-views by query param:
-
-    ?status=pending                       → Senior Admin work queue.
-    ?status=resolved                      → Closed-task audit view.
-    ?task_type=remediation_failure        → Automated-hand-off backlog.
-    ?task_type=approval_required          → Operator authorization queue.
-    ?phone_id=42                          → Task history for one phone.
-
-All filters are additive (AND). New status / task_type values can be
-introduced without API changes.
-
-AUTH DEFERRAL
--------------
-`requested_by` (on POST /tasks) and `operator_id` (on POST /tasks/{id}/resolve)
-are explicit request-body fields. Permission gating is the frontend's job
-via `MockAuthContext`. Phase G replaces the body fields with a
-`get_current_operator` FastAPI dependency in a single swap.
+    POST /api/v1/tasks/bulk-status    — Bulk-settle tasks.
+    POST /api/v1/tasks/export         — Export to .xlsx.
 """
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from app.api.deps import get_pipeline_task_service
+from app.api.deps import (
+    get_current_user,
+    get_export_service,
+    get_pipeline_task_service,
+    require_admin,
+)
+from models.user import User
 from app.schemas.api_contracts import (
+    BulkResolveTaskRequest,
+    BulkResolveTaskResponse,
     OpenTaskRequest,
     PipelineTaskListResponse,
     PipelineTaskResponse,
     ResolveTaskRequest,
+    TableExportRequest,
 )
 from exceptions import (
     PhoneNumberNotFoundError,
     PipelineTaskNotFoundError,
     TaskStateTransitionError,
 )
+from models.pipeline_task import PipelineTask
+from models.types import SOFT_DELETE_SENTINEL
+from services.export import ExportService
+from services.generic_filters import parse_filters, row_matches
+from services.read_model.manager import read_model_manager
 from services.tasks import PipelineTaskService, TaskJoinRow
 
+_TERMINAL_STATUSES = frozenset({"done", "rejected"})
+
+
+_XLSX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 router = APIRouter()
 
@@ -57,29 +58,21 @@ router = APIRouter()
 
 def _row_to_response(row: TaskJoinRow) -> PipelineTaskResponse:
     """
-    Flatten a (task, phone_number, entity_id, entity_type, client_id) JOIN
+    Flatten a (task, full_name, identifier_1, identifier_2) JOIN
     tuple from PipelineTaskService into the PipelineTaskResponse shape.
-
-    Keeps the convenience-field assembly in one place so list and detail
-    endpoints stay symmetrical.
     """
-    task, phone_number, entity_id, entity_type, client_id = row
+    task, full_name, identifier_1, identifier_2 = row
     return PipelineTaskResponse(
         id=task.id,
         phone_id=task.phone_id,
-        source_action_log_id=task.source_action_log_id,
+        phone_number=task.phone_number,
+        entity_id=task.entity_id,
         task_type=task.task_type,
         status=task.status,
-        requested_by=task.requested_by,
-        resolved_by=task.resolved_by,
-        created_at=task.created_at,
-        updated_at=task.updated_at,
-        resolved_at=task.resolved_at,
         extra_data=task.extra_data,
-        phone_number=phone_number,
-        entity_id=entity_id,
-        entity_type=entity_type,
-        client_id=client_id,
+        full_name=full_name,
+        identifier_1=identifier_1,
+        identifier_2=identifier_2,
     )
 
 
@@ -91,74 +84,79 @@ def _row_to_response(row: TaskJoinRow) -> PipelineTaskResponse:
     "",
     response_model=PipelineTaskListResponse,
     summary="List pipeline tasks with optional filters",
-    description=(
-        "Returns a paginated, filterable view of the `pipeline_task` table "
-        "joined with PhoneNumber + Entity so each row carries phone_number, "
-        "entity_id, entity_type, and client_id without a secondary lookup."
-        "\n\n"
-        "**Operations Cockpit sub-views (filter-as-view):**\n"
-        "- `?status=pending` — Senior Admin work queue.\n"
-        "- `?status=resolved` — Closed-task audit.\n"
-        "- `?task_type=remediation_failure` — Automated failure backlog.\n"
-        "- `?phone_id=42` — Task history for one phone.\n"
-        "\n"
-        "All filters are additive (AND)."
-    ),
 )
 def list_tasks(
-    status_filter: Optional[str] = Query(
-        default=None,
-        alias="status",
-        description=(
-            "Filter by lifecycle state. "
-            "Vocabulary: 'pending' | 'assigned' | 'resolved' | 'rejected'. "
-            "Omit to return tasks across all statuses."
-        ),
-    ),
-    task_type: Optional[str] = Query(
-        default=None,
-        description=(
-            "Filter by task classification token. "
-            "Vocabulary: 'remediation_failure' | 'approval_required' | "
-            "'manual_recommendation'."
-        ),
-    ),
-    phone_id: Optional[int] = Query(
-        default=None,
-        description="Filter to tasks attached to a single PhoneNumber.",
-    ),
-    page: int = Query(default=1, ge=1, description="1-based page index."),
-    page_size: int = Query(
-        default=20,
-        ge=1,
-        le=500,
-        description="Records per page (max 500, matches /actions/logs).",
-    ),
+    _admin: User = Depends(require_admin),
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    task_type: Optional[str] = Query(default=None),
+    phone_id: Optional[str] = Query(default=None),
+    exclude_terminal: bool = Query(default=False),
+    q: Optional[str] = Query(default=None, max_length=200),
+    filters: Optional[str] = Query(default=None, max_length=4000),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskListResponse:
     """
-    Paginated PipelineTask listing.
-
-    Args:
-        status_filter (Optional[str]): Filter on `pipeline_task.status`.
-        task_type     (Optional[str]): Filter on `pipeline_task.task_type`.
-        phone_id      (Optional[int]): Filter on `pipeline_task.phone_id`.
-        page          (int):           1-based page number.
-        page_size     (int):           Records per page.
-        service       (PipelineTaskService): Injected via FastAPI Depends.
-
-    Returns:
-        PipelineTaskListResponse: Paginated rows with total count.
+    Fast path (production): served from the in-memory ReadModelStore.
+    Fallback path (tests / startup failure): DB queries via PipelineTaskService.
     """
-    rows, total = service.list_tasks_with_join(
-        status_filter=status_filter,
-        task_type_filter=task_type,
-        phone_id_filter=phone_id,
-        page=page,
-        page_size=page_size,
-    )
+    custom_where = parse_filters(filters, PipelineTask)
+    mgr = read_model_manager
+    if mgr.started:
+        # ── Memory path ──────────────────────────────────────────────
+        tasks    = [t for t in mgr.store.all_tasks if t.deleted_at == SOFT_DELETE_SENTINEL]
+        entities = mgr.store.entities_by_id
+
+        if status_filter is not None:
+            tasks = [t for t in tasks if t.status == status_filter]
+        if task_type is not None:
+            tasks = [t for t in tasks if t.task_type == task_type]
+        if phone_id is not None:
+            tasks = [t for t in tasks if t.phone_id == phone_id]
+        if exclude_terminal and status_filter is None:
+            tasks = [t for t in tasks if t.status not in _TERMINAL_STATUSES]
+        if custom_where:
+            tasks = [t for t in tasks if row_matches(t, custom_where)]
+
+        needle = q.strip().lower() if q else None
+        rows: list[TaskJoinRow] = []
+        for task in tasks:
+            entity = entities.get(task.entity_id)
+            if needle is not None:
+                hay = " ".join(str(x or "") for x in (
+                    task.phone_number, task.entity_id,
+                    entity.full_name if entity else None,
+                    entity.identifier_1 if entity else None,
+                )).lower()
+                if needle not in hay:
+                    continue
+            rows.append((
+                task,
+                entity.full_name if entity else None,
+                entity.identifier_1 if entity else None,
+                entity.identifier_2 if entity else None,
+            ))
+
+        rows.sort(key=lambda r: r[0].id, reverse=True)
+        total  = len(rows)
+        offset = (page - 1) * page_size
+        page_rows = rows[offset: offset + page_size]
+    else:
+        # ── DB fallback ───────────────────────────────────────────────
+        page_rows, total = service.list_tasks_with_join(
+            status_filter=status_filter,
+            task_type_filter=task_type,
+            phone_id_filter=phone_id,
+            exclude_terminal=exclude_terminal,
+            q=q,
+            page=page,
+            page_size=page_size,
+            custom_where=custom_where,
+        )
+
     return PipelineTaskListResponse(
-        items=[_row_to_response(r) for r in rows],
+        items=[_row_to_response(r) for r in page_rows],
         total=total,
         page=page,
         page_size=page_size,
@@ -169,34 +167,16 @@ def list_tasks(
     "/{task_id}",
     response_model=PipelineTaskResponse,
     summary="Get a single pipeline task by id",
-    description=(
-        "Returns one PipelineTask row joined with PhoneNumber + Entity. "
-        "Used by the OperationsQueue drawer to render full task context "
-        "including the proprietary `extra_data` payload."
-    ),
 )
 def get_task(
-    task_id: int,
+    task_id: str,
+    _admin: User = Depends(require_admin),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
-    """
-    Args:
-        task_id (int):                       PK of the task to fetch.
-        service (PipelineTaskService):       Injected via FastAPI Depends.
-
-    Returns:
-        PipelineTaskResponse: Single task row with JOIN convenience fields.
-
-    Raises:
-        HTTPException 404: `task_id` does not exist.
-    """
     try:
         row = service.get_task_with_join(task_id=task_id)
     except PipelineTaskNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     return _row_to_response(row)
 
 
@@ -205,115 +185,95 @@ def get_task(
     response_model=PipelineTaskResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Open a new pipeline task",
-    description=(
-        "Creates a new task in `pending` status. Used by:\n"
-        "- Automation (dispatcher / retry engine policy) to hand off "
-        "  unresolvable failures for human review.\n"
-        "- Low-tier operators who lack execution privilege and need a "
-        "  Senior Admin to authorize an action.\n"
-        "\n"
-        "Returns 404 if `phone_id` does not exist. "
-        "Returns 422 if `source_action_log_id` references a log that "
-        "does not belong to `phone_id`."
-    ),
 )
 def open_task(
     body: OpenTaskRequest,
+    current_user: Optional[User] = Depends(get_current_user),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
-    """
-    Args:
-        body    (OpenTaskRequest):     Validated payload from the caller.
-        service (PipelineTaskService): Injected via FastAPI Depends.
-
-    Returns:
-        PipelineTaskResponse: The newly committed task with JOIN fields.
-
-    Raises:
-        HTTPException 404: `phone_id` not found.
-        HTTPException 422: `source_action_log_id` does not belong to `phone_id`.
-    """
     try:
         task = service.open_task(
             phone_id=body.phone_id,
             task_type=body.task_type,
-            # // HOOK FOR ENTERPRISE AUTH — `requested_by` is read verbatim
-            # // from the request body. Phase G replaces this with
-            # // `operator = Depends(get_current_operator)` and the line
-            # // becomes `requested_by=operator.id`.
-            requested_by=body.requested_by,
-            source_action_log_id=body.source_action_log_id,
             extra_data=body.extra_data,
         )
     except PhoneNumberNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
-    # Re-fetch with the JOIN so the response carries the convenience fields.
+    read_model_manager.reload()
     return _row_to_response(service.get_task_with_join(task_id=task.id))
+
+
+@router.post(
+    "/export",
+    summary="Export the /tasks table to Excel (.xlsx)",
+    responses={200: {"content": {_XLSX_MEDIA_TYPE: {}}}},
+)
+def export_tasks(
+    body: TableExportRequest,
+    _admin: User = Depends(require_admin),
+    service: ExportService = Depends(get_export_service),
+) -> Response:
+    try:
+        xlsx_bytes, filename = service.export_tasks(
+            filters=body.filters,
+            columns=[c.model_dump() for c in body.columns],
+            filename_hint=body.filename_hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/bulk-status",
+    response_model=BulkResolveTaskResponse,
+    summary="Bulk-settle many tasks to a terminal status in one request",
+)
+def bulk_resolve_tasks(
+    body: BulkResolveTaskRequest,
+    admin: User = Depends(require_admin),
+    service: PipelineTaskService = Depends(get_pipeline_task_service),
+) -> BulkResolveTaskResponse:
+    summary = service.bulk_resolve_tasks(
+        task_ids=body.task_ids,
+        operator_id=admin.username,
+        outcome=body.outcome,
+        resolution_note=body.resolution_note,
+    )
+    read_model_manager.reload()
+    return BulkResolveTaskResponse.model_validate(summary)
 
 
 @router.post(
     "/{task_id}/resolve",
     response_model=PipelineTaskResponse,
     summary="Terminally settle a pipeline task",
-    description=(
-        "Writes a terminal status ('resolved' or 'rejected'), the resolving "
-        "operator_id, and the resolution timestamp atomically. The optional "
-        "`resolution_note` is merged into `extra_data` rather than stored "
-        "in a structured column (privacy contract)."
-        "\n\n"
-        "Returns 404 if the task does not exist. "
-        "Returns 422 if the task is already in a terminal state."
-    ),
 )
 def resolve_task(
-    task_id: int,
+    task_id: str,
     body: ResolveTaskRequest,
+    admin: User = Depends(require_admin),
     service: PipelineTaskService = Depends(get_pipeline_task_service),
 ) -> PipelineTaskResponse:
-    """
-    Args:
-        task_id (int):                  PK of the task to settle.
-        body    (ResolveTaskRequest):   Validated payload (operator_id + outcome).
-        service (PipelineTaskService):  Injected via FastAPI Depends.
-
-    Returns:
-        PipelineTaskResponse: The updated task in its terminal state, with
-                              JOIN convenience fields populated.
-
-    Raises:
-        HTTPException 404: Task not found.
-        HTTPException 422: Task is already in a terminal status.
-    """
     try:
         service.resolve_task(
             task_id=task_id,
-            # // HOOK FOR ENTERPRISE AUTH — `operator_id` is read verbatim
-            # // from the request body today. Phase G replaces this with
-            # // `operator = Depends(get_current_operator)` and the line
-            # // becomes `operator_id=operator.id`. The Pydantic Field on
-            # // ResolveTaskRequest.operator_id is the one place to remove.
-            operator_id=body.operator_id,
+            operator_id=admin.username,
             outcome=body.outcome,
             resolution_note=body.resolution_note,
         )
     except PipelineTaskNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except TaskStateTransitionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
+    read_model_manager.reload()
     return _row_to_response(service.get_task_with_join(task_id=task_id))

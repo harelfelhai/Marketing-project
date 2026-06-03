@@ -1,12 +1,14 @@
 /**
  * ClientHubPage — landing screen: responsive grid of ClientCard tiles.
  *
- * Cards derive their metrics from MockDataContext live state, so any
- * mutation elsewhere in the app (verdict, ingest, etc.) is reflected
- * here on the next render.
+ * Passes the root entity for each client so ClientCard can display role
+ * and identifier fields.
  */
 
+import { useMemo } from 'react';
+
 import { useMockData } from '../contexts/MockDataContext';
+import { useAuth }     from '../contexts/MockAuthContext';
 import ClientCard       from '../components/clients/ClientCard';
 import Skeleton         from '../components/primitives/Skeleton';
 import { PAGE_CLIENT_HUB_TITLE, PAGE_CLIENT_HUB_SUB } from '../config/strings.he';
@@ -14,7 +16,40 @@ import { PAGE_CLIENT_HUB_TITLE, PAGE_CLIENT_HUB_SUB } from '../config/strings.he
 const SKELETON_CARD_COUNT = 4;
 
 export default function ClientHubPage() {
-  const { clients, loading } = useMockData();
+  const { clients, entities, loading }  = useMockData();
+  const { personalizationActive, user } = useAuth();
+
+  const liveClientIds = useMemo(() => {
+    const set = new Set();
+    for (const e of entities) {
+      if (e.deleted_at) continue;
+      if (e.relation_type !== 'primary') continue;
+      if (e.target_entity_id != null) continue;
+      if (e.root_entity_id != null) set.add(String(e.root_entity_id));
+    }
+    return set;
+  }, [entities]);
+
+  // Map root_entity_id → root entity for role/identifier display in ClientCard.
+  const rootEntityByClientId = useMemo(() => {
+    const map = new Map();
+    for (const e of entities) {
+      if (e.deleted_at) continue;
+      if (e.relation_type === 'primary' && e.target_entity_id == null) {
+        map.set(String(e.id), e);
+      }
+    }
+    return map;
+  }, [entities]);
+
+  const visibleClients = useMemo(() => {
+    const liveOnly = clients.filter((c) => liveClientIds.has(String(c.id)));
+    if (!personalizationActive) return liveOnly;
+    const allowed = user?.managed_client_ids;
+    if (!allowed?.length) return liveOnly;
+    const allowedSet = new Set(allowed.map(String));
+    return liveOnly.filter((c) => allowedSet.has(String(c.id)));
+  }, [clients, liveClientIds, personalizationActive, user]);
 
   return (
     <section className="space-y-6">
@@ -31,8 +66,12 @@ export default function ClientHubPage() {
           ? Array.from({ length: SKELETON_CARD_COUNT }).map((_, i) => (
               <ClientCardSkeleton key={i} />
             ))
-          : clients.map((client) => (
-              <ClientCard key={client.id} client={client} />
+          : visibleClients.map((client) => (
+              <ClientCard
+                key={client.id}
+                client={client}
+                rootEntity={rootEntityByClientId.get(String(client.id))}
+              />
             ))}
       </div>
     </section>

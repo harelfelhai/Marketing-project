@@ -6,31 +6,28 @@ import { useMemo } from 'react';
 import { useMockData } from '../../contexts/MockDataContext';
 import {
   FUNNEL_HEADING, FUNNEL_SUBTITLE,
-  FUNNEL_STAGE_INGESTED, FUNNEL_STAGE_ACTIONED,
+  FUNNEL_STAGE_INGESTED,
   FUNNEL_STAGE_GOOD, FUNNEL_STAGE_BAD, FUNNEL_STAGE_PENDING,
 } from '../../config/strings.he';
 
 export default function QualityFunnel() {
-  const { phones, actionLogs } = useMockData();
+  const { phones } = useMockData();
 
   const metrics = useMemo(() => {
-    const total     = phones.length;
-    const phonesWithActions = new Set(actionLogs.map((l) => l.phone_id));
-    const actioned  = phones.filter((p) => phonesWithActions.has(p.id)).length;
-    const good      = phones.filter((p) => p.verification_status === 'verified_good').length;
-    const bad       = phones.filter((p) => p.verification_status === 'verified_bad').length;
-    const pending   = phones.filter((p) => p.verification_status === 'pending').length;
+    const total   = phones.length;
+    const good    = phones.filter((p) => p.verification_status === 'verified').length;
+    const bad     = phones.filter((p) => p.verification_status === 'rejected').length;
+    const pending = phones.filter((p) => p.verification_status === 'pending').length;
 
     const pct = (n) => (total > 0 ? Math.round((n / total) * 100) : 0);
-    return { total, actioned, good, bad, pending, pct };
-  }, [phones, actionLogs]);
+    return { total, good, bad, pending, pct };
+  }, [phones]);
 
   const stages = [
-    { label: FUNNEL_STAGE_INGESTED, value: metrics.total,           pct: 100,                          barColor: 'bg-slate-700',   textColor: 'text-slate-700'   },
-    { label: FUNNEL_STAGE_ACTIONED, value: metrics.actioned,        pct: metrics.pct(metrics.actioned), barColor: 'bg-sky-600',     textColor: 'text-sky-700'     },
-    { label: FUNNEL_STAGE_GOOD,     value: metrics.good,            pct: metrics.pct(metrics.good),     barColor: 'bg-emerald-500', textColor: 'text-emerald-700' },
-    { label: FUNNEL_STAGE_BAD,      value: metrics.bad,             pct: metrics.pct(metrics.bad),      barColor: 'bg-rose-500',    textColor: 'text-rose-700'    },
-    { label: FUNNEL_STAGE_PENDING,  value: metrics.pending,         pct: metrics.pct(metrics.pending),  barColor: 'bg-amber-400',   textColor: 'text-amber-700'   },
+    { label: FUNNEL_STAGE_INGESTED, value: metrics.total,   pct: 100,                         barColor: 'bg-slate-700',   textColor: 'text-slate-700'   },
+    { label: FUNNEL_STAGE_GOOD,     value: metrics.good,    pct: metrics.pct(metrics.good),    barColor: 'bg-emerald-500', textColor: 'text-emerald-700' },
+    { label: FUNNEL_STAGE_BAD,      value: metrics.bad,     pct: metrics.pct(metrics.bad),     barColor: 'bg-rose-500',    textColor: 'text-rose-700'    },
+    { label: FUNNEL_STAGE_PENDING,  value: metrics.pending, pct: metrics.pct(metrics.pending), barColor: 'bg-amber-400',   textColor: 'text-amber-700'   },
   ];
 
   return (

@@ -12,10 +12,16 @@ The `--reload` flag enables hot-reloading for development. Remove it
 in production and use a process manager (e.g. gunicorn + uvicorn workers).
 """
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from database import create_db_and_tables
+from repositories.api_repository import ApiBackendError
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # App Instance
@@ -46,6 +52,24 @@ app.add_middleware(
 )
 
 # ------------------------------------------------------------------
+# Exception handlers
+# ------------------------------------------------------------------
+
+@app.exception_handler(ApiBackendError)
+def _api_backend_error_handler(_request: Request, exc: ApiBackendError) -> JSONResponse:
+    """
+    Map a remote-API failure (unreachable / non-2xx / not configured) to 503.
+
+    Only reachable when the storage backend is 'api'. The SQL/Mongo paths never
+    raise this, so this handler is a no-op for the default deployment.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": f"Storage backend (api) unavailable: {exc}"},
+    )
+
+
+# ------------------------------------------------------------------
 # Lifecycle Hooks
 # ------------------------------------------------------------------
 
@@ -72,6 +96,60 @@ def on_startup() -> None:
     import models  # noqa: F401  (side-effect import — registers tables)
 
     create_db_and_tables()
+
+    # Phase AUTH — reconcile static admins.json into the user table.
+    # Runs once per boot. Failure modes (file missing, malformed) are
+    # logged but do not crash the app — see services/admin_sync.py for
+    # the documented behavior.
+    #
+    # Storage selection: sync into whichever backend the System Settings
+    # selector currently points at — otherwise on a Mongo/api deploy the
+    # admins land in SQLite while auth reads from Mongo/api and every
+    # login fails with "wrong username or password". If building the
+    # active backend's storage fails (e.g. the api_backend block hasn't
+    # been configured yet on a fresh switch) we fall back to SqlStorage
+    # and log it; boot must never break on admin sync.
+    from database import get_session
+    from services.admin_sync import sync_admins
+    db = next(get_session())
+    try:
+        from dependencies import get_storage
+        from repositories.storage import SqlStorage
+        try:
+            admin_storage = get_storage(session=db)
+        except Exception as exc:  # noqa: BLE001 — degrade, never crash
+            logger.warning(
+                "Active storage backend unavailable for admin sync "
+                "(%s); falling back to SqlStorage. Logins on the active "
+                "backend will fail until the backend is reachable.", exc,
+            )
+            admin_storage = SqlStorage(db)
+        sync_admins(storage=admin_storage)
+
+        # Warm the read cache once at boot so the first Client Hub load is
+        # already served from memory (the "load the DB at startup" request).
+        # Best-effort: a warm failure must never block startup.
+        from config import settings as _settings
+        if _settings.read_cache_enabled:
+            try:
+                from dependencies import get_storage
+                from services.read_models import ClientReadModelService
+                ClientReadModelService(storage=get_storage(session=db)).list_clients()
+            except Exception:  # noqa: BLE001 — warming is optional
+                pass
+    finally:
+        db.close()
+
+    # Phase RM — start the in-memory ReadModelStore.
+    # Three table scans execute synchronously so the first request is already
+    # served from memory.  Background polling (every 120 s) keeps the store
+    # fresh for external changes.  Best-effort: a failure here never blocks
+    # startup.
+    try:
+        from services.read_model.manager import read_model_manager
+        read_model_manager.start()
+    except Exception:  # noqa: BLE001
+        pass
 
 # ------------------------------------------------------------------
 # Routers — Milestone 4: v1 API

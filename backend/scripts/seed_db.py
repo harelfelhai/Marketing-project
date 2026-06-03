@@ -49,6 +49,7 @@ from models.action_log import ActionLog  # noqa: E402
 from models.entity import Entity  # noqa: E402
 from models.phone_number import PhoneNumber  # noqa: E402
 from models.pipeline_task import PipelineTask  # noqa: E402
+from repositories.storage import SqlStorage
 
 
 # ---------------------------------------------------------------------------
@@ -129,17 +130,22 @@ def _wipe(session: Session) -> None:
 # the client tier (kept off the relational schema per design review §1a).
 # ScoringService reads this when computing priority_score for any
 # phone whose owning entity reports up to this root entity.
+# Two-level model: each primary IS a client (a root entity, no
+# client_id column — its derived client_id equals its own id). The
+# client's display name now lives on the root entity's extra_data
+# (first_name), since "client = root entity". Inserted first so they
+# receive ids 1..5, keeping the demo's client ids stable.
 PRIMARY_ENTITIES = [
-    dict(client_id=1, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_a", "priority": "high",   "customer_tier": 1}),
-    dict(client_id=2, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_b", "priority": "medium", "customer_tier": 2}),
-    dict(client_id=3, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_a", "priority": "high",   "customer_tier": 1}),
-    dict(client_id=4, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_c", "priority": "low",    "customer_tier": 3}),
-    dict(client_id=5, relation_type="primary", entity_type="target",
-         extra_data={"segment": "segment_b", "priority": "medium", "customer_tier": 2}),
+    dict(relation_type="primary", entity_type="target",
+         extra_data={"first_name": "Client Alpha",   "segment": "segment_a", "priority": "high",   "customer_tier": 1}),
+    dict(relation_type="primary", entity_type="target",
+         extra_data={"first_name": "Client Beta",    "segment": "segment_b", "priority": "medium", "customer_tier": 2}),
+    dict(relation_type="primary", entity_type="target",
+         extra_data={"first_name": "Client Gamma",   "segment": "segment_a", "priority": "high",   "customer_tier": 1}),
+    dict(relation_type="primary", entity_type="target",
+         extra_data={"first_name": "Client Delta",   "segment": "segment_c", "priority": "low",    "customer_tier": 3}),
+    dict(relation_type="primary", entity_type="target",
+         extra_data={"first_name": "Client Epsilon", "segment": "segment_b", "priority": "medium", "customer_tier": 2}),
 ]
 
 # Phone numbers for primaries — indexed 0–4 matching PRIMARY_ENTITIES.
@@ -348,10 +354,9 @@ def seed(reset: bool = False) -> None:
         primary_records: list[Entity] = []
         for spec in PRIMARY_ENTITIES:
             entity = Entity(
-                client_id=spec["client_id"],
                 relation_type=spec["relation_type"],
                 entity_type=spec["entity_type"],
-                target_entity_id=None,
+                target_entity_id=None,          # root → it IS a client
                 extra_data=spec["extra_data"],
                 created_at=_dt(days_ago=35),
                 updated_at=_dt(days_ago=35),
@@ -391,10 +396,10 @@ def seed(reset: bool = False) -> None:
         # ----------------------------------------------------------------
         print("  Inserting associated entities …")
         associated_records: list[Entity] = []
-        for primary_idx, client_id, entity_type, extra in ASSOCIATED_SPEC:
+        for primary_idx, _client_id, entity_type, extra in ASSOCIATED_SPEC:
             target_id = primary_records[primary_idx].id
+            # Membership derives from target_entity_id; no client_id to set.
             entity = Entity(
-                client_id=client_id,
                 relation_type="associated",
                 entity_type=entity_type,
                 target_entity_id=target_id,
@@ -451,7 +456,7 @@ def seed(reset: bool = False) -> None:
         print("  Computing initial priority scores …")
         from modules.mock_scoring import ScoringStrategy
         from services.scoring import ScoringService
-        scoring_service = ScoringService(session=session, strategy=ScoringStrategy())
+        scoring_service = ScoringService(storage=SqlStorage(session), strategy=ScoringStrategy())
         for phone in phone_records:
             scoring_service.recalculate_for_phone(phone.id, commit=False)
         session.commit()

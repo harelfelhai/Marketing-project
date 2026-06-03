@@ -1,12 +1,12 @@
 """
-Phase E1-B unit tests for the file parsers + template generator inside
+Unit tests for the file parsers + template generator inside
 `services/bulk_ingestion.py`. These tests don't need a database — they
 pin the parsing contract that the service-layer + API tests depend on.
 
 Covered:
     - CSV parsing (UTF-8 + BOM-prefixed, header validation, extra cols)
     - XLSX parsing (header-row detection, value coercion, blank rows)
-    - Template generation round-trip (write → re-read → required cols
+    - Template generation round-trip (write -> re-read -> required cols
       present, instructions sheet exists, sample rows parseable)
 """
 
@@ -48,6 +48,10 @@ def _build_xlsx(rows: list[list]) -> bytes:
     return buf.getvalue()
 
 
+# Required columns are: phone_number, entity_id, ingestion_source
+_REQ = list(BULK_UPLOAD_REQUIRED_COLUMNS)  # ["phone_number", "entity_id", "ingestion_source"]
+
+
 # ---------------------------------------------------------------------------
 # CSV
 # ---------------------------------------------------------------------------
@@ -56,32 +60,32 @@ def _build_xlsx(rows: list[list]) -> bytes:
 class TestParseCsv:
     def test_parses_required_columns(self):
         data = _build_csv([
-            list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551111", "1", "family", "manual"],
-            ["+14155551112", "2", "friend", "automated"],
+            _REQ,
+            ["+14155551111", "ent-001", "manual"],
+            ["+14155551112", "ent-002", "automated"],
         ])
         out = BulkIngestionService._parse_csv(data)
         assert len(out) == 2
         assert out[0]["phone_number"] == "+14155551111"
-        assert out[0]["client_id"] == "1"  # parser leaves it as a string; service coerces
-        assert out[1]["entity_type"] == "friend"
+        assert out[0]["entity_id"] == "ent-001"
+        assert out[1]["ingestion_source"] == "automated"
 
     def test_includes_optional_columns_when_present(self):
         data = _build_csv([
             list(BULK_UPLOAD_ALL_COLUMNS),
-            ["+14155551111", "1", "family", "manual", "", "found via referral"],
+            ["+14155551111", "ent-001", "manual", "mobile", "ent-root"],
         ])
         out = BulkIngestionService._parse_csv(data)
-        assert out[0]["target_entity_id"] == ""
-        assert out[0]["ingestion_reason"] == "found via referral"
+        assert out[0]["phone_type"] == "mobile"
+        assert out[0]["target_entity_id"] == "ent-root"
 
     def test_bom_prefixed_utf8_decodes_cleanly(self):
         # Excel-exported CSVs often start with a UTF-8 BOM. The parser
         # uses utf-8-sig so the BOM doesn't leak into the first column
         # name (which would silently fail the required-columns check).
         raw = _build_csv([
-            list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551111", "1", "family", "manual"],
+            _REQ,
+            ["+14155551111", "ent-001", "manual"],
         ])
         with_bom = b"\xef\xbb\xbf" + raw
         out = BulkIngestionService._parse_csv(with_bom)
@@ -90,8 +94,8 @@ class TestParseCsv:
     def test_missing_required_column_raises(self):
         # "ingestion_source" omitted from header.
         data = _build_csv([
-            ["phone_number", "client_id", "entity_type"],
-            ["+14155551111", "1", "family"],
+            ["phone_number", "entity_id"],
+            ["+14155551111", "ent-001"],
         ])
         with pytest.raises(ValueError, match="missing required columns"):
             BulkIngestionService._parse_csv(data)
@@ -104,8 +108,8 @@ class TestParseCsv:
         # An operator's sheet may carry trailing notes columns; the
         # parser is permissive — it returns whatever the header declares.
         data = _build_csv([
-            list(BULK_UPLOAD_REQUIRED_COLUMNS) + ["operator_notes"],
-            ["+14155551111", "1", "family", "manual", "VIP customer"],
+            _REQ + ["operator_notes"],
+            ["+14155551111", "ent-001", "manual", "VIP customer"],
         ])
         out = BulkIngestionService._parse_csv(data)
         assert out[0].get("operator_notes") == "VIP customer"
@@ -119,42 +123,40 @@ class TestParseCsv:
 class TestParseXlsx:
     def test_parses_required_columns(self):
         data = _build_xlsx([
-            list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551111", 1, "family", "manual"],
-            ["+14155551112", 2, "friend", "automated"],
+            _REQ,
+            ["+14155551111", "ent-001", "manual"],
+            ["+14155551112", "ent-002", "automated"],
         ])
         out = BulkIngestionService._parse_xlsx(data)
         assert len(out) == 2
         assert out[0]["phone_number"] == "+14155551111"
-        # openpyxl preserves numeric types — verify the parser doesn't
-        # stringify them. Service layer coerces client_id to int either way.
-        assert out[0]["client_id"] == 1
+        assert out[0]["entity_id"] == "ent-001"
 
     def test_tolerates_leading_blank_rows(self):
         # Some operators paste a blank first row by accident; the parser
         # treats the first non-empty row as the header.
         data = _build_xlsx([
-            [None, None, None, None],
-            list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551111", 1, "family", "manual"],
+            [None, None, None],
+            _REQ,
+            ["+14155551111", "ent-001", "manual"],
         ])
         out = BulkIngestionService._parse_xlsx(data)
         assert len(out) == 1
 
     def test_skips_blank_data_rows(self):
         data = _build_xlsx([
-            list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["+14155551111", 1, "family", "manual"],
-            [None, None, None, None],
-            ["+14155551112", 1, "friend", "manual"],
+            _REQ,
+            ["+14155551111", "ent-001", "manual"],
+            [None, None, None],
+            ["+14155551112", "ent-001", "manual"],
         ])
         out = BulkIngestionService._parse_xlsx(data)
         assert len(out) == 2
 
     def test_missing_required_column_raises(self):
         data = _build_xlsx([
-            ["phone_number", "client_id", "entity_type"],   # no ingestion_source
-            ["+14155551111", 1, "family"],
+            ["phone_number", "entity_id"],   # no ingestion_source
+            ["+14155551111", "ent-001"],
         ])
         with pytest.raises(ValueError, match="missing required columns"):
             BulkIngestionService._parse_xlsx(data)
@@ -173,12 +175,12 @@ class TestParseXlsx:
     def test_string_values_get_stripped(self):
         # Operators occasionally paste cells with trailing whitespace.
         data = _build_xlsx([
-            list(BULK_UPLOAD_REQUIRED_COLUMNS),
-            ["  +14155551111  ", 1, " family ", " manual "],
+            _REQ,
+            ["  +14155551111  ", "  ent-001  ", " manual "],
         ])
         out = BulkIngestionService._parse_xlsx(data)
         assert out[0]["phone_number"] == "+14155551111"
-        assert out[0]["entity_type"] == "family"
+        assert out[0]["entity_id"] == "ent-001"
 
 
 # ---------------------------------------------------------------------------
@@ -211,9 +213,9 @@ class TestGenerateTemplate:
         # for `_parse_xlsx` — otherwise we'd be shipping a broken example.
         payload = BulkIngestionService.generate_template_xlsx()
         out = BulkIngestionService._parse_xlsx(payload)
-        # Three example rows live on the data sheet (under the header).
+        # Example rows live on the data sheet (under the header).
         assert len(out) >= 1
         for r in out:
             assert r["phone_number"]
-            assert r["entity_type"]
+            assert r["entity_id"]
             assert r["ingestion_source"]

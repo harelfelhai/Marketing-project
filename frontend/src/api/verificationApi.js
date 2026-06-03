@@ -62,24 +62,17 @@ export async function submitVerdict(phoneId, second, reasonOrOperator, operatorO
     return data;
   }
 
-  // Mock-mode path. Two-axis writes are simulated by mutating the
-  // in-memory phone + entity to match what the backend would do.
   await mockDelay(450);
   if (payload.status) {
-    // Legacy path — keep using the existing single-axis mock applier.
-    mockDb.applyVerdict(phoneId, payload.status, payload.reason, operatorId);
+    mockDb.applyVerdict(phoneId, payload.status, operatorId);
   } else {
     mockDb.applyTwoAxisVerdict?.(phoneId, payload, operatorId);
   }
-  // Echo a payload approximating the backend's response shape.
   return {
     phone_id:            phoneId,
     verification_status: payload.status
-      ?? (payload.relation_axis === 'confirm' ? 'verified_good'
-        : payload.relation_axis === 'refute'  ? 'verified_bad'
+      ?? (payload.relation_axis === 'confirm' ? 'verified'
+        : payload.relation_axis === 'refute'  ? 'rejected'
         : undefined),
-    verification_source: 'manual',
-    verification_reason: payload.reason || null,
-    verified_at:         new Date().toISOString(),
   };
 }

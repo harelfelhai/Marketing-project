@@ -43,6 +43,16 @@ export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 10_000,
   headers: { 'Content-Type': 'application/json' },
+  // Phase AUTH — required so the browser sends + accepts the
+  // marketing_session cookie on every request. Same-origin only
+  // (backend's CORS allow_credentials=True permits this).
+  withCredentials: true,
+  // Phase AUTH-C — emit repeated query params for arrays
+  // (`?root_entity_ids=1&root_entity_ids=2`) instead of the axios default
+  // bracket notation (`?root_entity_ids[]=1&...`). FastAPI's
+  // `list[int] = Query(None)` parses repeated params natively but
+  // ignores the bracket form. `indexes: null` flattens arrays.
+  paramsSerializer: { indexes: null },
 });
 
 // Stamp every outgoing request with a correlation ID for end-to-end log tracing.
@@ -52,12 +62,39 @@ apiClient.interceptors.request.use((config) => {
 });
 
 // Normalize every HTTP error into ApiError so callers never inspect raw axios shapes.
+//
+// Blob-aware: when a caller uses `responseType: 'blob'` (export endpoints
+// stream xlsx bytes that way) and the server returns a 4xx with a JSON
+// body, axios delivers `err.response.data` as a Blob containing the JSON.
+// Reading `.detail` off a Blob yields undefined, so without this branch
+// every export failure would show the generic "Request failed". We
+// read the blob as text, try to parse the FastAPI `{detail: "..."}`
+// envelope, and surface the real message in the toast.
 apiClient.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
     const status    = err.response?.status              ?? 0;
-    const message   = err.response?.data?.detail        ?? err.message ?? 'Request failed';
     const requestId = err.config?.headers?.['X-Request-ID'] ?? null;
+    let message     = err.message ?? 'Request failed';
+
+    const data = err.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text();
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed?.detail) message = parsed.detail;
+          else if (text)     message = text;
+        } catch {
+          if (text) message = text;
+        }
+      } catch {
+        /* swallow — fall back to err.message */
+      }
+    } else if (data?.detail) {
+      message = data.detail;
+    }
+
     return Promise.reject(new ApiError({ status, message, requestId }));
   }
 );

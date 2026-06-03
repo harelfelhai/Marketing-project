@@ -6,16 +6,14 @@ Each interface lives in its own file to keep the contract for each
 pipeline stage self-contained and independently documentable.
 
     Phase 1: from interfaces.ingestion    import BaseIngestionRoutingEngine
-    Phase 2: from interfaces.dispatcher   import BaseActionHandler
     Phase 3: from interfaces.verification import BaseVerificationStrategy
+    Phase NOTIF: from interfaces.notifications import BaseNotificationChannel
 """
 
 from interfaces.ingestion import BaseIngestionRoutingEngine
-from interfaces.dispatcher import BaseActionHandler
 from interfaces.verification import BaseVerificationStrategy
 
 __all__ = [
     "BaseIngestionRoutingEngine",
-    "BaseActionHandler",
     "BaseVerificationStrategy",
 ]

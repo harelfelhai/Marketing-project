@@ -15,7 +15,7 @@ import { applyFilters } from '../../src/components/phones/PhoneTable';
 function makeRow(phone) {
   return {
     phone,
-    entity: { id: phone.entity_id, entity_type: 'target', client_id: 'alpha' },
+    entity: { id: phone.entity_id, entity_type: 'target', root_entity_id: 'alpha' },
     client: { id: 'alpha', name: 'Client Alpha' },
     logs:   [],
   };
@@ -36,12 +36,12 @@ const PHONES = [
     ingestion_source: 'manual', priority_score: null },
 ];
 
-const ENTITIES = [{ id: 1, entity_type: 'target', client_id: 'alpha' }];
+const ENTITIES = [{ id: 1, entity_type: 'target', root_entity_id: 'alpha' }];
 const CLIENTS  = [{ id: 'alpha', name: 'Client Alpha' }];
 const LOGS     = [];
 
 const NO_FILTERS = {
-  clientId:           '',
+  rootEntityId:           '',
   verificationStatus: '',
   ingestionSource:    '',
   classificationType: '',
@@ -96,5 +96,87 @@ describe('applyFilters — Phase DY sortBy', () => {
     });
     expect(rows).toHaveLength(4);
     expect(rows.map((r) => r.phone.id)).toEqual([40, 30, 20, 10]);
+  });
+});
+
+
+describe('applyFilters — rootEntityId string/number coercion', () => {
+  // UAT regression: the filter dropdown's e.target.value is always a
+  // string, but real-mode entity.root_entity_id is an integer. applyFilters
+  // must compare both sides as strings or the table goes empty.
+  const NUM_ENTITIES = [
+    { id: 1, entity_type: 'target', root_entity_id: 1 },
+    { id: 2, entity_type: 'target', root_entity_id: 2 },
+  ];
+  const NUM_CLIENTS = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }];
+  const NUM_PHONES  = [
+    { id: 100, entity_id: 1, phone_number: '+a', ingested_at: '2026-05-01',
+      verification_status: 'pending', priority_score: 10 },
+    { id: 200, entity_id: 2, phone_number: '+b', ingested_at: '2026-05-02',
+      verification_status: 'pending', priority_score: 20 },
+  ];
+
+  it('string filter value matches integer root_entity_id (dropdown emits string)', () => {
+    const rows = applyFilters(NUM_PHONES, NUM_ENTITIES, NUM_CLIENTS, [],
+                              { ...NO_FILTERS, rootEntityId: '1' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].phone.id).toBe(100);
+  });
+
+  it('integer filter value matches integer root_entity_id (cross-link case)', () => {
+    const rows = applyFilters(NUM_PHONES, NUM_ENTITIES, NUM_CLIENTS, [],
+                              { ...NO_FILTERS, rootEntityId: 1 });
+    expect(rows).toHaveLength(1);
+  });
+});
+
+
+describe('applyFilters — Phase AUTH-C rootEntityIds personalization', () => {
+  const MIXED_ENTITIES = [
+    { id: 1, entity_type: 'target', root_entity_id: 1 },
+    { id: 2, entity_type: 'target', root_entity_id: 2 },
+    { id: 3, entity_type: 'target', root_entity_id: 3 },
+  ];
+  const MIXED_CLIENTS = [
+    { id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' },
+  ];
+  const MIXED_PHONES = [
+    { id: 100, entity_id: 1, phone_number: '+a', ingested_at: '2026-05-01',
+      verification_status: 'pending', priority_score: 10 },
+    { id: 200, entity_id: 2, phone_number: '+b', ingested_at: '2026-05-02',
+      verification_status: 'pending', priority_score: 20 },
+    { id: 300, entity_id: 3, phone_number: '+c', ingested_at: '2026-05-03',
+      verification_status: 'pending', priority_score: 30 },
+  ];
+
+  it('omits rootEntityIds → no narrowing applied', () => {
+    const rows = applyFilters(MIXED_PHONES, MIXED_ENTITIES, MIXED_CLIENTS, [], NO_FILTERS);
+    expect(rows.map((r) => r.phone.id).sort()).toEqual([100, 200, 300]);
+  });
+
+  it('rootEntityIds=[1,3] narrows to entities owned by those clients', () => {
+    const rows = applyFilters(MIXED_PHONES, MIXED_ENTITIES, MIXED_CLIENTS, [],
+                              { ...NO_FILTERS, rootEntityIds: [1, 3] });
+    expect(rows.map((r) => r.phone.id).sort()).toEqual([100, 300]);
+  });
+
+  it('empty rootEntityIds array is treated as no filter (toggle off)', () => {
+    const rows = applyFilters(MIXED_PHONES, MIXED_ENTITIES, MIXED_CLIENTS, [],
+                              { ...NO_FILTERS, rootEntityIds: [] });
+    expect(rows).toHaveLength(3);
+  });
+
+  it('rootEntityIds compose with other filters via AND', () => {
+    const onePending = [
+      ...MIXED_PHONES.slice(0, 2),
+      { ...MIXED_PHONES[2], verification_status: 'verified' },
+    ];
+    const rows = applyFilters(onePending, MIXED_ENTITIES, MIXED_CLIENTS, [], {
+      ...NO_FILTERS,
+      rootEntityIds: [1, 3],
+      verificationStatus: 'pending',
+    });
+    // id=300 is now 'verified', so only id=100 (client 1, pending) survives.
+    expect(rows.map((r) => r.phone.id)).toEqual([100]);
   });
 });

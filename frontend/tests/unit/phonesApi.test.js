@@ -22,13 +22,13 @@ function makeMockDb(phones, entities = []) {
 }
 
 const ENTITIES = [
-  { id: 1, entity_type: 'target', client_id: 'alpha',
+  { id: 1, entity_type: 'target', root_entity_id: 'alpha',
     extra_data: { customer_tier: 1 } },
-  { id: 2, entity_type: 'target', client_id: 'alpha',
+  { id: 2, entity_type: 'target', root_entity_id: 'alpha',
     extra_data: { customer_tier: 3 } },
-  { id: 3, entity_type: 'target', client_id: 'alpha',
+  { id: 3, entity_type: 'target', root_entity_id: 'alpha',
     extra_data: { customer_tier: 2 } },
-  { id: 4, entity_type: 'target', client_id: 'alpha',
+  { id: 4, entity_type: 'target', root_entity_id: 'alpha',
     extra_data: {} },                         // missing tier
 ];
 

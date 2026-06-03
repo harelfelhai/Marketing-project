@@ -78,6 +78,62 @@ def create_db_and_tables() -> None:
     """
     SQLModel.metadata.create_all(engine)
 
+    # ------------------------------------------------------------------
+    # UAT auto-migration (dev SQLite only)
+    # ------------------------------------------------------------------
+    # `create_all` adds new TABLES but NOT new COLUMNS on existing tables.
+    # During iterative UAT we add columns (deleted_at, uploaded_by_user_id,
+    # etc.) and operators were repeatedly hitting "no such column" errors
+    # until they manually `del app.db`. This dev-only auto-migration does
+    # the equivalent: detects each new column declared on a model and
+    # silently ALTER TABLE ADD COLUMNs it.
+    #
+    # Strictly dev/SQLite. In production this should be replaced by
+    # Alembic migrations (see the production-integration guide).
+    if "sqlite" in str(engine.url):
+        _autoupgrade_sqlite_columns()
+
+
+def _autoupgrade_sqlite_columns() -> None:
+    """
+    For every SQLModel-registered table, ADD COLUMN any column the model
+    declares that the live SQLite schema is missing. Idempotent — running
+    on an up-to-date DB is a no-op. Failures (rare ALTER limits like
+    adding a non-null column without default) are logged and swallowed
+    so a malformed addition can't block app startup.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    for table_name, table in SQLModel.metadata.tables.items():
+        if not insp.has_table(table_name):
+            continue
+        live_cols = {c["name"] for c in insp.get_columns(table_name)}
+        for column in table.columns:
+            if column.name in live_cols:
+                continue
+            # Compose ALTER TABLE for the missing column. SQLite supports
+            # ADD COLUMN with type + nullability + default but not all
+            # constraint forms — for the cases we add (nullable
+            # timestamps, optional FKs) the simple form is enough.
+            col_type = column.type.compile(dialect=engine.dialect)
+            null_clause = "" if column.nullable else " NOT NULL"
+            default_clause = ""
+            if column.default is not None and getattr(column.default, "is_scalar", False):
+                default_clause = f" DEFAULT {column.default.arg!r}"
+            ddl = (
+                f"ALTER TABLE {table_name} "
+                f"ADD COLUMN {column.name} {col_type}{null_clause}{default_clause}"
+            )
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+            except Exception:
+                # Best-effort — if SQLite can't auto-add (e.g. NOT NULL
+                # without default on an existing table) leave the column
+                # missing; the calling query will surface a clearer error.
+                pass
+
 
 # ------------------------------------------------------------------
 # Session Dependency

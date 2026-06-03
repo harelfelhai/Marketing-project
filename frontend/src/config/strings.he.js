@@ -20,6 +20,91 @@ export const NAV_PHONE_GRID    = 'רשת טלפונים';
 export const NAV_SYSTEM_OPS    = 'מבצעי מערכת';
 export const NAV_DASHBOARD     = 'לוח בקרה';
 export const NAV_OPERATIONS    = 'מרכז משימות';
+export const NAV_ENTITIES      = 'ישויות';
+export const NAV_DATA_ADMIN    = 'ניהול נתונים';
+
+// EntitiesPage (UAT round-3 view tab).
+export const PAGE_ENTITIES_TITLE  = 'ישויות';
+export const PAGE_ENTITIES_SUB    = 'תצוגה של כל הישויות במערכת — ראשיות וטפלות.';
+export const ENTITIES_COL_ID      = 'מזהה';
+export const ENTITIES_COL_NAME    = 'שם';
+export const ENTITIES_COL_RELATION = 'סוג קרבה';
+export const ENTITIES_COL_CLIENT  = 'לקוח';
+export const ENTITIES_COL_PHONES  = 'מספרי טלפון';
+export const ENTITIES_COL_CREATED = 'נוצר';
+export const ENTITIES_COL_STRONG_ID = 'מזהה חזק';
+export const ENTITIES_EMPTY       = 'לא נמצאו ישויות.';
+export const ENTITIES_PHONES_POPOVER_TITLE = (name) => `מספרים של ${name}`;
+export const ENTITIES_PHONES_POPOVER_EMPTY = 'אין מספרים מקושרים לישות זו.';
+export const ENTITIES_PHONES_POPOVER_CONFIDENCE = (pct) =>
+  pct == null ? 'אמינות: —' : `אמינות: ${pct}%`;
+
+// DataAdminPage (UAT round-3 admin tab).
+export const ADMIN_PAGE_TITLE  = 'ניהול נתונים';
+export const ADMIN_PAGE_SUB    = 'עריכה ומחיקה רכה של ישויות וטלפונים. נמחקים נשמרים במאגר לתיעוד.';
+export const ADMIN_TAB_PERSONS = 'אנשים';
+export const ADMIN_TAB_PHONES  = 'טלפונים';
+export const ADMIN_TOGGLE_INCLUDE_DELETED = 'הצג נמחקים';
+export const ADMIN_BTN_EDIT    = 'ערוך';
+export const ADMIN_BTN_DELETE  = 'מחק';
+export const ADMIN_BTN_RESTORE = 'שחזר';
+export const ADMIN_BTN_SAVE    = 'שמור';
+export const ADMIN_BTN_CANCEL  = 'ביטול';
+export const ADMIN_CONFIRM_DELETE_ENTITY = (name, phonesCount) =>
+  `האם למחוק את "${name}"?\n` +
+  `פעולה זו תמחק גם את ${phonesCount} מספרי הטלפון השייכים אליו.\n` +
+  `הנתונים יישמרו במאגר לתיעוד וניתן לשחזרם.`;
+export const ADMIN_CONFIRM_DELETE_PHONE = (num) =>
+  `האם למחוק את הטלפון ${num}?\nהנתונים יישמרו במאגר לתיעוד וניתן לשחזרם.`;
+export const ADMIN_TOAST_SAVED    = 'השינוי נשמר.';
+export const ADMIN_TOAST_DELETED  = 'הרשומה נמחקה (מחיקה רכה).';
+export const ADMIN_TOAST_RESTORED = 'הרשומה שוחזרה.';
+export const ADMIN_TOAST_ERROR    = (msg) => `שגיאה: ${msg}`;
+export const ADMIN_FIELD_FULL_NAME     = 'שם מלא';
+export const ADMIN_FIELD_RELATION      = 'סוג קרבה';
+export const ADMIN_FIELD_PHONE_NUMBER  = 'מספר טלפון';
+export const ADMIN_FIELD_VERIFICATION  = 'סטטוס אימות';
+export const ADMIN_FIELD_IDENTIFIER_1  = 'מזהה 1';
+export const ADMIN_FIELD_IDENTIFIER_2  = 'מזהה 2';
+export const ADMIN_FIELD_CLIENT_ID     = 'מזהה לקוח';
+export const ADMIN_FIELD_TARGET_ENTITY = 'ישות-אב (מזהה)';
+export const ADMIN_FIELD_PHONE_ENTITY  = 'ישות בעלים (מזהה)';
+export const ADMIN_FIELD_CLASSIFICATION = 'סיווג';
+export const ADMIN_FIELD_INGEST_SOURCE = 'מקור הקליטה';
+export const ADMIN_COL_IDENTIFIER_1    = 'מזהה 1';
+
+// ProfilePage — UAT round-3 user profile editor.
+export const PROFILE_TITLE                  = 'הפרופיל שלי';
+export const PROFILE_SUB                    = 'עדכן את שם התצוגה ואת רשימת הלקוחות שבמעקב שלך.';
+export const PROFILE_FIELD_DISPLAY_NAME     = 'שם תצוגה';
+export const PROFILE_FIELD_MANAGED_CLIENTS  = 'לקוחות במעקב שלי';
+export const PROFILE_HINT_EMPTY_CLIENTS     =
+  'ניתן להשאיר ריק — במצב זה כפתור הפרסונליזציה לא יסנן.';
+export const PROFILE_BTN_SAVE     = 'שמור שינויים';
+export const PROFILE_BTN_SAVING   = 'שומר…';
+export const PROFILE_BTN_BACK     = 'חזרה';
+export const PROFILE_TOAST_SAVED  = 'הפרופיל עודכן.';
+export const PROFILE_TOAST_ERROR  = (msg) => `שגיאה: ${msg}`;
+
+// SingleIngestionPanel — UAT round-3 simplified phone-add form.
+export const INGEST_FIELD_PHONE        = 'מספר טלפון';
+export const INGEST_FIELD_PHONE_TYPE   = 'סוג מספר';
+export const INGEST_PHONE_TYPE_UNSET   = 'ללא סיווג';
+export const INGEST_FIELD_REASON       = 'סיבת הצפה';
+export const INGEST_MODE_LABEL         = 'קישור לישות';
+export const INGEST_MODE_EXISTING      = 'ישות קיימת';
+export const INGEST_MODE_NEW           = 'ישות חדשה';
+export const INGEST_MODE_ENVELOPE      = 'מעטפת כללית';
+export const INGEST_PICK_ENTITY        = 'בחר ישות קיימת';
+export const INGEST_PICK_CLIENT        = 'בחר לקוח';
+export const INGEST_PICK_TARGET        = 'ישות ראשית';
+export const INGEST_NEW_FIRST          = 'שם פרטי';
+export const INGEST_NEW_LAST           = 'שם משפחה';
+export const INGEST_NEW_RELATION       = 'סוג קרבה';
+export const INGEST_ERR_PHONE_DIGITS   = 'מספר טלפון חייב להכיל ספרות בלבד.';
+export const INGEST_ERR_PICK_ENTITY    = 'יש לבחור ישות.';
+export const INGEST_ERR_PICK_CLIENT    = 'יש לבחור לקוח.';
+export const INGEST_ERR_PICK_TARGET    = 'יש לבחור ישות ראשית.';
 export const BTN_INGEST_NEW    = 'קליטת מספר חדש';
 export const ROLE_TITLE        = (role) => `תפקיד: ${role}`;
 
@@ -201,7 +286,7 @@ export const BULK_TEXT_FIELD_NUMBERS_PLACE   =
 export const BULK_TEXT_FIELD_CLIENT          = 'לקוח';
 export const BULK_TEXT_FIELD_ENTITY_TYPE     = 'סוג ישות';
 export const BULK_TEXT_FIELD_SOURCE          = 'מקור הקליטה';
-export const BULK_TEXT_FIELD_REASON          = 'סיבת/הסבר הקליטה (לא חובה)';
+export const BULK_TEXT_FIELD_REASON          = 'סיבת הצפה';
 export const BULK_TEXT_FIELD_REASON_PLACE    = 'למשל: חבילת קמפיין Q2';
 export const BULK_TEXT_FIELD_TARGET          = 'מזהה ישות-יעד (לא חובה)';
 export const BULK_TEXT_FIELD_TARGET_HELP     =
@@ -431,10 +516,152 @@ export const TASK_FILTER_PHONE_CHIP         = (id) => `מסונן לטלפון #
 export const TASK_FILTER_CLIENT_CHIP        = (id) => `מסונן ללקוח #${id}`;
 export const TASK_FILTER_OPEN_ONLY_CHIP     = 'משימות פתוחות בלבד';
 
+// ---------------------------------------------------------------------------
+// Phase EXP — Table export to Excel
+// ---------------------------------------------------------------------------
+
+// Split button on every exportable table.
+export const EXPORT_BTN_LABEL            = 'ייצא לאקסל';
+export const EXPORT_BTN_MENU_CURRENT     = 'ייצא עם הגדרות נוכחיות';
+export const EXPORT_BTN_MENU_CUSTOMIZE   = 'התאם שדות…';
+export const EXPORT_BTN_PROCESSING       = 'מייצא…';
+
+// Configurator modal.
+export const EXPORT_MODAL_TITLE          = 'התאם שדות לייצוא';
+export const EXPORT_MODAL_VISIBLE_HEADER = (n) => `שדות בייצוא (${n})`;
+export const EXPORT_MODAL_AVAILABLE_HEADER = (n) => `שדות זמינים (${n})`;
+export const EXPORT_MODAL_RESET          = 'אפס לברירת מחדל';
+export const EXPORT_MODAL_CANCEL         = 'ביטול';
+export const EXPORT_MODAL_SAVE_AND_GO    = 'שמור והורד';
+export const EXPORT_MODAL_REMOVE_ARIA    = (label) => `הסר את ${label} מהייצוא`;
+export const EXPORT_MODAL_ADD_ARIA       = (label) => `הוסף את ${label} לייצוא`;
+export const EXPORT_MODAL_MOVE_UP_ARIA   = (label) => `הזז את ${label} למעלה`;
+export const EXPORT_MODAL_MOVE_DOWN_ARIA = (label) => `הזז את ${label} למטה`;
+export const EXPORT_MODAL_EMPTY_NOTE     = 'בחר לפחות שדה אחד לייצוא.';
+
+// Toasts.
+export const EXPORT_TOAST_SUCCESS        = 'הקובץ הורד.';
+export const EXPORT_TOAST_TOO_MANY       = (n) =>
+  `יותר מדי שורות (${n}). צמצם את הסינון ונסה שוב.`;
+export const EXPORT_TOAST_ERROR          = (msg) => `ייצוא נכשל: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Phase NOTIF — inline notification opt-in panel
+// ---------------------------------------------------------------------------
+
+// Three visual states of the panel.
+export const NOTIF_OPT_IN_COLLAPSED_CTA   = 'קבל התראות לרשומה זו';
+export const NOTIF_OPT_IN_ACTIVE_LABEL    = (count) =>
+  `התראות פעילות (${count})`;
+export const NOTIF_OPT_IN_EDIT            = 'ערוך';
+
+// Form labels in the expanded state.
+export const NOTIF_FORM_EVENTS_LABEL      = 'על איזה אירוע להתריע?';
+export const NOTIF_FORM_RECIPIENTS_LABEL  = 'לאן לשלוח?';
+export const NOTIF_FORM_RECIPIENTS_PLACE  = 'בחר ערוצים…';
+
+// Buttons.
+export const NOTIF_BTN_SAVE               = 'שמור';
+export const NOTIF_BTN_SUBMITTING         = 'שומר…';
+export const NOTIF_BTN_CANCEL             = 'ביטול';
+export const NOTIF_BTN_DELETE             = 'מחק התראות';
+
+// Validation + empty-state.
+export const NOTIF_ERR_NO_EVENTS          = 'יש לבחור לפחות אירוע אחד.';
+export const NOTIF_ERR_NO_RECIPIENTS      = 'יש לבחור ערוץ אחד לפחות.';
+
+// Toasts.
+export const NOTIF_TOAST_SAVED            = 'התראות הוגדרו בהצלחה.';
+export const NOTIF_TOAST_UPDATED          = 'הגדרות ההתראות עודכנו.';
+export const NOTIF_TOAST_DELETED          = 'ההתראות בוטלו.';
+export const NOTIF_TOAST_ERROR            = (msg) => `שגיאה בהגדרת התראות: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Phase AUTH — login / register / guest landing page
+// ---------------------------------------------------------------------------
+
+// Login landing page.
+export const AUTH_LANDING_TITLE       = 'ברוכים הבאים';
+export const AUTH_LANDING_SUBTITLE    = 'אוטומציה שיווקית — דף כניסה';
+export const AUTH_FIELD_USERNAME      = 'שם משתמש';
+export const AUTH_FIELD_PASSWORD      = 'סיסמה';
+export const AUTH_FIELD_PASSWORD_CONFIRM = 'אישור סיסמה';
+export const AUTH_FIELD_DISPLAY_NAME  = 'שם תצוגה (אופציונלי)';
+
+// Login form.
+export const AUTH_BTN_LOGIN           = 'התחבר';
+export const AUTH_BTN_LOGGING_IN      = 'מתחבר…';
+export const AUTH_DIVIDER_OR          = 'או';
+export const AUTH_BTN_GOTO_REGISTER   = 'הירשם כעת';
+export const AUTH_REGISTER_PROMPT     = 'אין לך משתמש?';
+export const AUTH_GUEST_PROMPT        = 'ללא משתמש?';
+export const AUTH_BTN_CONTINUE_GUEST  = 'המשך כאורח';
+
+// Register form.
+export const AUTH_REGISTER_TITLE      = 'הרשמת משתמש חדש';
+export const AUTH_REGISTER_CLIENTS_LABEL = 'באחריותי הלקוחות הבאים:';
+export const AUTH_CLIENT_PICKER_PLACEHOLDER = 'חפש לקוח להוספה…';
+export const AUTH_CLIENT_PICKER_EMPTY       = 'לא נמצאו לקוחות תואמים.';
+export const AUTH_CLIENT_PICKER_REMOVE_ARIA = (name) => `הסר את ${name}`;
+export const AUTH_CLIENT_PICKER_MORE        = (n) => `מוצגות ${n} התאמות ראשונות — הקלד כדי לצמצם.`;
+export const AUTH_BTN_REGISTER        = 'הירשם';
+export const AUTH_BTN_REGISTERING     = 'נרשם…';
+export const AUTH_BTN_BACK_TO_LOGIN   = 'חזור לכניסה';
+export const AUTH_BTN_CANCEL          = 'ביטול';
+
+// Validation.
+export const AUTH_ERR_REQUIRED        = (label) => `${label} הוא שדה חובה.`;
+export const AUTH_ERR_MIN_USERNAME    = 'שם משתמש חייב להכיל לפחות 2 תווים.';
+export const AUTH_ERR_MIN_PASSWORD    = 'סיסמה חייבת להכיל לפחות 4 תווים.';
+export const AUTH_ERR_PASSWORDS_MISMATCH = 'הסיסמאות אינן תואמות.';
+export const AUTH_ERR_NO_CLIENTS      = 'יש לבחור לפחות לקוח אחד.';
+
+// Toasts.
+export const AUTH_TOAST_LOGIN_SUCCESS = (name) => `שלום, ${name}!`;
+export const AUTH_TOAST_LOGIN_ERROR   = 'שם משתמש או סיסמה שגויים.';
+export const AUTH_TOAST_REGISTER_SUCCESS = 'הרשמה הושלמה. ברוכים הבאים!';
+export const AUTH_TOAST_REGISTER_TAKEN = 'שם המשתמש כבר תפוס.';
+export const AUTH_TOAST_REGISTER_ERROR = (msg) => `הרשמה נכשלה: ${msg}`;
+export const AUTH_TOAST_LOGOUT        = 'התנתקת בהצלחה.';
+
+// Header — logged-in state.
+export const AUTH_HEADER_GUEST_BADGE  = 'אורח';
+export const AUTH_HEADER_LOGOUT       = 'התנתק';
+
+// Default-hide toggle for resolved/rejected tasks. Off (= hide) by
+// default so managers land on a clean "action required now" queue;
+// when the operator wants the historical audit view, flipping this
+// checkbox brings everything back.
+export const TASK_FILTER_SHOW_RESOLVED       = 'הצג משימות שטופלו';
+
+// ---------------------------------------------------------------------------
+// Task Center bulk-action bar
+// ---------------------------------------------------------------------------
+
+export const TASK_BULK_BAR_SELECTED_COUNT   = (n) =>
+  `${n} משימות נבחרו`;
+export const TASK_BULK_BAR_CLEAR_SELECTION  = 'נקה בחירה';
+export const TASK_BULK_BAR_RESOLVE          = 'סמן כטופלו';
+export const TASK_BULK_BAR_REJECT           = 'סמן כנדחו';
+export const TASK_BULK_BAR_PROCESSING       = 'מעדכן…';
+
+export const TASK_BULK_TOAST_ALL_OK         = (n) =>
+  `${n} משימות עודכנו בהצלחה.`;
+export const TASK_BULK_TOAST_PARTIAL        = (ok, fail) =>
+  `${ok} משימות עודכנו, ${fail} נכשלו.`;
+export const TASK_BULK_TOAST_NONE_OK        = 'אף משימה לא עודכנה — ייתכן שכבר נסגרו.';
+export const TASK_BULK_TOAST_ERROR          = (msg) =>
+  `עדכון אצווה נכשל: ${msg}`;
+
+// Accessible labels on the row + header checkboxes.
+export const TASK_ROW_SELECT_ARIA           = (id) => `בחר משימה #${id}`;
+export const TASK_HEADER_SELECT_ALL_ARIA    = 'בחר את כל המשימות הגלויות';
+
 // 5-column table headers
 export const TASK_TABLE_COL_TYPE      = 'סוג משימה';
 export const TASK_TABLE_COL_PHONE     = 'טלפון';
 export const TASK_TABLE_COL_CLIENT    = 'לקוח';
+export const TASK_TABLE_COL_CLIENT_ID = 'מזהה לקוח (ent)';
 export const TASK_TABLE_COL_STATUS    = 'סטטוס וייחוס';
 export const TASK_TABLE_COL_UPDATED   = 'עודכן';
 
@@ -445,7 +672,7 @@ export const TASK_TABLE_SHOWING = (shown, total) => `מציג ${shown} מתוך 
 // Row caption fragments
 export const TASK_ROW_REQUESTED_BY  = (who) => `נפתח ע"י ${who}`;
 export const TASK_ROW_RESOLVED_BY   = (who) => `טופל ע"י ${who}`;
-export const TASK_ROW_ENTITY_LINE   = (id, type) => `ישות #${id} · ${type}`;
+export const TASK_ROW_ENTITY_LINE   = (name, type) => `${name || 'ישות'} · ${type}`;
 
 // Permission gate fallback (used when RequireRole denies)
 export const PERMISSION_DENIED_NOTICE = 'אין לך הרשאה לצפות בתוכן זה. פנה למנהל מערכת.';
@@ -609,3 +836,402 @@ export const RESOLVE_TOAST_ERROR   = (msg) => `שגיאה בטיפול במשי�
 
 export const PHONE_DRAWER_TASK_PILL = (n) => `${n} משימות`;
 export const PHONE_DRAWER_TASK_PILL_ZERO = 'אין משימות';
+
+// ---------------------------------------------------------------------------
+// Phase E2 — Entity Ingestion modal ("+ Add Person")
+// ---------------------------------------------------------------------------
+
+// Header button that opens the entity-ingestion modal.
+export const BTN_ADD_PERSON          = 'הוסף אדם';
+
+// Modal shell.
+export const ENTITY_MODAL_TITLE      = 'הוספת אדם חדש';
+export const ENTITY_TAB_SINGLE       = 'אדם בודד';
+export const ENTITY_TAB_MULTI_TEXT   = 'הדבקת רשימה';
+export const ENTITY_TAB_FILE         = 'העלאת קובץ';
+export const ENTITY_TAB_COMING_SOON  = 'תכונה זו תהיה זמינה בקרוב.';
+
+// Single-entry panel form labels.
+export const ENTITY_FIELD_FIRST_NAME    = 'שם פרטי';
+export const ENTITY_FIELD_LAST_NAME     = 'שם משפחה';
+export const ENTITY_FIELD_FULL_NAME     = 'שם מלא';
+export const ENTITY_FIELD_RELATION      = 'סוג קרבה';
+export const ENTITY_FIELD_CLIENT        = 'לקוח';
+export const ENTITY_FIELD_TARGET        = 'ישות ראשית (לקוח)';
+export const ENTITY_FIELD_STRONG_ID     = 'מזהה חזק (אופציונלי)';
+export const ENTITY_PLACEHOLDER_PICK    = 'בחר…';
+export const ENTITY_PLACEHOLDER_CLIENT_FIRST = 'בחר לקוח תחילה';
+export const ENTITY_TARGET_LIST_EMPTY   = 'אין יעדים ראשיים זמינים.';
+export const ENTITY_FIELD_REQUIRED      = (label) => `${label} הוא שדה חובה.`;
+
+// Relation type options (operator-creatable subset).
+export const ENTITY_OPTION_FAMILY     = 'משפחה';
+export const ENTITY_OPTION_FRIEND     = 'חבר';
+export const ENTITY_OPTION_COLLEAGUE  = 'עמית לעבודה';
+export const ENTITY_OPTION_SPOUSE     = 'בן/בת זוג';
+
+// Submit + cancel buttons.
+// NOTE: the in-form submit verb is intentionally different from the
+// header button ("הוסף אדם") so test selectors and screen readers can
+// disambiguate the two buttons even though they share a domain concept.
+export const ENTITY_BTN_SUBMIT        = 'שמור אדם';
+export const ENTITY_BTN_SUBMITTING    = 'שומר…';
+export const ENTITY_BTN_CANCEL        = 'ביטול';
+
+// Friction-free success state.
+export const ENTITY_SUCCESS_TITLE     = 'האדם נוסף בהצלחה';
+export const ENTITY_SUCCESS_SUBLINE   = (fullName) =>
+  `${fullName} נשמר במערכת. ניתן עכשיו להוסיף לו מספר טלפון.`;
+export const ENTITY_SUCCESS_CTA       = 'הוסף מספר טלפון עבור אדם זה';
+export const ENTITY_SUCCESS_DISMISS   = 'סיום';
+
+// Toasts.
+export const ENTITY_TOAST_SUCCESS     = 'האדם נוצר בהצלחה.';
+export const ENTITY_TOAST_ERROR       = (msg) => `יצירת אדם נכשלה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Phase E2-D — Multi-Entity (Two-Step grid) Tab 3
+// ---------------------------------------------------------------------------
+
+// Step 1 — raw paste.
+export const ENTITY_BULK_TEXT_INTRO         =
+  'הדבק רשימת שמות. כל שורה תהפוך לאדם חדש. ניתן להפריד בפסיק, שורה חדשה, או טאב.';
+export const ENTITY_BULK_TEXT_PASTE_LABEL   = 'רשימת שמות';
+export const ENTITY_BULK_TEXT_PASTE_PLACE   = 'דנה כהן, יוסי לוי\nשירה מזרחי';
+export const ENTITY_BULK_TEXT_PASTE_HELP    =
+  'כל שם בשורה משלו. שם פרטי בלבד מקובל. ניתן להוסיף שם משפחה אחרי הרווח.';
+export const ENTITY_BULK_TEXT_TOKEN_COUNT   = (n) => `${n} שמות זוהו`;
+export const ENTITY_BULK_TEXT_CONTINUE      = 'המשך לעריכה';
+
+// Step 1 — defaults.
+export const ENTITY_BULK_DEFAULT_RELATION   = 'סוג קרבה (ברירת מחדל)';
+export const ENTITY_BULK_DEFAULT_CLIENT     = 'לקוח';
+export const ENTITY_BULK_DEFAULT_TARGET     = 'ישות ראשית (ברירת מחדל)';
+export const ENTITY_BULK_DEFAULTS_HELP      =
+  'הערכים האלה יחולו על כל שורה שלא תעקוף אותם בעצמה בשלב הבא.';
+
+// Step 1 — validation errors.
+export const ENTITY_BULK_ERR_EMPTY_TEXT     = 'נא להדביק לפחות שם אחד.';
+export const ENTITY_BULK_ERR_MISSING_TARGET = 'יש לבחור ישות ראשית.';
+
+// Step 2 — grid editor.
+export const ENTITY_BULK_GRID_HEADER_TOKEN     = 'מקור';
+export const ENTITY_BULK_GRID_HEADER_FIRST     = 'שם פרטי';
+export const ENTITY_BULK_GRID_HEADER_LAST      = 'שם משפחה';
+export const ENTITY_BULK_GRID_HEADER_RELATION  = 'קרבה';
+export const ENTITY_BULK_GRID_HEADER_TARGET    = 'יעד';
+export const ENTITY_BULK_GRID_HEADER_STRONG_ID = 'מזהה חזק';
+export const ENTITY_BULK_GRID_HEADER_REMOVE    = '';
+export const ENTITY_BULK_GRID_INHERIT          = 'ברירת מחדל';
+export const ENTITY_BULK_GRID_BACK             = 'חזור לעריכת רשימה';
+export const ENTITY_BULK_GRID_BACK_CONFIRM     =
+  'חזרה תאפס את העריכות. להמשיך?';
+export const ENTITY_BULK_GRID_REMOVE_ROW       = 'מחק שורה';
+export const ENTITY_BULK_GRID_ERR_FIRST        = 'שם פרטי חובה';
+export const ENTITY_BULK_GRID_SUMMARY_ISSUES   = (n) => `${n} שורות עם בעיות`;
+
+// Step 3/4 — submit + result + toasts.
+export const ENTITY_BULK_BTN_SUBMIT_ALL        = 'שמור הכל';
+export const ENTITY_BULK_BTN_SUBMITTING        = 'שומר…';
+export const ENTITY_BULK_BTN_NEW_BATCH         = 'אצווה חדשה';
+export const ENTITY_BULK_TOAST_PARTIAL  = (ok, fail) =>
+  `נקלטו ${ok} אנשים, ${fail} נכשלו.`;
+export const ENTITY_BULK_TOAST_ALL_OK   = (ok) => `נקלטו ${ok} אנשים בהצלחה.`;
+export const ENTITY_BULK_TOAST_NONE_OK  = 'אף שורה לא נקלטה — בדוק את השגיאות.';
+export const ENTITY_BULK_TOAST_ERROR    = (msg) => `קליטת אצווה נכשלה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// Phase E2-D — Entity file-upload Tab 2
+// ---------------------------------------------------------------------------
+
+export const ENTITY_FILE_INTRO              =
+  'העלה קובץ Excel או CSV עם רשימת אנשים. כל שורה תקלוט אדם חדש.';
+export const ENTITY_FILE_BTN_DOWNLOAD       = 'הורד תבנית';
+export const ENTITY_FILE_DROPZONE           = 'גרור קובץ לכאן או לחץ לבחירה';
+export const ENTITY_FILE_DROPZONE_HINT      = '.xlsx או .csv · עד 5 מגה־בייט';
+export const ENTITY_FILE_BTN_BROWSE         = 'בחר קובץ';
+export const ENTITY_FILE_BTN_REMOVE         = 'הסר';
+export const ENTITY_FILE_BTN_SUBMIT         = 'קלוט קובץ';
+export const ENTITY_FILE_BTN_SUBMITTING     = 'קולט…';
+export const ENTITY_FILE_ERR_EMPTY          = 'יש לבחור קובץ.';
+export const ENTITY_FILE_ERR_EXTENSION      = (ext) =>
+  `סיומת לא נתמכת${ext ? ` (${ext})` : ''}. מותר: .xlsx, .csv`;
+export const ENTITY_FILE_ERR_SIZE           = (got, max) =>
+  `הקובץ גדול מדי (${got}). מקסימום ${max}.`;
+export const ENTITY_FILE_TOAST_TEMPLATE_OK  = 'התבנית הורדה.';
+export const ENTITY_FILE_TOAST_TEMPLATE_ERR = (msg) => `הורדת התבנית נכשלה: ${msg}`;
+export const ENTITY_FILE_TOAST_UPLOAD_ERR   = (msg) => `העלאת הקובץ נכשלה: ${msg}`;
+
+// ---------------------------------------------------------------------------
+// System Settings tab (admin-only infrastructure controls)
+// ---------------------------------------------------------------------------
+export const NAV_SYSTEM_SETTINGS            = 'הגדרות מערכת';
+export const SYSSET_TITLE                   = 'הגדרות מערכת';
+export const SYSSET_SUB                     =
+  'בקרות תשתית למנהל מערכת. אפשרויות אלו אינן חלק מהשימוש היומיומי בתוכנה.';
+export const SYSSET_LOADING                 = 'טוען הגדרות…';
+export const SYSSET_DB_TITLE                = 'מסד נתונים';
+export const SYSSET_DB_DESC                 =
+  'בחירת מנוע מסד הנתונים שהמערכת קוראת וכותבת אליו. השינוי נשמר וייכנס לתוקף בהפעלה מחדש.';
+export const SYSSET_APPLIES_ON_RESTART      = 'השינוי ייכנס לתוקף בהפעלה מחדש של השרת.';
+export const SYSSET_BACKEND_UNAVAILABLE     = 'עדיין לא זמין';
+export const SYSSET_BTN_SAVE                = 'שמור';
+export const SYSSET_BTN_SAVING              = 'שומר…';
+export const SYSSET_BTN_BACK                = 'חזרה';
+export const SYSSET_TOAST_SAVED             = 'ההגדרות נשמרו.';
+export const SYSSET_TOAST_ERROR             = (msg) => `שמירת ההגדרות נכשלה: ${msg}`;
+// Display labels for the opaque backend ids the API returns.
+export const SYSSET_BACKEND_LABELS          = {
+  sql:   'SQL (PostgreSQL / SQLite)',
+  mongo: 'MongoDB',
+  api:   'API חיצוני (טבלאות מרוחקות)',
+};
+
+// ---------------------------------------------------------------------------
+// System Settings — MongoDB connection URL (feature 3)
+// ---------------------------------------------------------------------------
+export const SYSSET_MONGO_TITLE              = 'חיבור MongoDB';
+export const SYSSET_MONGO_DESC               =
+  'הזן כתובת חיבור (connection string) ל-MongoDB. הכתובת נשמרת בשרת בלבד ולעולם לא חוזרת ללקוח.';
+export const SYSSET_MONGO_URL_LABEL          = 'כתובת חיבור (Connection String)';
+export const SYSSET_MONGO_URL_PLACEHOLDER    = 'mongodb://user:password@host:27017';
+export const SYSSET_MONGO_CONFIGURED_BADGE   = 'מוגדר';
+export const SYSSET_MONGO_NOT_CONFIGURED     = 'לא מוגדר';
+export const SYSSET_MONGO_BTN_TEST           = 'שמור ובדוק חיבור';
+export const SYSSET_MONGO_BTN_TESTING        = 'בודק חיבור…';
+export const SYSSET_MONGO_TOAST_OK           = 'חיבור ל-MongoDB נבדק בהצלחה ונשמר.';
+export const SYSSET_MONGO_TOAST_ERROR        = (msg) => `שמירת כתובת MongoDB נכשלה: ${msg}`;
+export const SYSSET_MONGO_UPDATE_PROMPT      = 'עדכון כתובת חיבור';
+
+// ---------------------------------------------------------------------------
+// System Settings — external API backend (HTTP/REST tables)
+// ---------------------------------------------------------------------------
+export const SYSSET_API_TITLE                = 'חיבור API חיצוני (טבלאות מרוחקות)';
+export const SYSSET_API_DESC                 =
+  'הגדר כתובת בסיס (base URL), אימות, ולכל טבלה את הנתיב והפרמטרים שלה. ' +
+  'הטוקן נשמר בשרת בלבד ולעולם לא חוזר ללקוח.';
+export const SYSSET_API_BASE_URL_LABEL       = 'כתובת בסיס (Base URL)';
+export const SYSSET_API_BASE_URL_PLACEHOLDER = 'https://api.example.com/v1';
+export const SYSSET_API_AUTH_HEADER_LABEL    = 'כותרת אימות (Header)';
+export const SYSSET_API_AUTH_HEADER_PH       = 'Authorization';
+export const SYSSET_API_TOKEN_LABEL          = 'טוקן (Token)';
+export const SYSSET_API_TOKEN_PLACEHOLDER    = 'Bearer …';
+export const SYSSET_API_TOKEN_KEEP_HINT      = 'השאר ריק כדי לשמור את הטוקן הקיים.';
+export const SYSSET_API_TABLES_HEADING       = 'טבלאות';
+export const SYSSET_API_TABLE_PATH_PH        = 'נתיב הטבלה (path)';
+export const SYSSET_API_TABLE_ROWSPATH_PH    = 'נתיב המערך בתשובה (rows_path)';
+export const SYSSET_API_FIELDMAP_HEADING     = 'מיפוי שדות (אצלנו → אצלך)';
+export const SYSSET_API_FIELDMAP_OUR_PH      = 'שם השדה אצלנו';
+export const SYSSET_API_FIELDMAP_THEIR_PH    = 'שם השדה ב-API';
+export const SYSSET_API_FIELDMAP_ADD         = 'הוסף מיפוי';
+export const SYSSET_API_CONFIGURED_BADGE     = 'מוגדר';
+export const SYSSET_API_NOT_CONFIGURED       = 'לא מוגדר';
+export const SYSSET_API_BTN_TEST             = 'שמור ובדוק חיבור';
+export const SYSSET_API_BTN_TESTING          = 'בודק חיבור…';
+export const SYSSET_API_TOAST_OK             = 'חיבור ל-API נבדק בהצלחה ונשמר.';
+export const SYSSET_API_TOAST_ERROR          = (msg) => `שמירת הגדרות ה-API נכשלה: ${msg}`;
+export const SYSSET_API_UPDATE_PROMPT        = 'עריכת הגדרות ה-API';
+export const SYSSET_API_REQUIRED             = 'נדרשת כתובת בסיס ולפחות טבלה אחת עם נתיב.';
+// The 7 aggregates the api backend routes through. Keys are the backend's
+// table keys; values are the Hebrew labels shown in the editor.
+export const SYSSET_API_TABLE_LABELS         = {
+  entity:                    'ישויות (entity)',
+  phone_number:              'מספרי טלפון (phone_number)',
+  pipeline_task:             'משימות (pipeline_task)',
+  user:                      'משתמשים (user)',
+  session:                   'סשנים (session)',
+  notification_subscription: 'מנויי התראות (notification_subscription)',
+  notification_delivery:     'שליחת התראות (notification_delivery)',
+};
+export const SYSSET_API_TABLE_ORDER          = [
+  'entity', 'phone_number', 'pipeline_task', 'user', 'session',
+  'notification_subscription', 'notification_delivery',
+];
+// The column names OUR models expect for each table — shown next to each table
+// so the admin knows exactly what to map. Source: backend models/*.py.
+export const API_TABLE_COLUMNS               = {
+  entity: ['id', 'target_entity_id', 'identifier_1', 'identifier_2',
+           'relation_type', 'full_name', 'deleted_at', 'extra_data'],
+  phone_number: ['id', 'phone_number', 'phone_type', 'entity_id',
+                 'ingestion_source', 'verification_status', 'score',
+                 'deleted_at', 'extra_data'],
+  pipeline_task: ['id', 'phone_id', 'phone_number', 'entity_id',
+                  'task_type', 'status', 'deleted_at', 'extra_data'],
+  user: ['id', 'username', 'password_hash', 'role', 'active',
+         'created_at', 'updated_at', 'extra_data'],
+  session: ['token', 'user_id', 'created_at', 'last_seen_at', 'extra_data'],
+  notification_subscription: ['id', 'trigger_event_type', 'target_kind',
+                              'target_id', 'recipients', 'title_template',
+                              'body_template', 'active', 'created_by',
+                              'created_at', 'updated_at', 'extra_data'],
+  notification_delivery: ['id', 'subscription_id', 'trigger_event_type',
+                          'title', 'body', 'recipients', 'status',
+                          'retry_count', 'last_error', 'provider_message_id',
+                          'attempted_at', 'delivered_at', 'created_at',
+                          'updated_at', 'extra_data'],
+};
+// Generic per-table + global config labels (the "full game" of knobs).
+export const SYSSET_API_GLOBAL_HEADING       = 'הגדרות חיבור כלליות';
+export const SYSSET_API_BASIC_USER_PH        = 'שם משתמש (Basic Auth)';
+export const SYSSET_API_BASIC_PASS_PH        = 'סיסמה (Basic Auth)';
+export const SYSSET_API_PASS_KEEP_HINT       = 'השאר ריק כדי לשמור את הסיסמה הקיימת.';
+export const SYSSET_API_GLOBAL_HEADERS       = 'כותרות גלובליות (Headers)';
+export const SYSSET_API_GLOBAL_QUERY         = 'פרמטרי שאילתה גלובליים (למשל api_key)';
+export const SYSSET_API_TIMEOUT_PH           = 'timeout בשניות (ברירת מחדל 10)';
+export const SYSSET_API_ITEM_PATH_PH         = 'נתיב האובייקט בתשובת GET-בודד (item_path)';
+export const SYSSET_API_COLUMNS_HEADING      = 'עמודות שלנו בטבלה זו — מלא את השם המקביל ב-API (ריק = זהה)';
+export const SYSSET_API_THEIR_NAME_PH        = 'שם השדה ב-API';
+export const SYSSET_API_EXTRA_MAP_ADD        = 'הוסף מיפוי נוסף';
+export const SYSSET_API_EXTRA_MAP_HEADING    = 'מיפויים נוספים (שדות מעבר לעמודות הידועות)';
+export const SYSSET_API_ADV_HEADING          = 'הגדרות מתקדמות (לא חובה)';
+export const SYSSET_API_METHODS_HEADING      = 'שיטות HTTP לכל פעולה (ריק = ברירת מחדל)';
+export const SYSSET_API_PATHS_HEADING        = 'תבניות נתיב לכל פעולה (אפשר {id})';
+export const SYSSET_API_BODYWRAP_PH          = 'עטיפת גוף הבקשה (body_wrapper) — למשל data';
+export const SYSSET_API_QUERY_HEADING        = 'פרמטרי שאילתה לטבלה';
+export const SYSSET_API_HEADERS_HEADING      = 'כותרות לטבלה';
+export const SYSSET_API_PAGINATION_HEADING   = 'עימוד (Pagination)';
+export const SYSSET_API_PAGINATION_STYLE     = 'סגנון';
+export const SYSSET_API_PAGINATION_STYLES    = {
+  none: 'ללא', page: 'לפי עמוד', offset: 'לפי offset', cursor: 'לפי cursor',
+};
+export const SYSSET_API_KV_KEY_PH            = 'מפתח';
+export const SYSSET_API_KV_VAL_PH            = 'ערך';
+export const SYSSET_API_KV_ADD               = 'הוסף';
+export const SYSSET_API_OPS                  = ['list', 'get', 'create', 'update', 'delete'];
+// Live request preview (shows exactly what each operation's HTTP call becomes).
+export const SYSSET_API_PREVIEW_HEADING      = 'תצוגת הבקשה — כך כל פעולה תישלח בפועל';
+export const SYSSET_API_PREVIEW_HEADERS      = 'כותרות (משותף לכל הפעולות)';
+export const SYSSET_API_PREVIEW_BODY         = 'גוף הבקשה (create / update)';
+
+// ---------------------------------------------------------------------------
+// System Settings — configurable display fields (feature 2)
+// ---------------------------------------------------------------------------
+export const SURFACE_LABEL_ENTITIES         = 'טבלת ישויות';
+export const SYSSET_FIELDS_TITLE            = 'שדות תצוגה';
+export const SYSSET_FIELDS_DESC             =
+  'בחר אילו שדות יוצגו בכל טבלה, סדר אותם, ושנה את שמות העמודות. השינוי נשמר ומשפיע מיד על התצוגה.';
+export const SYSSET_FIELDS_VISIBLE          = 'מוצג';
+export const SYSSET_FIELDS_LABEL_PLACEHOLDER = (name) => `שם ברירת מחדל: ${name}`;
+export const SYSSET_FIELDS_MOVE_UP          = 'הזז למעלה';
+export const SYSSET_FIELDS_MOVE_DOWN        = 'הזז למטה';
+export const SYSSET_FIELDS_TOAST_SAVED      = 'שדות התצוגה נשמרו.';
+export const SYSSET_FIELDS_TOAST_ERROR      = (msg) => `שמירת שדות התצוגה נכשלה: ${msg}`;
+export const SYSSET_FIELDS_RESET            = 'אפס לברירת מחדל';
+
+// ---------------------------------------------------------------------------
+// Configurable display fields — phone table sections + client card sections
+// ---------------------------------------------------------------------------
+export const SURFACE_LABEL_PHONES           = 'טבלת טלפונים';
+export const SURFACE_LABEL_CLIENTS          = 'כרטיסי לקוח (מרכז לקוחות)';
+export const SURFACE_LABEL_OPERATIONS       = 'תור משימות';
+
+// ---------------------------------------------------------------------------
+// Configurable filter fields — System Settings filter editor
+// ---------------------------------------------------------------------------
+export const SYSSET_FILTER_FIELDS_TITLE     = 'שדות פילטר';
+export const SYSSET_FILTER_FIELDS_DESC      =
+  'בחר אילו פקדי פילטר יוצגו בכל טאב. כיבוי שדה מנקה את ערכו ומסיר אותו מסרגל הפילטרים.';
+export const SYSSET_FILTER_FIELDS_TOAST_SAVED  = 'שדות הפילטר נשמרו.';
+export const SYSSET_FILTER_FIELDS_TOAST_ERROR  = (msg) => `שמירת שדות הפילטר נכשלה: ${msg}`;
+
+// Custom (admin-defined) filters — managed within each surface's filter editor.
+export const SYSSET_CUSTOM_FILTERS_HEADING  = 'פילטרים מותאמים';
+export const SYSSET_CUSTOM_FILTERS_HINT     =
+  'הוסף פילטרים משלך, כולל סינון לפי מפתח ב-extra_data (למשל extra_data.region). ' +
+  'התווית והערכים נשמרים בצד הלקוח בלבד.';
+export const SYSSET_CUSTOM_ADD_BTN          = 'הוסף פילטר מותאם';
+export const SYSSET_CUSTOM_LABEL_PH         = 'תווית להצגה';
+export const SYSSET_CUSTOM_FIELD_PH         = 'שדה (למשל extra_data.region)';
+export const SYSSET_CUSTOM_OPTIONS_PH       = 'ערכים לבחירה, מופרדים בפסיק';
+export const SYSSET_CUSTOM_WIDGET_TEXT      = 'טקסט (מכיל)';
+export const SYSSET_CUSTOM_WIDGET_SELECT    = 'בחירה (שווה)';
+export const SYSSET_CUSTOM_REMOVE_ARIA      = 'הסר פילטר מותאם';
+export const SYSSET_CUSTOM_EMPTY            = 'אין פילטרים מותאמים לטאב זה.';
+export const SYSSET_CUSTOM_FIELD_REQUIRED   = 'לכל פילטר מותאם נדרשים תווית ושדה.';
+
+// Generic "all" option shown first in a custom select-widget filter.
+export const CUSTOM_FILTER_ALL              = 'הכל';
+
+// Admin-defined dynamic ingestion fields (add-person / add-number forms).
+export const SYSSET_INGEST_FIELDS_TITLE     = 'שדות קלט דינמיים';
+export const SYSSET_INGEST_FIELDS_DESC      =
+  'הוסף שדות קלט משלך לטפסי הקליטה. כל שדה נשמר ב-extra_data של הרשומה תחת ' +
+  'המפתח שתגדיר. התווית והערכים נשמרים בצד הלקוח בלבד.';
+export const SYSSET_INGEST_SURFACE_ENTITY   = 'הוספת אדם';
+export const SYSSET_INGEST_SURFACE_PHONE    = 'הוספת מספר';
+export const SYSSET_INGEST_ADD_BTN          = 'הוסף שדה';
+export const SYSSET_INGEST_KEY_PH           = 'שם שדה (מפתח ב-extra_data)';
+export const SYSSET_INGEST_KEY_REQUIRED     = 'לכל שדה נדרש שם שדה (מפתח).';
+export const SYSSET_INGEST_TOAST_SAVED      = 'שדות הקלט נשמרו.';
+export const SYSSET_INGEST_TOAST_ERROR      = (msg) => `שמירת שדות הקלט נכשלה: ${msg}`;
+
+export const FILTER_LABEL_SEARCH            = 'חיפוש חופשי';
+export const FILTER_LABEL_CLIENT            = 'לקוח';
+export const FILTER_LABEL_VERIF_STATUS      = 'סטטוס אימות';
+export const FILTER_LABEL_SOURCE            = 'מקור קליטה';
+export const FILTER_LABEL_PHONE_TYPE        = 'סוג טלפון';
+export const FILTER_LABEL_ENTITY_NAME       = 'שם ישות';
+export const FILTER_LABEL_RELATION_TYPE     = 'סוג קרבה';
+export const FILTER_LABEL_TASK_STATUS       = 'סטטוס משימה';
+export const FILTER_LABEL_TASK_TYPE         = 'סוג משימה';
+export const FILTER_LABEL_HIDE_RESOLVED     = 'הסתר משימות שטופלו';
+
+export const FILTER_ENTITY_NAME_PLACEHOLDER = 'חפש לפי שם ישות…';
+export const FILTER_ALL_RELATION_TYPES      = 'כל סוגי הקרבה';
+
+export const CLIENT_CARD_SECTION_METRICS    = 'גריד מטריקות (כולל / ממתין / נכשל)';
+export const CLIENT_CARD_SECTION_VERDICTS   = 'פירוט החלטות (טוב / רע)';
+export const CLIENT_CARD_SECTION_SLA        = 'רצועת SLA';
+export const CLIENT_CARD_SECTION_TASKS      = 'תג משימות פתוחות';
+
+// ---------------------------------------------------------------------------
+// System Settings — vocabulary management (feature 4)
+// ---------------------------------------------------------------------------
+export const SYSSET_VOCAB_TITLE             = 'ניהול אוצר מילים';
+export const SYSSET_VOCAB_DESC              =
+  'ערוך רשימות שדות מבוקרים (סוגי קרבה, מקורות קליטה, וכו׳). השינויים מיד בתוקף.';
+export const SYSSET_VOCAB_NAMES = {
+  relation_types:        'סוגי קרבה',
+  phone_types:           'סוגי טלפון',
+  ingestion_sources:     'מקורות קליטה',
+  verification_statuses: 'סטטוסי אימות',
+  task_types:            'סוגי משימה',
+  task_statuses:         'סטטוסי משימה',
+};
+// Ordered list of vocabulary names the editor renders (also the catalog of
+// editable lists). Mirrors the backend KNOWN_VOCABULARY_NAMES.
+export const SYSSET_VOCAB_ORDER = [
+  'relation_types',
+  'phone_types',
+  'ingestion_sources',
+  'verification_statuses',
+  'task_types',
+  'task_statuses',
+];
+export const SYSSET_VOCAB_EMPTY             = 'הרשימה ריקה — הוסף ערך ראשון.';
+export const SYSSET_VOCAB_DUP               = 'הערך כבר קיים ברשימה.';
+export const SYSSET_VOCAB_MOVE_UP           = 'הזז למעלה';
+export const SYSSET_VOCAB_MOVE_DOWN         = 'הזז למטה';
+export const SYSSET_VOCAB_ADD_ITEM          = 'הוסף פריט';
+export const SYSSET_VOCAB_PLACEHOLDER       = 'ערך חדש…';
+export const SYSSET_VOCAB_REMOVE_ARIA       = (v) => `הסר "${v}"`;
+export const SYSSET_VOCAB_BTN_SAVE          = 'שמור';
+export const SYSSET_VOCAB_BTN_SAVING        = 'שומר…';
+export const SYSSET_VOCAB_TOAST_SAVED       = (name) => `אוצר המילים "${name}" נשמר.`;
+export const SYSSET_VOCAB_TOAST_ERROR       = (msg) => `שמירת אוצר המילים נכשלה: ${msg}`;
+
+// Entity display fields — updated to match new schema (no strong_identifier)
+export const ENTITIES_COL_IDENTIFIER_1     = 'מזהה 1';
+export const ENTITIES_COL_IDENTIFIER_2     = 'מזהה 2';
+export const ENTITIES_COL_FULL_NAME        = 'שם מלא';
+export const ENTITIES_COL_ROOT_NAME       = 'ישות שורש';
+export const ENTITIES_COL_ROOT_ROLE       = 'תפקיד שורש';
+export const ENTITIES_COL_ROOT_IDENTIFIER = 'מזהה שורש';
+export const TABLE_HEADER_ROOT_NAME       = 'ישות שורש';
+export const TABLE_HEADER_ROOT_ROLE       = 'תפקיד שורש';
+export const TABLE_HEADER_ENTITY_NAME     = 'שם ישות';
+export const TABLE_HEADER_RELATION        = 'קשר';
+export const CLIENT_CARD_SECTION_ROLE        = 'תפקיד';
+export const CLIENT_CARD_SECTION_IDENTIFIER  = 'מזהה';
+export const CLIENT_CARD_SECTION_PHONE_COUNT = 'טלפונים';
+export const ADMIN_FIELD_ROLE             = 'תפקיד';

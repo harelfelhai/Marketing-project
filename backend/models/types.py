@@ -1,32 +1,31 @@
 """
-models/types.py — Shared SQLModel column type decorators.
-
-Today this file exports just `UTCDateTime`, but it exists as a package
-member rather than living inside one model so future column types
-(JSONStrict, BoundedFloat, …) have a home that does not couple them to
-a specific table.
-
-`UTCDateTime` was introduced by DX-1 inside `models/pipeline_task.py`;
-it is promoted here in DY-1 because Phase DY migrates `PhoneNumber`'s
-timestamps onto the same tz-aware contract.
+models/types.py — Shared SQLModel column type decorators and sentinel values.
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import DateTime
 from sqlalchemy.types import TypeDecorator
 
 
-def utc_now() -> datetime:
-    """
-    Return a timezone-aware UTC datetime. The canonical replacement for
-    the deprecated `datetime.utcnow()` (Python 3.12 deprecation warning;
-    scheduled for removal in a future Python release).
+def new_id() -> str:
+    """Generate a fresh opaque string primary key."""
+    return uuid4().hex
 
-    Used as a `default_factory=` for SQLModel Field declarations and as
-    a direct write target by services that update timestamps.
-    """
+
+def utc_now() -> datetime:
+    """Return a timezone-aware UTC datetime."""
     return datetime.now(timezone.utc)
+
+
+# Sentinel value for soft-delete: a datetime far in the future meaning "not deleted".
+SOFT_DELETE_SENTINEL: datetime = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+
+def not_deleted() -> datetime:
+    """Return the soft-delete sentinel (= active / not deleted)."""
+    return SOFT_DELETE_SENTINEL
 
 
 class UTCDateTime(TypeDecorator):

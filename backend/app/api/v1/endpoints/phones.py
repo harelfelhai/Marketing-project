@@ -1,297 +1,210 @@
 """
-app/api/v1/endpoints/phones.py — Domain B/D: Phone Number Queries & Updates.
+app/api/v1/endpoints/phones.py — Phone Number Queries & Updates.
 
 Endpoints:
     GET  /api/v1/phones              — Paginated phone list with multi-column filtering.
-    GET  /api/v1/phones/{phone_id}   — Full detail view (phone + entity + action timeline).
-    PATCH /api/v1/phones/{phone_id}  — Partial update with automatic re-dispatch trigger.
-
-FILTER-AS-VIEW PATTERN
------------------------
-`GET /api/v1/phones` doubles as the operator task queue by accepting
-`?verification_status=pending`. No dedicated "review queue" endpoint is needed;
-the status filter is expressive enough to isolate any sub-view the UI requires.
-
-This means adding a new "stage" to the operator workflow requires only a new
-status value in the DB, not a new API endpoint — the contract stays stable.
+    GET  /api/v1/phones/{phone_id}   — Full detail view (phone + entity).
+    PATCH /api/v1/phones/{phone_id}/admin  — Admin partial update.
+    DELETE /api/v1/phones/{phone_id} — Soft-delete.
+    POST /api/v1/phones/{phone_id}/restore — Restore.
+    POST /api/v1/phones/quick        — Attach a phone to an existing entity.
+    POST /api/v1/phones/bulk-text    — Bulk-ingest phone numbers.
+    POST /api/v1/phones/bulk-upload  — Excel/CSV bulk upload.
+    GET  /api/v1/phones/bulk-template — Template download.
+    POST /api/v1/phones/export       — Export to .xlsx.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import func, nullslast, select as sa_select
-from sqlalchemy.orm import aliased
-from sqlmodel import Session, select
+from pydantic import BaseModel as _BaseModel, Field as _Field
+from sqlmodel import Session
 
 from app.api.deps import (
-    get_action_data_trigger_service,
     get_bulk_ingestion_service,
-    get_scoring_service,
+    get_current_user,
+    get_data_admin_service,
+    get_export_service,
+    get_ingestion_service,
+    get_storage,
+    require_admin,
 )
+from services.data_admin import DataAdminService
+from models.user import User
 from app.schemas.api_contracts import (
-    ActionLogResponse,
     BulkIngestSummary,
-    BulkTextIngestRequest,
     EntitySummary,
     IngestionResponse,
     PhoneDetailsResponse,
     PhoneListResponse,
     PhoneSummary,
-    PhoneUpdateRequest,
     PhoneUpdateResponse,
+    TableExportRequest,
 )
 from database import get_session
-from exceptions import PhoneNumberNotFoundError, TargetNotFoundError
-from models.action_log import ActionLog
+from exceptions import TargetNotFoundError
 from models.entity import Entity
 from models.phone_number import PhoneNumber
-from models.types import utc_now
+from models.types import SOFT_DELETE_SENTINEL
 from services.bulk_ingestion import BulkIngestionService
-from services.dispatcher import ActionDataTriggerService
-from services.scoring import ScoringService
+from services.export import ExportService
+from services.generic_filters import parse_filters, row_matches
+from services.ingestion import IngestionService
+from services.read_model.manager import read_model_manager
 
 router = APIRouter()
 
 
-@router.get(
-    "",
-    response_model=PhoneListResponse,
-    summary="List phone numbers with optional filters",
-    description=(
-        "Returns a paginated list of PhoneNumber records joined with their owning "
-        "Entity. Supports filtering by verification_status, ingestion_source, "
-        "entity_type, and classification_type. "
-        "\n\n"
-        "**Task-queue pattern**: Pass `?verification_status=pending` to use this "
-        "endpoint as the operator task queue — it returns exactly the numbers that "
-        "have been ingested and are awaiting Phase 3 quality review after Phase 2 "
-        "action history has accumulated."
-        "\n\n"
-        "**Filter semantics**: All filters are additive (AND). Omit a filter to "
-        "include all values of that dimension."
-    ),
-)
-def list_phones(
-    verification_status: Optional[str] = Query(
-        default=None,
-        description=(
-            "Filter by Phase 3 quality state. "
-            "Pass 'pending' to display the operator task queue. "
-            "Pass 'verified_good' or 'verified_bad' to review completed evaluations."
-        ),
-    ),
-    ingestion_source: Optional[str] = Query(
-        default=None,
-        description=(
-            "Filter by ingestion origin channel. "
-            "Example values: 'manual', 'automated'."
-        ),
-    ),
-    entity_type: Optional[str] = Query(
-        default=None,
-        description=(
-            "Filter by the relationship classification of the owning Entity. "
-            "Example values: 'family', 'friend'. Requires a JOIN with the Entity table."
-        ),
-    ),
-    classification_type: Optional[str] = Query(
-        default=None,
-        description="Filter by the system classification label on the PhoneNumber row.",
-    ),
-    client_id: Optional[int] = Query(
-        default=None,
-        description=(
-            "Filter by integer client partition identifier. "
-            "Matches against Entity.client_id. "
-            "Example: pass 1 to return only phones for the first client partition."
-        ),
-    ),
-    sort_by: str = Query(
-        default="priority",
-        pattern="^(priority|ingested_at)$",
-        description=(
-            "Ordering key. 'priority' (default, Phase DY) sorts by "
-            "priority_score DESC with NULLS LAST and `id DESC` as a "
-            "tiebreaker so paginated cursors stay stable across requests. "
-            "'ingested_at' preserves the legacy chronological ordering."
-        ),
-    ),
-    page: int = Query(default=1, ge=1, description="1-based page index."),
-    page_size: int = Query(default=20, ge=1, le=200, description="Records per page (max 200)."),
-    session: Session = Depends(get_session),
-) -> PhoneListResponse:
-    """
-    Paginated phone number listing with JOIN-based entity_type filter and
-    Phase DY priority sorting.
-
-    Constructs a JOIN graph:
-        PhoneNumber  ⟕  Entity (immediate owner)
-                     LEFT-OUTER-⟕  Entity AS RootEntity (parent target,
-                                    NULL when the immediate entity IS
-                                    the root primary target).
-
-    This lets the response builder extract `customer_tier` server-side
-    from whichever entity is the root (immediate when target_entity_id
-    is None; parent otherwise), avoiding a per-row second round-trip.
-
-    The count query mirrors the data query's WHERE clauses exactly so
-    `total` always matches the returned items.
-
-    Args:
-        verification_status (Optional[str]): Filter on PhoneNumber.verification_status.
-        ingestion_source    (Optional[str]): Filter on PhoneNumber.ingestion_source.
-        entity_type         (Optional[str]): Filter on Entity.entity_type (requires JOIN).
-        classification_type (Optional[str]): Filter on PhoneNumber.classification_type.
-        client_id           (Optional[int]): Filter on Entity.client_id (requires JOIN).
-        sort_by             (str):           'priority' (default) or 'ingested_at'.
-        page                (int):           1-based page number.
-        page_size           (int):           Records per page.
-        session             (Session):       Injected DB session.
-
-    Returns:
-        PhoneListResponse: Paginated items with total count.
-    """
-    # Alias for the root-entity self-join (Phase DY).
-    RootEntity = aliased(Entity)
-
-    base = (
-        sa_select(
-            PhoneNumber,
-            Entity.entity_type,
-            Entity.client_id,
-            Entity.extra_data.label("immediate_extra"),
-            RootEntity.extra_data.label("root_extra"),
-        )
-        .join(Entity, PhoneNumber.entity_id == Entity.id)
-        .outerjoin(RootEntity, Entity.target_entity_id == RootEntity.id)
-    )
-    count_base = (
-        sa_select(func.count(PhoneNumber.id))
-        .join(Entity, PhoneNumber.entity_id == Entity.id)
-    )
-
-    # Apply filters symmetrically to both queries.
-    filters = []
-    if verification_status is not None:
-        filters.append(PhoneNumber.verification_status == verification_status)
-    if ingestion_source is not None:
-        filters.append(PhoneNumber.ingestion_source == ingestion_source)
-    if entity_type is not None:
-        filters.append(Entity.entity_type == entity_type)
-    if classification_type is not None:
-        filters.append(PhoneNumber.classification_type == classification_type)
-    if client_id is not None:
-        filters.append(Entity.client_id == client_id)
-
-    for f in filters:
-        base = base.where(f)
-        count_base = count_base.where(f)
-
-    # Ordering — Phase DY default is priority DESC with NULLS LAST and an
-    # `id DESC` tiebreaker so pagination stays deterministic when many
-    # rows share the same priority (common when scores are coarse).
-    # `nullslast()` is the SQLAlchemy portable form: emits NULLS LAST on
-    # Postgres natively and synthesises the equivalent CASE on SQLite.
-    if sort_by == "priority":
-        ordering = [nullslast(PhoneNumber.priority_score.desc()), PhoneNumber.id.desc()]
-    else:  # 'ingested_at'
-        ordering = [PhoneNumber.ingested_at.desc(), PhoneNumber.id.desc()]
-
-    total: int = session.execute(count_base).scalar_one()
-
-    offset = (page - 1) * page_size
-    rows = session.execute(
-        base.order_by(*ordering).offset(offset).limit(page_size)
-    ).all()
-
-    items = []
-    for phone, etype, cid, immediate_extra, root_extra in rows:
-        # Root entity's extra_data — falls back to the immediate entity
-        # when the LEFT JOIN produced NULL (i.e. the immediate entity
-        # IS the root). Tier is extracted into a structured int field.
-        effective_extra = root_extra if root_extra is not None else immediate_extra
-        customer_tier = None
-        if effective_extra is not None:
-            raw_tier = effective_extra.get("customer_tier")
-            if raw_tier is not None:
-                try:
-                    customer_tier = int(raw_tier)
-                except (TypeError, ValueError):
-                    customer_tier = None
-
-        items.append(
-            PhoneSummary(
-                id=phone.id,
-                phone_number=phone.phone_number,
-                entity_id=phone.entity_id,
-                client_id=cid,
-                entity_type=etype,
-                classification_type=phone.classification_type,
-                verification_status=phone.verification_status,
-                verification_source=phone.verification_source,
-                ingestion_source=phone.ingestion_source,
-                ingested_at=phone.ingested_at,
-                created_at=phone.created_at,
-                confidence_score=phone.confidence_score,
-                confidence_updated_at=phone.confidence_updated_at,
-                priority_score=phone.priority_score,
-                priority_updated_at=phone.priority_updated_at,
-                customer_tier=customer_tier,
-            )
-        )
-
-    return PhoneListResponse(items=items, total=total, page=page, page_size=page_size)
-
-
-# ===========================================================================
-# Phase E1-B — Excel template download
-# ===========================================================================
-#
-# Registered BEFORE GET /{phone_id} on purpose: FastAPI matches routes in
-# declaration order, and "bulk-template" would otherwise be captured by
-# the {phone_id} path param and fail int conversion (→ 422).
-
-_TEMPLATE_FILENAME = "bulk_phones_template.xlsx"
 _XLSX_MEDIA_TYPE = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
 
 @router.get(
+    "",
+    response_model=PhoneListResponse,
+    summary="List phone numbers with optional filters",
+)
+def list_phones(
+    verification_status: Optional[str] = Query(default=None),
+    ingestion_source: Optional[str] = Query(default=None),
+    phone_type: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None, max_length=200),
+    filters: Optional[str] = Query(default=None, max_length=4000),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1),
+    include_deleted: bool = Query(default=False),
+    storage=Depends(get_storage),
+) -> PhoneListResponse:
+    """
+    Paginated phone number listing joined with owning Entity.
+
+    Fast path (production): served from the in-memory ReadModelStore,
+    zero DB queries per request.
+    Fallback path (tests / startup failure): two DB queries as before.
+    """
+    custom_where = parse_filters(filters, PhoneNumber)
+    mgr = read_model_manager
+    if mgr.started:
+        # ── Memory path ──────────────────────────────────────────────
+        phones   = list(mgr.store.all_phones)
+        entities = mgr.store.entities_by_id
+        if not include_deleted:
+            phones = [
+                p for p in phones
+                if p.deleted_at == SOFT_DELETE_SENTINEL
+                and entities.get(p.entity_id) is not None
+                and entities[p.entity_id].deleted_at == SOFT_DELETE_SENTINEL
+            ]
+        if verification_status is not None:
+            phones = [p for p in phones if p.verification_status == verification_status]
+        if ingestion_source is not None:
+            phones = [p for p in phones if p.ingestion_source == ingestion_source]
+        if phone_type is not None:
+            phones = [p for p in phones if p.phone_type == phone_type]
+        if custom_where:
+            phones = [p for p in phones if row_matches(p, custom_where)]
+    else:
+        # ── DB fallback ───────────────────────────────────────────────
+        phone_where: dict = dict(custom_where)
+        if not include_deleted:
+            phone_where["deleted_at"] = SOFT_DELETE_SENTINEL
+        if verification_status is not None:
+            phone_where["verification_status"] = verification_status
+        if ingestion_source is not None:
+            phone_where["ingestion_source"] = ingestion_source
+        if phone_type is not None:
+            phone_where["phone_type"] = phone_type
+        phones = storage.phones.list(phone_where)
+        entity_ids = list({p.entity_id for p in phones})
+        entities: dict = {}
+        if entity_ids:
+            ent_rows = storage.entities.list({"id": {"in": entity_ids}})
+            entities = {e.id: e for e in ent_rows}
+        if not include_deleted:
+            phones = [
+                p for p in phones
+                if entities.get(p.entity_id) is not None
+                and entities[p.entity_id].deleted_at == SOFT_DELETE_SENTINEL
+            ]
+
+    # ── Common: free-text, sort, paginate, build items ────────────────
+    if q:
+        needle = q.strip().lower()
+        def _hay(ph):
+            ent = entities.get(ph.entity_id)
+            return " ".join(filter(None, [
+                ph.phone_number,
+                ent.full_name if ent else "",
+                ent.identifier_1 if ent else "",
+            ])).lower()
+        phones = [p for p in phones if needle in _hay(p)]
+
+    phones.sort(key=lambda p: (p.score, p.id), reverse=True)
+
+    total  = len(phones)
+    offset = (page - 1) * page_size
+    items  = []
+    for phone in phones[offset: offset + page_size]:
+        ent = entities.get(phone.entity_id)
+        items.append(
+            PhoneSummary(
+                id=phone.id,
+                phone_number=phone.phone_number,
+                entity_id=phone.entity_id,
+                phone_type=phone.phone_type,
+                verification_status=phone.verification_status,
+                ingestion_source=phone.ingestion_source,
+                score=phone.score,
+                relation_type=ent.relation_type if ent else None,
+                full_name=ent.full_name if ent else None,
+                identifier_1=ent.identifier_1 if ent else None,
+                identifier_2=ent.identifier_2 if ent else None,
+            )
+        )
+
+    return PhoneListResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.post(
+    "/export",
+    summary="Export the /phones table to Excel (.xlsx)",
+    responses={200: {"content": {_XLSX_MEDIA_TYPE: {}}}},
+)
+def export_phones(
+    body: TableExportRequest,
+    service: ExportService = Depends(get_export_service),
+) -> Response:
+    try:
+        xlsx_bytes, filename = service.export_phones(
+            filters=body.filters,
+            columns=[c.model_dump() for c in body.columns],
+            filename_hint=body.filename_hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+_TEMPLATE_FILENAME = "bulk_phones_template.xlsx"
+
+
+@router.get(
     "/bulk-template",
     summary="Download the Excel upload template",
-    description=(
-        "Returns a freshly-generated `.xlsx` workbook containing two "
-        "sheets: `data` (header row + 3 example rows) and `instructions` "
-        "(Hebrew operator notes describing each column). The column names "
-        "in the `data` sheet are the API contract — renaming them breaks "
-        "the `/bulk-upload` endpoint."
-    ),
-    responses={
-        200: {
-            "content": {_XLSX_MEDIA_TYPE: {}},
-            "description": "The generated .xlsx workbook bytes.",
-        }
-    },
+    responses={200: {"content": {_XLSX_MEDIA_TYPE: {}}}},
 )
 def bulk_upload_template() -> Response:
-    """
-    Generate the template fresh on every request — the file is small
-    (~6 KB) and this keeps the template definition in one place
-    (`BulkIngestionService.generate_template_xlsx`) instead of also
-    shipping a checked-in binary asset.
-
-    Returns:
-        Response: The .xlsx workbook bytes with appropriate headers.
-    """
     payload = BulkIngestionService.generate_template_xlsx()
     return Response(
         content=payload,
         media_type=_XLSX_MEDIA_TYPE,
-        headers={
-            "Content-Disposition": f'attachment; filename="{_TEMPLATE_FILENAME}"',
-        },
+        headers={"Content-Disposition": f'attachment; filename="{_TEMPLATE_FILENAME}"'},
     )
 
 
@@ -299,202 +212,39 @@ def bulk_upload_template() -> Response:
     "/{phone_id}",
     response_model=PhoneDetailsResponse,
     summary="Get full detail for a single phone number",
-    description=(
-        "Returns the complete lifecycle picture for one PhoneNumber: "
-        "all three phase blocks (ingestion, verification, action history) plus "
-        "the nested Entity summary. The `action_timeline` list is ordered "
-        "most-recent-first, matching the natural audit reading order."
-    ),
 )
 def get_phone_detail(
-    phone_id: int,
-    session: Session = Depends(get_session),
+    phone_id: str,
+    storage=Depends(get_storage),
 ) -> PhoneDetailsResponse:
-    """
-    Fetch a PhoneNumber row and join its Entity + ActionLog history.
-
-    Four sequential queries:
-        1. PhoneNumber by PK — raises 404 if not found.
-        2. Entity by phone.entity_id — always exists due to FK constraint.
-        3. Optional root Entity via target_entity_id (Phase DY) — for the
-           customer_tier extraction.
-        4. ActionLog rows for phone_id, ordered most-recent-first.
-
-    Args:
-        phone_id (int):     PK of the PhoneNumber row.
-        session  (Session): Injected DB session.
-
-    Returns:
-        PhoneDetailsResponse: Full detail with nested entity and action timeline.
-
-    Raises:
-        HTTPException 404: No PhoneNumber with that PK.
-    """
-    phone = session.get(PhoneNumber, phone_id)
+    phone = storage.phones.get(phone_id)
     if phone is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"PhoneNumber with id={phone_id} not found.",
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"PhoneNumber with id={phone_id} not found.")
+
+    entity = storage.entities.get(phone.entity_id)
+
+    entity_summary = None
+    if entity is not None:
+        entity_summary = EntitySummary(
+            id=entity.id,
+            relation_type=entity.relation_type,
+            target_entity_id=entity.target_entity_id,
+            full_name=entity.full_name,
+            identifier_1=entity.identifier_1,
+            identifier_2=entity.identifier_2,
         )
-
-    entity = session.get(Entity, phone.entity_id)
-
-    # Phase DY — resolve the root target Entity (one hop up) and extract
-    # customer_tier. When the immediate entity IS the root, use its own
-    # extra_data.
-    root_entity = entity
-    if entity is not None and entity.target_entity_id is not None:
-        candidate = session.get(Entity, entity.target_entity_id)
-        if candidate is not None:
-            root_entity = candidate
-    customer_tier: Optional[int] = None
-    if root_entity is not None and root_entity.extra_data is not None:
-        raw_tier = root_entity.extra_data.get("customer_tier")
-        if raw_tier is not None:
-            try:
-                customer_tier = int(raw_tier)
-            except (TypeError, ValueError):
-                customer_tier = None
-
-    action_logs = session.exec(
-        select(ActionLog)
-        .where(ActionLog.phone_id == phone_id)
-        .order_by(ActionLog.requested_at.desc())
-    ).all()
 
     return PhoneDetailsResponse(
         id=phone.id,
         phone_number=phone.phone_number,
         entity_id=phone.entity_id,
-        classification_type=phone.classification_type,
+        phone_type=phone.phone_type,
         ingestion_source=phone.ingestion_source,
-        ingestion_reason=phone.ingestion_reason,
-        ingested_at=phone.ingested_at,
         verification_status=phone.verification_status,
-        verification_source=phone.verification_source,
-        verification_reason=phone.verification_reason,
-        verified_at=phone.verified_at,
-        confidence_score=phone.confidence_score,
-        confidence_updated_at=phone.confidence_updated_at,
-        priority_score=phone.priority_score,
-        priority_updated_at=phone.priority_updated_at,
-        customer_tier=customer_tier,
+        score=phone.score,
         extra_data=phone.extra_data,
-        created_at=phone.created_at,
-        updated_at=phone.updated_at,
-        entity=EntitySummary.model_validate(entity),
-        action_timeline=[ActionLogResponse.model_validate(log) for log in action_logs],
-    )
-
-
-@router.patch(
-    "/{phone_id}",
-    response_model=PhoneUpdateResponse,
-    summary="Partially update a phone number's mutable fields",
-    description=(
-        "Applies a partial update to the mutable fields of a PhoneNumber row "
-        "(`classification_type`, `extra_data`). Phase 3 verification fields are "
-        "intentionally excluded — those are written exclusively by VerificationService. "
-        "\n\n"
-        "After persisting the update, the endpoint calls "
-        "`ActionDataTriggerService.evaluate_data_change_trigger()` with the names "
-        "of the changed fields. If the trigger condition is met (a previously failed "
-        "action exists and the changed fields intersect the trigger allowlist), "
-        "a fresh re-dispatch is initiated and the new ActionLog is returned in "
-        "`triggered_action`."
-    ),
-)
-def update_phone(
-    phone_id: int,
-    body: PhoneUpdateRequest,
-    session: Session = Depends(get_session),
-    trigger_service: ActionDataTriggerService = Depends(get_action_data_trigger_service),
-    scoring_service: ScoringService = Depends(get_scoring_service),
-) -> PhoneUpdateResponse:
-    """
-    Partially update mutable PhoneNumber fields, run the Phase DY scoring
-    recalc, and evaluate the Phase 2 re-dispatch trigger.
-
-    Update semantics:
-        - Only non-None fields in `body` are applied.
-        - `extra_data` is replaced (not merged) when provided.
-        - `confidence_score` updates also bump `confidence_updated_at`
-          and trigger a `priority_score` recompute — all four columns
-          land in one transaction (Phase DY atomic contract).
-        - The list of actually-changed field names is passed to
-          `ActionDataTriggerService` for trigger evaluation AFTER the
-          atomic write commits.
-
-    Args:
-        phone_id        (int):                      PK of the PhoneNumber to update.
-        body            (PhoneUpdateRequest):       Partial update payload.
-        session         (Session):                 Injected DB session.
-        trigger_service (ActionDataTriggerService): Injected trigger evaluator.
-        scoring_service (ScoringService):           Phase DY scoring hook.
-
-    Returns:
-        PhoneUpdateResponse: Updated phone + optional triggered ActionLog.
-
-    Raises:
-        HTTPException 404: No PhoneNumber with that PK.
-    """
-    phone = session.get(PhoneNumber, phone_id)
-    if phone is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"PhoneNumber with id={phone_id} not found.",
-        )
-
-    # Track which fields actually change so the trigger service can apply
-    # its allowlist gate accurately.
-    changed_fields: list[str] = []
-
-    if body.classification_type is not None and body.classification_type != phone.classification_type:
-        phone.classification_type = body.classification_type
-        changed_fields.append("classification_type")
-
-    if body.extra_data is not None:
-        phone.extra_data = body.extra_data
-        changed_fields.append("extra_data")
-
-    # Phase DY — confidence_score is a mutable audit field. The scoring
-    # service writes confidence + priority + both timestamps in one
-    # session pass; we then commit ONCE for the whole PATCH.
-    confidence_changed = (
-        body.confidence_score is not None
-        and float(body.confidence_score) != float(phone.confidence_score)
-    )
-    if confidence_changed:
-        scoring_service.update_confidence_and_recalc(
-            phone_id=phone_id,
-            new_confidence=float(body.confidence_score),
-            commit=False,
-        )
-        changed_fields.append("confidence_score")
-
-    if changed_fields:
-        phone.updated_at = utc_now()
-        session.add(phone)
-        session.commit()
-        session.refresh(phone)
-
-    # Evaluate whether any of the changed fields warrant a re-dispatch.
-    # ActionDataTriggerService runs in its own session/transaction.
-    triggered_log = None
-    if changed_fields:
-        try:
-            triggered_log = trigger_service.evaluate_data_change_trigger(
-                phone_id=phone_id,
-                updated_fields=changed_fields,
-            )
-        except PhoneNumberNotFoundError:
-            # Phone was confirmed to exist above; this path is unreachable
-            # under normal operation — skip silently.
-            pass
-
-    return PhoneUpdateResponse(
-        phone=IngestionResponse.model_validate(phone),
-        triggered_action=ActionLogResponse.model_validate(triggered_log) if triggered_log else None,
+        entity=entity_summary,
     )
 
 
@@ -503,60 +253,36 @@ def update_phone(
 # ===========================================================================
 
 
+class _BulkTextIn(_BaseModel):
+    phone_numbers_raw: str
+    entity_id: str
+    ingestion_source: str = "manual"
+    phone_type: Optional[str] = None
+    extra_shared: Optional[dict] = None
+
+
 @router.post(
     "/bulk-text",
     response_model=BulkIngestSummary,
-    summary="Bulk-ingest phone numbers under a shared envelope context",
-    description=(
-        "Tokenizes `phone_numbers_raw` (delimiters: comma, semicolon, "
-        "any whitespace), normalizes each token, deduplicates within "
-        "the batch, and inserts one new Entity (the shared envelope) "
-        "plus one PhoneNumber per surviving token."
-        "\n\n"
-        "**Resilience contract:** per-row failures are collected into "
-        "`failed_rows` and returned alongside a 200 response. Only "
-        "request-shape errors (invalid `target_entity_id`, empty input, "
-        "etc.) raise 4xx."
-        "\n\n"
-        "Every ingested phone is stamped with `bulk_submission_id` "
-        "(uuid4) in its `extra_data`, allowing later filtering of "
-        "everything from one batch."
-    ),
+    summary="Bulk-ingest phone numbers under a shared entity",
 )
 def bulk_text_ingest(
-    body: BulkTextIngestRequest,
+    body: _BulkTextIn,
+    current_user: Optional[User] = Depends(get_current_user),
     service: BulkIngestionService = Depends(get_bulk_ingestion_service),
 ) -> BulkIngestSummary:
-    """
-    Args:
-        body    (BulkTextIngestRequest): Validated request payload.
-        service (BulkIngestionService):  Injected via FastAPI Depends.
-
-    Returns:
-        BulkIngestSummary: Counts + per-row failures + new IDs.
-
-    Raises:
-        HTTPException 422: `target_entity_id` was provided but does not
-            exist in the database. Per-row failures do NOT raise — they
-            land inside the 200 response body.
-    """
     try:
         summary = service.ingest_bulk_text(
             phone_numbers_raw=body.phone_numbers_raw,
-            client_id=body.client_id,
-            entity_type=body.entity_type,
+            entity_id=body.entity_id,
             ingestion_source=body.ingestion_source,
-            target_entity_id=body.target_entity_id,
-            ingestion_reason=body.ingestion_reason,
-            entity_extra=body.entity_extra,
-            phone_extra_shared=body.phone_extra_shared,
+            phone_type=body.phone_type,
+            extra_shared=body.extra_shared,
+            uploaded_by_user_id=current_user.id if current_user else None,
         )
     except TargetNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    read_model_manager.reload()
     return BulkIngestSummary.model_validate(summary)
 
 
@@ -564,11 +290,6 @@ def bulk_text_ingest(
 # Phase E1-B — Excel / CSV bulk upload
 # ===========================================================================
 
-# 5 MB hard cap on uploaded files. Operators uploading >5MB of phone-number
-# rows are almost always doing something wrong (re-uploading their whole
-# CRM export by mistake); the service-layer row cap of 5,000 is a much
-# tighter bound for normal use. Keeping the byte cap loose enough that a
-# legitimate 5,000-row sheet always fits.
 _UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -576,59 +297,146 @@ _UPLOAD_MAX_BYTES = 5 * 1024 * 1024
     "/bulk-upload",
     response_model=BulkIngestSummary,
     summary="Bulk-ingest phone numbers from an Excel (.xlsx) or CSV file",
-    description=(
-        "Accepts a multipart/form-data upload containing one row per "
-        "phone number. The required columns are: `phone_number`, "
-        "`client_id`, `entity_type`, `ingestion_source`. Optional: "
-        "`target_entity_id`, `ingestion_reason`."
-        "\n\n"
-        "Unlike `/bulk-text` (which collapses all rows under a single "
-        "shared envelope), `/bulk-upload` creates one Entity per row — "
-        "each row is its own ingestion context."
-        "\n\n"
-        "**Resilience contract:** per-row failures land in `failed_rows` "
-        "alongside a 200 response. File-shape errors (wrong extension, "
-        "malformed workbook, missing required columns, >5,000 rows) "
-        "raise 422."
-    ),
 )
 async def bulk_upload_ingest(
-    file: UploadFile = File(..., description="The .xlsx or .csv file to ingest."),
+    file: UploadFile = File(...),
+    current_user: Optional[User] = Depends(get_current_user),
     service: BulkIngestionService = Depends(get_bulk_ingestion_service),
 ) -> BulkIngestSummary:
-    """
-    Read the upload into memory, hand it to the service, and translate
-    file-shape errors (ValueError) to 422.
-
-    Args:
-        file    (UploadFile):           Uploaded file from multipart/form-data.
-        service (BulkIngestionService): Injected via FastAPI Depends.
-
-    Returns:
-        BulkIngestSummary: Counts + per-row failures + new IDs.
-
-    Raises:
-        HTTPException 413: Uploaded file exceeds the 5 MB cap.
-        HTTPException 422: File is malformed, has the wrong extension,
-            is missing required columns, or exceeds the row cap.
-    """
     file_bytes = await file.read()
     if len(file_bytes) > _UPLOAD_MAX_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=(
-                f"Uploaded file is {len(file_bytes)} bytes; max allowed is "
-                f"{_UPLOAD_MAX_BYTES}."
-            ),
+            detail=f"Uploaded file is {len(file_bytes)} bytes; max allowed is {_UPLOAD_MAX_BYTES}.",
         )
     try:
         summary = service.ingest_bulk_upload(
             file_bytes=file_bytes,
             filename=file.filename or "",
+            uploaded_by_user_id=current_user.id if current_user else None,
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    read_model_manager.reload()
     return BulkIngestSummary.model_validate(summary)
+
+
+# ===========================================================================
+# Admin patch / soft-delete / restore for phones
+# ===========================================================================
+
+
+def _phone_to_dict(ph) -> dict:
+    return {
+        "id":                  ph.id,
+        "entity_id":           ph.entity_id,
+        "phone_number":        ph.phone_number,
+        "phone_type":          ph.phone_type,
+        "ingestion_source":    ph.ingestion_source,
+        "verification_status": ph.verification_status,
+        "score":               ph.score,
+        "deleted_at":          ph.deleted_at,
+        "extra_data":          ph.extra_data,
+    }
+
+
+class _PhonePatchIn(_BaseModel):
+    phone_number:        Optional[str] = _Field(default=None, max_length=40)
+    entity_id:           Optional[str] = _Field(default=None)
+    phone_type:          Optional[str] = _Field(default=None, max_length=40)
+    ingestion_source:    Optional[str] = _Field(default=None, max_length=40)
+    verification_status: Optional[str] = _Field(default=None, max_length=40)
+    score:               Optional[float] = _Field(default=None)
+
+
+@router.patch(
+    "/{phone_id}/admin",
+    summary="Admin edit a phone row",
+)
+def admin_patch_phone(
+    phone_id: str,
+    body: _PhonePatchIn,
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ph = admin.patch_phone(
+            phone_id,
+            phone_number=body.phone_number,
+            entity_id=body.entity_id,
+            phone_type=body.phone_type,
+            ingestion_source=body.ingestion_source,
+            verification_status=body.verification_status,
+            score=body.score,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
+    return _phone_to_dict(ph)
+
+
+@router.delete(
+    "/{phone_id}",
+    summary="Soft-delete a phone (admin)",
+)
+def soft_delete_phone(
+    phone_id: str,
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ph = admin.soft_delete_phone(phone_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
+    return _phone_to_dict(ph)
+
+
+@router.post(
+    "/{phone_id}/restore",
+    summary="Restore a soft-deleted phone (admin)",
+)
+def restore_phone(
+    phone_id: str,
+    admin: DataAdminService = Depends(get_data_admin_service),
+) -> dict:
+    try:
+        ph = admin.restore_phone(phone_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    read_model_manager.reload()
+    return _phone_to_dict(ph)
+
+
+# ===========================================================================
+# Simplified phone ingestion (quick attach)
+# ===========================================================================
+
+
+class _QuickAttachIn(_BaseModel):
+    phone_number: str
+    entity_id:    str
+    phone_type:   Optional[str] = None
+    extra_data:   Optional[dict] = None
+
+
+@router.post(
+    "/quick",
+    summary="Attach a phone to an existing entity",
+)
+def quick_attach_phone(
+    body: _QuickAttachIn,
+    current_user: Optional[User] = Depends(get_current_user),
+    service: IngestionService = Depends(get_ingestion_service),
+) -> dict:
+    try:
+        ph = service.quick_attach_phone(
+            phone_number=body.phone_number,
+            entity_id=body.entity_id,
+            ingestion_source="manual",
+            phone_type=body.phone_type,
+            extra_data=body.extra_data,
+            uploaded_by_user_id=current_user.id if current_user else None,
+        )
+    except TargetNotFoundError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    read_model_manager.reload()
+    return _phone_to_dict(ph)

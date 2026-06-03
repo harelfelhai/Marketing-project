@@ -20,10 +20,7 @@ export async function runWorker(engineName, mockDb) {
         params: { worker_name: engineName },
       });
       mockDb.applyWorkerRun(engineName, data.processed_count);
-      await Promise.all([
-        mockDb.refetchPhones(),
-        mockDb.refetchActionLogs(),
-      ]);
+      await mockDb.refetchPhones();
       return data;
     } catch (err) {
       mockDb.setEngineExecuting(engineName, false);
@@ -35,9 +32,7 @@ export async function runWorker(engineName, mockDb) {
   mockDb.setEngineExecuting(engineName, true);
   await mockDelay(1500);
 
-  const pendingCount = engineName === 'retry'
-    ? mockDb.actionLogs.filter((l) => l.status === 'scheduled_retry').length
-    : mockDb.phones.filter((p) => p.verification_status === 'pending').length;
+  const pendingCount = mockDb.phones.filter((p) => p.verification_status === 'pending').length;
 
   const processedCount = Math.min(pendingCount, Math.ceil(Math.random() * 5) + 1);
   const startedAt      = new Date(Date.now() - 1500).toISOString();
@@ -51,4 +46,212 @@ export async function runWorker(engineName, mockDb) {
     started_at:      startedAt,
     completed_at:    completedAt,
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// System Settings tab (admin-only infrastructure controls)
+// ---------------------------------------------------------------------------
+
+/**
+ * getSystemSettings — read the active storage backend + the catalog of
+ * known backends (each flagged `available`).
+ *
+ * MOCK_MODE = false → GET /system/settings.
+ * MOCK_MODE = true  → MockDataContext.applyGetSystemSettings().
+ *
+ * @param {object} mockDb  MockDataContext instance for parity in mock mode.
+ * @returns {Promise<object>} { storage_backend, backends:[{id,available}], applies_on_restart }
+ */
+export async function getSystemSettings(mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.get('/system/settings');
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyGetSystemSettings();
+}
+
+/**
+ * updateSystemSettings — persist a new storage backend selection. Rejects
+ * (throws) for unknown / not-yet-available backends, mirroring the
+ * backend's 422 contract.
+ *
+ * @param {object} payload  { storage_backend: 'sql' | 'mongo' }
+ * @param {object} mockDb   MockDataContext instance.
+ * @returns {Promise<object>} The updated settings object.
+ */
+export async function updateSystemSettings(payload, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings', payload);
+    return data;
+  }
+  await mockDelay(300);
+  return mockDb.applyUpdateSystemSettings(payload);
+}
+
+/**
+ * updateDisplayFields — set the ordered visible-field selection for one
+ * surface (e.g. 'entities'). Returns the full updated settings object.
+ *
+ * @param {string}   surface  Surface id.
+ * @param {string[]} fields   Ordered visible field keys.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateDisplayFields(surface, fields, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/display-fields',
+                                         { surface, fields });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateDisplayFields(surface, fields);
+}
+
+/**
+ * updateDisplayLabels — override the column labels for one surface
+ * (e.g. 'entities'). Returns the full updated settings object.
+ *
+ * @param {string}                 surface  Surface id.
+ * @param {Record<string,string>}  labels   field_key -> custom label. Empty
+ *                                           map (or all-blank values) clears
+ *                                           the surface's overrides.
+ * @param {object}                 mockDb   MockDataContext instance.
+ */
+export async function updateDisplayLabels(surface, labels, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/display-labels',
+                                         { surface, labels });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateDisplayLabels(surface, labels);
+}
+
+/**
+ * updateFilterFields — set the ordered active-filter selection for one
+ * surface (e.g. 'phones'). Returns the full updated settings object.
+ *
+ * @param {string}   surface  Surface id.
+ * @param {string[]} fields   Ordered active filter field keys.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateFilterFields(surface, fields, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/filter-fields',
+                                         { surface, fields });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateFilterFields(surface, fields);
+}
+
+/**
+ * updateCustomFilters — set the admin-defined custom filters for one surface.
+ * Returns the full updated settings object.
+ *
+ * @param {string}   surface  Surface id ('phones' | 'operations' | 'entities').
+ * @param {object[]} filters  Ordered descriptors { key, label, field, widget, options? }.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateCustomFilters(surface, filters, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/custom-filters',
+                                         { surface, filters });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateCustomFilters(surface, filters);
+}
+
+/**
+ * updateIngestionFields — set the admin-defined dynamic ingestion fields for
+ * one surface ('entity' | 'phone'). Returns the full updated settings object.
+ *
+ * @param {string}   surface  'entity' | 'phone'.
+ * @param {object[]} fields   Ordered descriptors { key, label, widget, options? }.
+ * @param {object}   mockDb   MockDataContext instance.
+ */
+export async function updateIngestionFields(surface, fields, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/ingestion-fields',
+                                         { surface, fields });
+    return data;
+  }
+  await mockDelay(200);
+  return mockDb.applyUpdateIngestionFields(surface, fields);
+}
+
+/**
+ * updateMongoUrl — validate and persist a MongoDB connection URL server-side.
+ *
+ * The URL is WRITE-ONLY from the frontend's perspective. The response only
+ * carries the boolean `mongo_configured` flag (never the URL itself).
+ *
+ * MOCK_MODE = false → PUT /system/settings/mongo-url
+ * MOCK_MODE = true  → MockDataContext.applyUpdateMongoUrl() — always succeeds
+ *                     (simulates a 600 ms connection probe).
+ *
+ * @param {string} url    MongoDB connection string.
+ * @param {object} mockDb MockDataContext instance.
+ * @returns {Promise<object>} The full updated settings object.
+ */
+export async function updateMongoUrl(url, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/mongo-url', { url });
+    return data;
+  }
+  await mockDelay(600);
+  return mockDb.applyUpdateMongoUrl(url);
+}
+
+/**
+ * updateApiConfig — configure the HTTP/REST ("api") storage backend.
+ *
+ * MOCK_MODE = false → PUT /system/settings/api-config (the backend validates
+ *                     the shape, connection-tests the remote API, and stores
+ *                     the auth token server-side — only a redacted view comes
+ *                     back).
+ * MOCK_MODE = true  → MockDataContext.applyUpdateApiConfig() — flips
+ *                     api_configured and stores the redacted config locally.
+ *
+ * @param {object} config { base_url, tables, auth?, timeout_s? }.
+ * @param {object} mockDb MockDataContext instance.
+ * @returns {Promise<object>} The full updated settings object.
+ */
+export async function updateApiConfig(config, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/api-config', config);
+    return data;
+  }
+  await mockDelay(600);
+  return mockDb.applyUpdateApiConfig(config);
+}
+
+/**
+ * updateVocabulary — persist a vocabulary list by name.
+ *
+ * Vocabulary names: 'relation_types', 'ingestion_sources', 'phone_types', etc.
+ * The backend validates names; unknown names return 422.
+ *
+ * MOCK_MODE = false → PUT /system/settings/vocabulary/{name}
+ * MOCK_MODE = true  → MockDataContext.applyUpdateVocabulary(name, items)
+ *
+ * @param {string}   name    Vocabulary name.
+ * @param {string[]} items   Ordered list of string values.
+ * @param {object}   mockDb  MockDataContext instance.
+ * @returns {Promise<{name: string, items: string[]}>} The updated vocabulary.
+ */
+export async function updateVocabulary(name, items, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put(
+      `/system/settings/vocabulary/${encodeURIComponent(name)}`,
+      { items },
+    );
+    return data;
+  }
+  await mockDelay(300);
+  return mockDb.applyUpdateVocabulary
+    ? mockDb.applyUpdateVocabulary(name, items)
+    : { name, items };
 }

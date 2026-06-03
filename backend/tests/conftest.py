@@ -5,12 +5,7 @@ Architecture:
     - `engine`: in-memory SQLite, function-scoped, with FK enforcement ON.
     - `session`: yields a Session against `engine`; each test gets a fresh DB.
     - `seeded_target`: factory that inserts one target Entity + PhoneNumber.
-    - Mock handlers/strategies for the dispatcher and verification engines.
-
-We deliberately use FUNCTION-SCOPED engines (fresh DB per test) rather than
-session-scoped + savepoint rollback. With our atomic-retry-claim logic that
-performs intermediate commits, savepoints don't isolate cleanly. Fresh DBs
-are slower but correct.
+    - Mock strategies for the verification engine.
 """
 
 from typing import Iterator, List
@@ -21,18 +16,47 @@ from sqlmodel import Session, SQLModel, create_engine
 
 # Side-effect import: registers all SQLModel tables in metadata.
 import models  # noqa: F401
-from exceptions import ActionExecutionError
-from interfaces.dispatcher import BaseActionHandler
 from interfaces.ingestion import BaseIngestionRoutingEngine
 from interfaces.verification import BaseVerificationStrategy
 from models.entity import Entity
 from models.phone_number import PhoneNumber
+from models.types import not_deleted
 from schemas.verification import VerificationVerdict
 
 
 # ---------------------------------------------------------------------------
 # Database fixtures
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _reset_read_cache():
+    """
+    The read cache (repositories/cache.py) is a process-wide singleton keyed
+    by query, invalidated by a global data-version counter. Reset it around
+    every test so a cached projection from one test's database can never be
+    served to another test (which gets a fresh DB but shares the cache).
+    """
+    from repositories import cache
+    cache.reset()
+    yield
+    cache.reset()
+
+
+@pytest.fixture(autouse=True)
+def _disable_read_model_manager():
+    """
+    The ReadModelManager is a process-wide singleton that loads data from the
+    production DB at startup.  Disabling it per-test ensures the manager never
+    reads from the wrong DB; list endpoints fall back to the DB path, which
+    respects FastAPI dependency overrides pointing at the test's in-memory DB.
+    """
+    from services.read_model.manager import read_model_manager
+    read_model_manager.disable_for_tests()
+    yield
+    # Leave disabled — each test gets a fresh disable call; production code
+    # is never affected since tests don't call start() after disable_for_tests().
+    read_model_manager.disable_for_tests()
+
 
 @pytest.fixture()
 def engine():
@@ -72,13 +96,19 @@ def seeded_target(session: Session) -> PhoneNumber:
     Insert one target Entity + one PhoneNumber pointing at it.
     Returns the PhoneNumber row (the target's primary number).
     """
-    target = Entity(entity_type="target", extra_data={"seed": True})
+    target = Entity(
+        relation_type="primary",
+        deleted_at=not_deleted(),
+        extra_data={"seed": True},
+    )
     session.add(target)
     session.flush()
     phone = PhoneNumber(
         entity_id=target.id,
         phone_number="+15550000001",
         ingestion_source="manual",
+        score=0.0,
+        deleted_at=not_deleted(),
     )
     session.add(phone)
     session.commit()
@@ -89,41 +119,6 @@ def seeded_target(session: Session) -> PhoneNumber:
 # ---------------------------------------------------------------------------
 # Mock handlers / strategies / engines
 # ---------------------------------------------------------------------------
-
-class RecordingHandler(BaseActionHandler):
-    """
-    Handler that records every call and returns a deterministic payload.
-    Useful for assertions about WHAT was dispatched.
-    """
-
-    def __init__(self):
-        self.calls: List[tuple] = []
-
-    def execute(self, phone_number: str, extra_data: dict) -> dict:
-        self.calls.append((phone_number, dict(extra_data)))
-        return {"recorded": True, "phone_number": phone_number}
-
-
-class FailingHandler(BaseActionHandler):
-    """
-    Handler that raises ActionExecutionError on every call.
-    Constructor configures retryability + detail.
-    """
-
-    def __init__(self, retryable: bool = True, detail: str = "test failure"):
-        self.retryable = retryable
-        self.detail = detail
-        self.call_count = 0
-
-    def execute(self, phone_number: str, extra_data: dict) -> dict:
-        self.call_count += 1
-        raise ActionExecutionError(
-            action_type="<test>",
-            phone_number=phone_number,
-            retryable=self.retryable,
-            detail=self.detail,
-        )
-
 
 class RoutingEngineReturning(BaseIngestionRoutingEngine):
     """Routing engine that always returns a fixed action token (or None)."""
@@ -142,16 +137,11 @@ class StrategyReturning(BaseVerificationStrategy):
 
     def __init__(self, verdict: VerificationVerdict):
         self.verdict = verdict
-        self.calls: List[int] = []
+        self.calls: List[str] = []
 
-    def evaluate_quality(self, phone_id: int) -> VerificationVerdict:
+    def evaluate_quality(self, phone_id: str) -> VerificationVerdict:
         self.calls.append(phone_id)
         return self.verdict
-
-
-@pytest.fixture()
-def recording_handler() -> RecordingHandler:
-    return RecordingHandler()
 
 
 @pytest.fixture()

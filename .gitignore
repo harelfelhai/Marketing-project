@@ -21,3 +21,11 @@ dist/
 # IDE
 .vscode/
 .idea/
+
+# Phase AUTH — admins.json holds plaintext passwords for the static
+# admin roster. Per-deployment, MUST NOT be committed.
+# `admins.example.json` is checked in as a template.
+backend/admins.json
+
+# Claude Code agent worktrees (created by sub-agents, ephemeral)
+.claude/

@@ -33,9 +33,6 @@ export async function ingestCircleMember(payload, mockDb) {
     entity_id:           newest.entity_id,
     verification_status: newest.verification_status,
     ingestion_source:    newest.ingestion_source,
-    ingestion_reason:    newest.ingestion_reason,
-    ingested_at:         newest.ingested_at,
-    created_at:          newest.created_at,
   };
 }
 
@@ -58,7 +55,7 @@ export async function ingestCircleMember(payload, mockDb) {
  *
  * @param {object} payload   Matches BulkTextIngestRequest:
  *   - phone_numbers_raw (string, required)
- *   - client_id         (number, required)
+ *   - root_entity_id         (number, required)
  *   - entity_type       (string, required)
  *   - ingestion_source  (string, required)
  *   - target_entity_id  (number, optional)
@@ -182,10 +179,10 @@ export async function getBulkTemplate() {
     // CSV mirror of the backend template's "data" sheet: header + 3 examples.
     // Operators ingest a populated copy of this file via the upload tab.
     const csvLines = [
-      'phone_number,client_id,entity_type,ingestion_source,target_entity_id,ingestion_reason',
-      '+14155551111,1,family,manual,,Spouse — found via referral',
-      '+14155551112,1,friend,manual,,Close friend',
-      '+14155551113,2,social_envelope,automated,,Cluster scrape, unknown owner',
+      'phone_number,root_entity_id,relation_type,ingestion_source,target_entity_id',
+      '+14155551111,1,family,manual,',
+      '+14155551112,1,friend,manual,',
+      '+14155551113,2,associated,automated,',
     ];
     blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
     filename = 'bulk_phones_template.csv';

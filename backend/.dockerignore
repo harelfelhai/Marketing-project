@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.env
+app.db
+*.db
+admins.json
+data/
+venv/
+.venv/

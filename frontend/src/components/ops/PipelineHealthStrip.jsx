@@ -5,26 +5,22 @@
 import { useMockData } from '../../contexts/MockDataContext';
 import {
   HEALTH_TOTAL_PHONES, HEALTH_PENDING_VERDICT, HEALTH_VERIFIED_GOOD,
-  HEALTH_VERIFIED_BAD, HEALTH_FAILED_ACTIONS, HEALTH_RETRY_QUEUE,
+  HEALTH_VERIFIED_BAD,
 } from '../../config/strings.he';
 
 export default function PipelineHealthStrip() {
-  const { phones, actionLogs } = useMockData();
+  const { phones } = useMockData();
 
-  const pending  = phones.filter((p) => p.verification_status === 'pending').length;
-  const good     = phones.filter((p) => p.verification_status === 'verified_good').length;
-  const bad      = phones.filter((p) => p.verification_status === 'verified_bad').length;
-  const failed   = actionLogs.filter((l) => l.status === 'failed').length;
-  const retryQ   = actionLogs.filter((l) => l.status === 'scheduled_retry').length;
-  const total    = phones.length;
+  const pending = phones.filter((p) => p.verification_status === 'pending').length;
+  const good    = phones.filter((p) => p.verification_status === 'verified').length;
+  const bad     = phones.filter((p) => p.verification_status === 'rejected').length;
+  const total   = phones.length;
 
   const metrics = [
     { label: HEALTH_TOTAL_PHONES,    value: total,   tone: 'slate'   },
-    { label: HEALTH_PENDING_VERDICT, value: pending,  tone: pending  > 0 ? 'amber'  : 'slate' },
-    { label: HEALTH_VERIFIED_GOOD,   value: good,     tone: good     > 0 ? 'green'  : 'slate' },
-    { label: HEALTH_VERIFIED_BAD,    value: bad,      tone: bad      > 0 ? 'red'    : 'slate' },
-    { label: HEALTH_FAILED_ACTIONS,  value: failed,   tone: failed   > 0 ? 'rose'   : 'slate' },
-    { label: HEALTH_RETRY_QUEUE,     value: retryQ,   tone: retryQ   > 0 ? 'sky'    : 'slate' },
+    { label: HEALTH_PENDING_VERDICT, value: pending,  tone: pending > 0 ? 'amber' : 'slate' },
+    { label: HEALTH_VERIFIED_GOOD,   value: good,     tone: good    > 0 ? 'green' : 'slate' },
+    { label: HEALTH_VERIFIED_BAD,    value: bad,      tone: bad     > 0 ? 'red'   : 'slate' },
   ];
 
   const TONE = {

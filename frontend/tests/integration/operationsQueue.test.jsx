@@ -22,12 +22,40 @@ import { SEED_TASKS } from '../../src/mock/mockData';
 
 
 describe('Operations Queue — page render', () => {
-  it('renders the page title and all seed tasks', async () => {
+  it('renders the page title and only ACTIVE seed tasks by default', async () => {
+    // Default behavior changed: the Task Center hides resolved /
+    // rejected rows so managers land on an "action required now"
+    // queue. The previous variant of this test asserted all 5 seed
+    // tasks were visible — that is now correct only after the
+    // "Show resolved" toggle is flipped on (covered in the next test).
     renderApp({ route: '/operations' });
     expect(await screen.findByRole('heading', { name: /מרכז משימות/ })).toBeInTheDocument();
-    // Five rows — the SEED_TASKS count.
     expect(SEED_TASKS.length).toBe(5);
-    // Phone numbers from the seed should all appear in the rendered table.
+
+    const active   = SEED_TASKS.filter((t) => t.status !== 'resolved' && t.status !== 'rejected');
+    const terminal = SEED_TASKS.filter((t) => t.status === 'resolved' || t.status === 'rejected');
+    expect(active.length).toBe(3);
+    expect(terminal.length).toBe(2);
+
+    active.forEach((t) => {
+      expect(screen.getByText(t.phone_number)).toBeInTheDocument();
+    });
+    terminal.forEach((t) => {
+      expect(screen.queryByText(t.phone_number)).not.toBeInTheDocument();
+    });
+  });
+
+  it('toggling "Show resolved" brings the terminal rows back', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/operations' });
+    // Wait for first render before flipping the toggle.
+    await screen.findByRole('heading', { name: /מרכז משימות/ });
+
+    const toggle = screen.getByLabelText(/הצג משימות שטופלו/);
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+
+    // All 5 seed rows visible now.
     SEED_TASKS.forEach((t) => {
       expect(screen.getByText(t.phone_number)).toBeInTheDocument();
     });
