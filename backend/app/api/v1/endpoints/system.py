@@ -21,6 +21,7 @@ from app.api.deps import (
     require_admin,
 )
 from app.schemas.api_contracts import (
+    ApiConfigUpdate,
     CustomFiltersUpdate,
     DisplayFieldsUpdate,
     DisplayLabelsUpdate,
@@ -163,6 +164,22 @@ def update_mongo_url(
 ) -> SystemSettingsResponse:
     try:
         return SystemSettingsResponse(**svc.set_mongo_url(body.url))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.put(
+    "/settings/api-config",
+    response_model=SystemSettingsResponse,
+    summary="Configure the HTTP/REST (api) storage backend",
+)
+def update_api_config(
+    body: ApiConfigUpdate,
+    _admin: User = Depends(require_admin),
+    svc: SystemSettingsService = Depends(get_system_settings_service),
+) -> SystemSettingsResponse:
+    try:
+        return SystemSettingsResponse(**svc.set_api_config(body.model_dump(exclude_none=True)))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 

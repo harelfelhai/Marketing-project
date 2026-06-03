@@ -386,6 +386,7 @@ export const SEED_SYSTEM_SETTINGS = {
   backends: [
     { id: 'sql',   available: true },
     { id: 'mongo', available: true },
+    { id: 'api',   available: true },
   ],
   // Operator-managed closed lists (see SEED_VOCABULARIES). Every controlled
   // dropdown reads from here so adding a type is a frontend-only action.
@@ -415,5 +416,10 @@ export const SEED_SYSTEM_SETTINGS = {
   // Whether an admin has stored a MongoDB URL via PUT /settings/mongo-url.
   // The URL itself is never held in the frontend — only this boolean flag.
   mongo_configured: false,
+  // Whether an admin has stored an HTTP/REST api_backend config (PUT
+  // /settings/api-config). `api_config` is the redacted view (auth token
+  // stripped); null until configured. The token never reaches the frontend.
+  api_configured: false,
+  api_config: null,
   applies_on_restart: true,
 };

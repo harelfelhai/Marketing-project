@@ -12,10 +12,12 @@ The `--reload` flag enables hot-reloading for development. Remove it
 in production and use a process manager (e.g. gunicorn + uvicorn workers).
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from database import create_db_and_tables
+from repositories.api_repository import ApiBackendError
 
 # ------------------------------------------------------------------
 # App Instance
@@ -44,6 +46,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ------------------------------------------------------------------
+# Exception handlers
+# ------------------------------------------------------------------
+
+@app.exception_handler(ApiBackendError)
+def _api_backend_error_handler(_request: Request, exc: ApiBackendError) -> JSONResponse:
+    """
+    Map a remote-API failure (unreachable / non-2xx / not configured) to 503.
+
+    Only reachable when the storage backend is 'api'. The SQL/Mongo paths never
+    raise this, so this handler is a no-op for the default deployment.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": f"Storage backend (api) unavailable: {exc}"},
+    )
+
 
 # ------------------------------------------------------------------
 # Lifecycle Hooks

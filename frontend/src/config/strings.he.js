@@ -984,6 +984,7 @@ export const SYSSET_TOAST_ERROR             = (msg) => `שמירת ההגדרו�
 export const SYSSET_BACKEND_LABELS          = {
   sql:   'SQL (PostgreSQL / SQLite)',
   mongo: 'MongoDB',
+  api:   'API חיצוני (טבלאות מרוחקות)',
 };
 
 // ---------------------------------------------------------------------------
@@ -1001,6 +1002,106 @@ export const SYSSET_MONGO_BTN_TESTING        = 'בודק חיבור…';
 export const SYSSET_MONGO_TOAST_OK           = 'חיבור ל-MongoDB נבדק בהצלחה ונשמר.';
 export const SYSSET_MONGO_TOAST_ERROR        = (msg) => `שמירת כתובת MongoDB נכשלה: ${msg}`;
 export const SYSSET_MONGO_UPDATE_PROMPT      = 'עדכון כתובת חיבור';
+
+// ---------------------------------------------------------------------------
+// System Settings — external API backend (HTTP/REST tables)
+// ---------------------------------------------------------------------------
+export const SYSSET_API_TITLE                = 'חיבור API חיצוני (טבלאות מרוחקות)';
+export const SYSSET_API_DESC                 =
+  'הגדר כתובת בסיס (base URL), אימות, ולכל טבלה את הנתיב והפרמטרים שלה. ' +
+  'הטוקן נשמר בשרת בלבד ולעולם לא חוזר ללקוח.';
+export const SYSSET_API_BASE_URL_LABEL       = 'כתובת בסיס (Base URL)';
+export const SYSSET_API_BASE_URL_PLACEHOLDER = 'https://api.example.com/v1';
+export const SYSSET_API_AUTH_HEADER_LABEL    = 'כותרת אימות (Header)';
+export const SYSSET_API_AUTH_HEADER_PH       = 'Authorization';
+export const SYSSET_API_TOKEN_LABEL          = 'טוקן (Token)';
+export const SYSSET_API_TOKEN_PLACEHOLDER    = 'Bearer …';
+export const SYSSET_API_TOKEN_KEEP_HINT      = 'השאר ריק כדי לשמור את הטוקן הקיים.';
+export const SYSSET_API_TABLES_HEADING       = 'טבלאות';
+export const SYSSET_API_TABLE_PATH_PH        = 'נתיב הטבלה (path)';
+export const SYSSET_API_TABLE_ROWSPATH_PH    = 'נתיב המערך בתשובה (rows_path)';
+export const SYSSET_API_FIELDMAP_HEADING     = 'מיפוי שדות (אצלנו → אצלך)';
+export const SYSSET_API_FIELDMAP_OUR_PH      = 'שם השדה אצלנו';
+export const SYSSET_API_FIELDMAP_THEIR_PH    = 'שם השדה ב-API';
+export const SYSSET_API_FIELDMAP_ADD         = 'הוסף מיפוי';
+export const SYSSET_API_CONFIGURED_BADGE     = 'מוגדר';
+export const SYSSET_API_NOT_CONFIGURED       = 'לא מוגדר';
+export const SYSSET_API_BTN_TEST             = 'שמור ובדוק חיבור';
+export const SYSSET_API_BTN_TESTING          = 'בודק חיבור…';
+export const SYSSET_API_TOAST_OK             = 'חיבור ל-API נבדק בהצלחה ונשמר.';
+export const SYSSET_API_TOAST_ERROR          = (msg) => `שמירת הגדרות ה-API נכשלה: ${msg}`;
+export const SYSSET_API_UPDATE_PROMPT        = 'עריכת הגדרות ה-API';
+export const SYSSET_API_REQUIRED             = 'נדרשת כתובת בסיס ולפחות טבלה אחת עם נתיב.';
+// The 7 aggregates the api backend routes through. Keys are the backend's
+// table keys; values are the Hebrew labels shown in the editor.
+export const SYSSET_API_TABLE_LABELS         = {
+  entity:                    'ישויות (entity)',
+  phone_number:              'מספרי טלפון (phone_number)',
+  pipeline_task:             'משימות (pipeline_task)',
+  user:                      'משתמשים (user)',
+  session:                   'סשנים (session)',
+  notification_subscription: 'מנויי התראות (notification_subscription)',
+  notification_delivery:     'שליחת התראות (notification_delivery)',
+};
+export const SYSSET_API_TABLE_ORDER          = [
+  'entity', 'phone_number', 'pipeline_task', 'user', 'session',
+  'notification_subscription', 'notification_delivery',
+];
+// The column names OUR models expect for each table — shown next to each table
+// so the admin knows exactly what to map. Source: backend models/*.py.
+export const API_TABLE_COLUMNS               = {
+  entity: ['id', 'target_entity_id', 'identifier_1', 'identifier_2',
+           'relation_type', 'full_name', 'deleted_at', 'extra_data'],
+  phone_number: ['id', 'phone_number', 'phone_type', 'entity_id',
+                 'ingestion_source', 'verification_status', 'score',
+                 'deleted_at', 'extra_data'],
+  pipeline_task: ['id', 'phone_id', 'phone_number', 'entity_id',
+                  'task_type', 'status', 'deleted_at', 'extra_data'],
+  user: ['id', 'username', 'password_hash', 'role', 'active',
+         'created_at', 'updated_at', 'extra_data'],
+  session: ['token', 'user_id', 'created_at', 'last_seen_at', 'extra_data'],
+  notification_subscription: ['id', 'trigger_event_type', 'target_kind',
+                              'target_id', 'recipients', 'title_template',
+                              'body_template', 'active', 'created_by',
+                              'created_at', 'updated_at', 'extra_data'],
+  notification_delivery: ['id', 'subscription_id', 'trigger_event_type',
+                          'title', 'body', 'recipients', 'status',
+                          'retry_count', 'last_error', 'provider_message_id',
+                          'attempted_at', 'delivered_at', 'created_at',
+                          'updated_at', 'extra_data'],
+};
+// Generic per-table + global config labels (the "full game" of knobs).
+export const SYSSET_API_GLOBAL_HEADING       = 'הגדרות חיבור כלליות';
+export const SYSSET_API_BASIC_USER_PH        = 'שם משתמש (Basic Auth)';
+export const SYSSET_API_BASIC_PASS_PH        = 'סיסמה (Basic Auth)';
+export const SYSSET_API_PASS_KEEP_HINT       = 'השאר ריק כדי לשמור את הסיסמה הקיימת.';
+export const SYSSET_API_GLOBAL_HEADERS       = 'כותרות גלובליות (Headers)';
+export const SYSSET_API_GLOBAL_QUERY         = 'פרמטרי שאילתה גלובליים (למשל api_key)';
+export const SYSSET_API_TIMEOUT_PH           = 'timeout בשניות (ברירת מחדל 10)';
+export const SYSSET_API_ITEM_PATH_PH         = 'נתיב האובייקט בתשובת GET-בודד (item_path)';
+export const SYSSET_API_COLUMNS_HEADING      = 'עמודות שלנו בטבלה זו — מלא את השם המקביל ב-API (ריק = זהה)';
+export const SYSSET_API_THEIR_NAME_PH        = 'שם השדה ב-API';
+export const SYSSET_API_EXTRA_MAP_ADD        = 'הוסף מיפוי נוסף';
+export const SYSSET_API_EXTRA_MAP_HEADING    = 'מיפויים נוספים (שדות מעבר לעמודות הידועות)';
+export const SYSSET_API_ADV_HEADING          = 'הגדרות מתקדמות (לא חובה)';
+export const SYSSET_API_METHODS_HEADING      = 'שיטות HTTP לכל פעולה (ריק = ברירת מחדל)';
+export const SYSSET_API_PATHS_HEADING        = 'תבניות נתיב לכל פעולה (אפשר {id})';
+export const SYSSET_API_BODYWRAP_PH          = 'עטיפת גוף הבקשה (body_wrapper) — למשל data';
+export const SYSSET_API_QUERY_HEADING        = 'פרמטרי שאילתה לטבלה';
+export const SYSSET_API_HEADERS_HEADING      = 'כותרות לטבלה';
+export const SYSSET_API_PAGINATION_HEADING   = 'עימוד (Pagination)';
+export const SYSSET_API_PAGINATION_STYLE     = 'סגנון';
+export const SYSSET_API_PAGINATION_STYLES    = {
+  none: 'ללא', page: 'לפי עמוד', offset: 'לפי offset', cursor: 'לפי cursor',
+};
+export const SYSSET_API_KV_KEY_PH            = 'מפתח';
+export const SYSSET_API_KV_VAL_PH            = 'ערך';
+export const SYSSET_API_KV_ADD               = 'הוסף';
+export const SYSSET_API_OPS                  = ['list', 'get', 'create', 'update', 'delete'];
+// Live request preview (shows exactly what each operation's HTTP call becomes).
+export const SYSSET_API_PREVIEW_HEADING      = 'תצוגת הבקשה — כך כל פעולה תישלח בפועל';
+export const SYSSET_API_PREVIEW_HEADERS      = 'כותרות (משותף לכל הפעולות)';
+export const SYSSET_API_PREVIEW_BODY         = 'גוף הבקשה (create / update)';
 
 // ---------------------------------------------------------------------------
 // System Settings — configurable display fields (feature 2)

@@ -9,7 +9,8 @@ export default defineConfig({
       // When switching from mock mode, set VITE_MOCK_MODE=false in .env
       // and the api/*.js functions will route here instead of mock state.
       '/api': {
-        target: 'http://localhost:8000',
+        // Backend runs on 8001 locally — port 8000 is taken by another app.
+        target: 'http://localhost:8001',
         changeOrigin: true,
       },
     },

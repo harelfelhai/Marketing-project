@@ -24,7 +24,7 @@ import { useUI }       from '../contexts/UIContext';
 import {
   getSystemSettings, updateSystemSettings, updateDisplayFields,
   updateDisplayLabels, updateFilterFields, updateCustomFilters,
-  updateIngestionFields, updateMongoUrl, updateVocabulary,
+  updateIngestionFields, updateMongoUrl, updateApiConfig, updateVocabulary,
 } from '../api/systemApi';
 import { normalizeError } from '../api/client';
 import { DISPLAY_SURFACES, defaultFieldKeys } from '../config/displayFields';
@@ -42,6 +42,24 @@ import {
   SYSSET_MONGO_URL_PLACEHOLDER, SYSSET_MONGO_CONFIGURED_BADGE,
   SYSSET_MONGO_NOT_CONFIGURED, SYSSET_MONGO_BTN_TEST, SYSSET_MONGO_BTN_TESTING,
   SYSSET_MONGO_TOAST_OK, SYSSET_MONGO_TOAST_ERROR, SYSSET_MONGO_UPDATE_PROMPT,
+  SYSSET_API_TITLE, SYSSET_API_DESC, SYSSET_API_BASE_URL_LABEL,
+  SYSSET_API_BASE_URL_PLACEHOLDER, SYSSET_API_AUTH_HEADER_LABEL,
+  SYSSET_API_AUTH_HEADER_PH, SYSSET_API_TOKEN_LABEL, SYSSET_API_TOKEN_PLACEHOLDER,
+  SYSSET_API_TOKEN_KEEP_HINT, SYSSET_API_TABLES_HEADING, SYSSET_API_TABLE_PATH_PH,
+  SYSSET_API_TABLE_ROWSPATH_PH, SYSSET_API_CONFIGURED_BADGE,
+  SYSSET_API_NOT_CONFIGURED, SYSSET_API_BTN_TEST, SYSSET_API_BTN_TESTING,
+  SYSSET_API_TOAST_OK, SYSSET_API_TOAST_ERROR,
+  SYSSET_API_REQUIRED, SYSSET_API_TABLE_LABELS, SYSSET_API_TABLE_ORDER,
+  API_TABLE_COLUMNS, SYSSET_API_GLOBAL_HEADING, SYSSET_API_BASIC_USER_PH,
+  SYSSET_API_BASIC_PASS_PH, SYSSET_API_PASS_KEEP_HINT, SYSSET_API_GLOBAL_HEADERS,
+  SYSSET_API_GLOBAL_QUERY, SYSSET_API_TIMEOUT_PH, SYSSET_API_ITEM_PATH_PH,
+  SYSSET_API_COLUMNS_HEADING, SYSSET_API_THEIR_NAME_PH, SYSSET_API_EXTRA_MAP_ADD,
+  SYSSET_API_EXTRA_MAP_HEADING,
+  SYSSET_API_ADV_HEADING, SYSSET_API_METHODS_HEADING, SYSSET_API_PATHS_HEADING,
+  SYSSET_API_BODYWRAP_PH, SYSSET_API_QUERY_HEADING, SYSSET_API_HEADERS_HEADING,
+  SYSSET_API_PAGINATION_HEADING, SYSSET_API_PAGINATION_STYLE, SYSSET_API_PAGINATION_STYLES,
+  SYSSET_API_KV_KEY_PH, SYSSET_API_KV_VAL_PH, SYSSET_API_KV_ADD, SYSSET_API_OPS,
+  SYSSET_API_PREVIEW_HEADING, SYSSET_API_PREVIEW_HEADERS, SYSSET_API_PREVIEW_BODY,
   SYSSET_FILTER_FIELDS_TITLE, SYSSET_FILTER_FIELDS_DESC,
   SYSSET_FILTER_FIELDS_TOAST_SAVED, SYSSET_FILTER_FIELDS_TOAST_ERROR,
   SYSSET_CUSTOM_FILTERS_HEADING, SYSSET_CUSTOM_FILTERS_HINT,
@@ -201,13 +219,26 @@ export default function SystemSettingsPage() {
         </div>
       </section>
 
-      {/* MongoDB connection URL section */}
-      <MongoUrlEditor
-        initialConfigured={settings.mongo_configured ?? false}
-        mockDb={mockDb}
-        pushToast={pushToast}
-        onSaved={(updated) => setSettings((prev) => ({ ...prev, ...updated }))}
-      />
+      {/* MongoDB connection URL — only while MongoDB is the chosen backend. */}
+      {selected === 'mongo' && (
+        <MongoUrlEditor
+          initialConfigured={settings.mongo_configured ?? false}
+          mockDb={mockDb}
+          pushToast={pushToast}
+          onSaved={(updated) => setSettings((prev) => ({ ...prev, ...updated }))}
+        />
+      )}
+
+      {/* External API backend — only while the API backend is chosen. */}
+      {selected === 'api' && (
+        <ApiBackendEditor
+          initialConfig={settings.api_config ?? null}
+          initialConfigured={settings.api_configured ?? false}
+          mockDb={mockDb}
+          pushToast={pushToast}
+          onSaved={(updated) => setSettings((prev) => ({ ...prev, ...updated }))}
+        />
+      )}
 
       {/* Display-fields section — one editor per configurable surface. */}
       <section className="rounded-lg border border-slate-200 bg-white p-5 mt-6">
@@ -560,6 +591,597 @@ function MongoUrlEditor({ initialConfigured, mockDb, pushToast, onSaved }) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+
+/** KvEditor — edit a list of {k,v} pairs (headers / query params). */
+function KvEditor({ rows, onChange, testid }) {
+  const add = () => onChange([...rows, { k: '', v: '' }]);
+  const set = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
+  return (
+    <div data-testid={testid}>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2 mb-1">
+          <input
+            type="text" value={r.k} dir="ltr"
+            onChange={(e) => set(i, { k: e.target.value })}
+            placeholder={SYSSET_API_KV_KEY_PH}
+            className="h-7 px-2 text-sm rounded-md border border-slate-300 font-mono min-w-[110px] grow"
+          />
+          <span className="text-slate-400">:</span>
+          <input
+            type="text" value={r.v} dir="ltr"
+            onChange={(e) => set(i, { v: e.target.value })}
+            placeholder={SYSSET_API_KV_VAL_PH}
+            className="h-7 px-2 text-sm rounded-md border border-slate-300 font-mono min-w-[110px] grow"
+          />
+          <button type="button" onClick={() => remove(i)} aria-label={SYSSET_CUSTOM_REMOVE_ARIA}
+                  className="text-slate-400 hover:text-rose-600 p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={add}
+              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800">
+        <Plus className="w-3 h-3" />{SYSSET_API_KV_ADD}
+      </button>
+    </div>
+  );
+}
+
+const _objToKv = (obj) => Object.entries(obj || {}).map(([k, v]) => ({ k, v: String(v) }));
+const _kvToObj = (rows) => {
+  const out = {};
+  for (const { k, v } of rows) { const kk = (k || '').trim(); if (kk) out[kk] = v; }
+  return out;
+};
+
+// --- Live request preview helpers (mirror backend repositories/api_repository) ---
+const _DEFAULT_METHODS = { list: 'GET', get: 'GET', create: 'POST', update: 'PUT', delete: 'DELETE' };
+
+const _paginationFirstParams = (p) => {
+  if (!p || !p.style || p.style === 'none') return {};
+  const n = (v, d) => { const x = parseInt(v, 10); return Number.isFinite(x) ? x : d; };
+  if (p.style === 'page') return { [p.page_param || 'page']: n(p.start_page, 1), [p.size_param || 'per_page']: n(p.size, 100) };
+  if (p.style === 'offset') return { [p.offset_param || 'offset']: n(p.start_offset, 0), [p.limit_param || 'limit']: n(p.size, 100) };
+  return {};  // cursor: the first request carries no cursor
+};
+
+const _sampleValue = (col) => {
+  if (['deleted_at', 'created_at', 'updated_at', 'last_seen_at', 'attempted_at', 'delivered_at'].includes(col)) return '2026-01-01T00:00:00+00:00';
+  if (col === 'extra_data') return {};
+  if (col === 'recipients') return [];
+  if (col === 'score' || col === 'retry_count') return 0;
+  if (col === 'active') return true;
+  return '…';
+};
+
+/**
+ * RequestPreview — render exactly what each operation's HTTP request becomes,
+ * given the live (advanced) config for one table. Recomputes on every keystroke
+ * so the admin can match it against their API docs.
+ */
+function RequestPreview({ tableKey, t, globals }) {
+  const base = ((globals.baseUrl || '').trim() || '{base_url}').replace(/\/+$/, '');
+  const path = ((t.path || '').trim() || tableKey).replace(/^\/+|\/+$/g, '');
+
+  const opUrl = (op) => {
+    const tmpl = (t.paths[op] || '').trim();
+    if (tmpl) return `${base}/${tmpl.replace(/^\/+/, '')}`;
+    if (op === 'list' || op === 'create') return `${base}/${path}`;
+    return `${base}/${path}/{id}`;
+  };
+  const method = (op) => ((t.methods[op] || '').trim() || _DEFAULT_METHODS[op]).toUpperCase();
+  const queryString = (op) => {
+    const q = {};
+    for (const { k, v } of globals.globalQuery) if ((k || '').trim()) q[k.trim()] = v;
+    for (const { k, v } of t.query) if ((k || '').trim()) q[k.trim()] = v;
+    if (op === 'list') Object.assign(q, _paginationFirstParams(t.pagination));
+    const s = Object.entries(q).map(([k, v]) => `${k}=${v}`).join('&');
+    return s ? `?${s}` : '';
+  };
+
+  const headerLines = [];
+  if ((globals.authHeader || '').trim()) {
+    headerLines.push(`${globals.authHeader.trim()}: ${globals.token || globals.hasToken ? '••••••' : '<token>'}`);
+  }
+  if ((globals.basicUser || '').trim()) {
+    headerLines.push(`Authorization: Basic <base64(${globals.basicUser.trim()}:••••)>`);
+  }
+  for (const { k, v } of globals.globalHeaders) if ((k || '').trim()) headerLines.push(`${k.trim()}: ${v}`);
+  for (const { k, v } of t.headers) if ((k || '').trim()) headerLines.push(`${k.trim()}: ${v}`);
+
+  const cols = API_TABLE_COLUMNS[tableKey] || [];
+  const body = {};
+  for (const col of cols) { const name = (t.map[col] || '').trim() || col; body[name] = _sampleValue(col); }
+  for (const { our, their } of t.extraMap) { const o = (our || '').trim(); if (o) body[(their || '').trim() || o] = '…'; }
+  const wrapped = (t.body_wrapper || '').trim() ? { [t.body_wrapper.trim()]: body } : body;
+
+  return (
+    <div className="mt-2 rounded-md bg-slate-900 text-slate-100 p-2 text-[11px] leading-relaxed overflow-x-auto"
+         dir="ltr" data-testid={`api-preview-${tableKey}`}>
+      <div className="text-slate-400 mb-1" dir="rtl">{SYSSET_API_PREVIEW_HEADING}</div>
+      {SYSSET_API_OPS.map((op) => (
+        <div key={op}>
+          <span className="text-slate-500 inline-block w-14">{op}</span>
+          <span className="text-sky-400 inline-block w-16">{method(op)}</span>
+          <span className="text-slate-200">{opUrl(op)}{queryString(op)}</span>
+        </div>
+      ))}
+      {headerLines.length > 0 && (
+        <div className="mt-1">
+          <span className="text-slate-400" dir="rtl">{SYSSET_API_PREVIEW_HEADERS}:</span>
+          {headerLines.map((h, i) => <div key={i} className="text-emerald-300">{h}</div>)}
+        </div>
+      )}
+      <div className="mt-1">
+        <span className="text-slate-400" dir="rtl">{SYSSET_API_PREVIEW_BODY}:</span>
+        <pre className="text-amber-200 whitespace-pre-wrap m-0">{JSON.stringify(wrapped, null, 2)}</pre>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ApiBackendEditor — configure the HTTP/REST ("api") storage backend.
+ *
+ * A fully generic, code-free editor: a base URL + auth (bearer/header/basic) +
+ * global headers/query params, plus per-table descriptors covering everything a
+ * REST API may differ on — endpoint path, list/item response envelopes, a
+ * per-column field map (each of OUR columns is listed so the admin knows what to
+ * fill), per-operation HTTP method + path overrides, pagination (page/offset/
+ * cursor), per-table headers/query params, and a request-body wrapper.
+ *
+ * Secrets (auth token + basic password) are write-only: the backend returns only
+ * has_token / has_password; leaving those fields blank preserves the stored value.
+ */
+function ApiBackendEditor({ initialConfig, initialConfigured, mockDb, pushToast, onSaved }) {
+  const _initTables = () => {
+    const cfgTables = (initialConfig && initialConfig.tables) || {};
+    const out = {};
+    for (const key of SYSSET_API_TABLE_ORDER) {
+      const desc = cfgTables[key] || {};
+      const cols = API_TABLE_COLUMNS[key] || [];
+      const fm = desc.field_map || {};
+      const map = {};
+      for (const col of cols) map[col] = typeof fm[col] === 'string' ? fm[col] : '';
+      const extraMap = Object.entries(fm)
+        .filter(([our]) => !cols.includes(our))
+        .map(([our, their]) => ({ our, their }));
+      const ops = {};
+      const paths = {};
+      for (const op of SYSSET_API_OPS) {
+        ops[op] = (desc.methods || {})[op] || '';
+        paths[op] = (desc.path_templates || {})[op] || '';
+      }
+      out[key] = {
+        path: typeof desc.path === 'string' ? desc.path : key,
+        rows_path: typeof desc.rows_path === 'string' ? desc.rows_path : '',
+        item_path: typeof desc.item_path === 'string' ? desc.item_path : '',
+        body_wrapper: typeof desc.body_wrapper === 'string' ? desc.body_wrapper : '',
+        map,
+        extraMap,
+        methods: ops,
+        paths,
+        query: _objToKv(desc.query_params),
+        headers: _objToKv(desc.headers),
+        pagination: { style: 'none', ...(desc.pagination || {}) },
+      };
+    }
+    return out;
+  };
+
+  const [configured, setConfigured] = useState(initialConfigured);
+  const [baseUrl, setBaseUrl]       = useState(initialConfig?.base_url || '');
+  const [authHeader, setAuthHeader] = useState(initialConfig?.auth?.header || 'Authorization');
+  const [token, setToken]           = useState('');
+  const [showToken, setShowToken]   = useState(false);
+  const [hasToken, setHasToken]     = useState(Boolean(initialConfig?.auth?.has_token));
+  const [basicUser, setBasicUser]   = useState(initialConfig?.auth?.username || '');
+  const [password, setPassword]     = useState('');
+  const [hasPassword, setHasPassword] = useState(Boolean(initialConfig?.auth?.has_password));
+  const [timeout, setTimeoutS]      = useState(initialConfig?.timeout_s ? String(initialConfig.timeout_s) : '');
+  const [globalHeaders, setGlobalHeaders] = useState(() => _objToKv(initialConfig?.headers));
+  const [globalQuery, setGlobalQuery]     = useState(() => _objToKv(initialConfig?.query_params));
+  const [tables, setTables]         = useState(_initTables);
+  const [saving, setSaving]         = useState(false);
+
+  const setTable  = (key, patch) => setTables((p) => ({ ...p, [key]: { ...p[key], ...patch } }));
+  const setCol    = (key, col, v) => setTables((p) => ({ ...p, [key]: { ...p[key], map: { ...p[key].map, [col]: v } } }));
+  const setMethod = (key, op, v) => setTables((p) => ({ ...p, [key]: { ...p[key], methods: { ...p[key].methods, [op]: v } } }));
+  const setPathT  = (key, op, v) => setTables((p) => ({ ...p, [key]: { ...p[key], paths: { ...p[key].paths, [op]: v } } }));
+  const setPag    = (key, patch) => setTables((p) => ({ ...p, [key]: { ...p[key], pagination: { ...p[key].pagination, ...patch } } }));
+  const addExtra    = (key) => setTable(key, { extraMap: [...tables[key].extraMap, { our: '', their: '' }] });
+  const updateExtra = (key, i, patch) => setTable(key, { extraMap: tables[key].extraMap.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
+  const removeExtra = (key, i) => setTable(key, { extraMap: tables[key].extraMap.filter((_, idx) => idx !== i) });
+
+  function buildPagination(p) {
+    if (!p || !p.style || p.style === 'none') return null;
+    const num = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
+    const out = { style: p.style };
+    if (p.style === 'page') {
+      if (p.page_param) out.page_param = p.page_param;
+      if (p.size_param) out.size_param = p.size_param;
+      out.size = num(p.size, 100);
+      if (p.start_page) out.start_page = num(p.start_page, 1);
+      if (p.total_path) out.total_path = p.total_path;
+    } else if (p.style === 'offset') {
+      if (p.offset_param) out.offset_param = p.offset_param;
+      if (p.limit_param) out.limit_param = p.limit_param;
+      out.size = num(p.size, 100);
+    } else if (p.style === 'cursor') {
+      if (p.cursor_param) out.cursor_param = p.cursor_param;
+      if (p.next_path) out.next_path = p.next_path;
+    }
+    return out;
+  }
+
+  async function handleSave() {
+    if (saving) return;
+    if (!baseUrl.trim()) {
+      pushToast({ variant: 'error', message: SYSSET_API_REQUIRED });
+      return;
+    }
+    const builtTables = {};
+    for (const key of SYSSET_API_TABLE_ORDER) {
+      const t = tables[key];
+      const field_map = {};
+      // Per-column mappings: only when the remote name differs from ours.
+      for (const [col, their] of Object.entries(t.map)) {
+        const th = (their || '').trim();
+        if (th && th !== col) field_map[col] = th;
+      }
+      // Extra mappings (keys beyond the known columns).
+      for (const { our, their } of t.extraMap) {
+        const o = (our || '').trim();
+        const th = (their || '').trim();
+        if (o && th) field_map[o] = th;
+      }
+      const methods = {};
+      const path_templates = {};
+      for (const op of SYSSET_API_OPS) {
+        if ((t.methods[op] || '').trim()) methods[op] = t.methods[op].trim();
+        if ((t.paths[op] || '').trim()) path_templates[op] = t.paths[op].trim();
+      }
+      const entry = { path: t.path.trim(), rows_path: t.rows_path.trim(), field_map };
+      if (t.item_path.trim()) entry.item_path = t.item_path.trim();
+      if (t.body_wrapper.trim()) entry.body_wrapper = t.body_wrapper.trim();
+      if (Object.keys(methods).length) entry.methods = methods;
+      if (Object.keys(path_templates).length) entry.path_templates = path_templates;
+      const qp = _kvToObj(t.query); if (Object.keys(qp).length) entry.query_params = qp;
+      const hd = _kvToObj(t.headers); if (Object.keys(hd).length) entry.headers = hd;
+      const pag = buildPagination(t.pagination); if (pag) entry.pagination = pag;
+      builtTables[key] = entry;
+    }
+
+    const config = { base_url: baseUrl.trim(), tables: builtTables };
+    const auth = {};
+    if (authHeader.trim()) auth.header = authHeader.trim();
+    if (token.trim()) auth.token = token.trim();
+    if (basicUser.trim()) auth.username = basicUser.trim();
+    if (password.trim()) auth.password = password.trim();
+    if (Object.keys(auth).length) config.auth = auth;
+    const gh = _kvToObj(globalHeaders); if (Object.keys(gh).length) config.headers = gh;
+    const gq = _kvToObj(globalQuery); if (Object.keys(gq).length) config.query_params = gq;
+    if (timeout.trim() && Number(timeout) > 0) config.timeout_s = Number(timeout);
+
+    setSaving(true);
+    try {
+      const updated = await updateApiConfig(config, mockDb);
+      setConfigured(true);
+      if (token.trim()) setHasToken(true);
+      if (password.trim()) setHasPassword(true);
+      setToken(''); setPassword('');
+      onSaved(updated);
+      pushToast({ variant: 'success', message: SYSSET_API_TOAST_OK });
+    } catch (err) {
+      const { message } = normalizeError(err);
+      pushToast({ variant: 'error', message: SYSSET_API_TOAST_ERROR(message) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = 'h-8 px-2 text-sm rounded-md border border-slate-300 font-mono min-w-[120px] grow';
+
+  return (
+    <section
+      className="rounded-lg border border-slate-200 bg-white p-5 mt-6"
+      data-testid="api-backend-editor"
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <Link2 className="w-4 h-4 text-slate-700" />
+        <h2 className="text-sm font-semibold text-slate-900">{SYSSET_API_TITLE}</h2>
+        {configured ? (
+          <span className="ms-auto inline-flex items-center gap-1 text-[11px] text-emerald-700 font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {SYSSET_API_CONFIGURED_BADGE}
+          </span>
+        ) : (
+          <span className="ms-auto text-[11px] text-slate-400">{SYSSET_API_NOT_CONFIGURED}</span>
+        )}
+      </div>
+      <p className="text-[13px] text-slate-500 mb-4">{SYSSET_API_DESC}</p>
+
+      {/* Connection */}
+      <div className="space-y-3">
+        <div>
+          <label className="block text-[13px] text-slate-700 mb-1">{SYSSET_API_BASE_URL_LABEL}</label>
+          <input
+            type="text" value={baseUrl} dir="ltr"
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder={SYSSET_API_BASE_URL_PLACEHOLDER}
+            data-testid="api-base-url-input"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <div className="grow min-w-[160px]">
+            <label className="block text-[13px] text-slate-700 mb-1">{SYSSET_API_AUTH_HEADER_LABEL}</label>
+            <input
+              type="text" value={authHeader} dir="ltr"
+              onChange={(e) => setAuthHeader(e.target.value)}
+              placeholder={SYSSET_API_AUTH_HEADER_PH}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-slate-500"
+            />
+          </div>
+          <div className="grow min-w-[200px]">
+            <label className="block text-[13px] text-slate-700 mb-1">{SYSSET_API_TOKEN_LABEL}</label>
+            <div className="relative">
+              <input
+                type={showToken ? 'text' : 'password'} value={token} dir="ltr"
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={hasToken ? '••••••••' : SYSSET_API_TOKEN_PLACEHOLDER}
+                autoComplete="off"
+                data-testid="api-token-input"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-mono pe-10 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+              <button
+                type="button" tabIndex={-1}
+                onClick={() => setShowToken((v) => !v)}
+                className="absolute inset-y-0 end-0 flex items-center px-3 text-slate-400 hover:text-slate-700"
+                aria-label={showToken ? 'הסתר' : 'הצג'}
+              >
+                {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {hasToken && <p className="mt-1 text-[11px] text-slate-400">{SYSSET_API_TOKEN_KEEP_HINT}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Global advanced connection settings */}
+      <details className="mt-3">
+        <summary className="text-[12px] text-slate-600 cursor-pointer select-none">{SYSSET_API_GLOBAL_HEADING}</summary>
+        <div className="mt-2 space-y-3 ps-1">
+          <div className="flex flex-wrap gap-3">
+            <input
+              type="text" value={basicUser} dir="ltr"
+              onChange={(e) => setBasicUser(e.target.value)}
+              placeholder={SYSSET_API_BASIC_USER_PH}
+              className="h-8 px-2 text-sm rounded-md border border-slate-300 font-mono grow min-w-[140px]"
+            />
+            <div className="grow min-w-[160px]">
+              <input
+                type="password" value={password} dir="ltr"
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={hasPassword ? '••••••••' : SYSSET_API_BASIC_PASS_PH}
+                autoComplete="off"
+                className="w-full h-8 px-2 text-sm rounded-md border border-slate-300 font-mono"
+              />
+              {hasPassword && <p className="mt-1 text-[11px] text-slate-400">{SYSSET_API_PASS_KEEP_HINT}</p>}
+            </div>
+            <input
+              type="number" value={timeout} dir="ltr" min="1"
+              onChange={(e) => setTimeoutS(e.target.value)}
+              placeholder={SYSSET_API_TIMEOUT_PH}
+              className="h-8 px-2 text-sm rounded-md border border-slate-300 font-mono w-[180px]"
+            />
+          </div>
+          <div>
+            <span className="text-[11px] text-slate-500">{SYSSET_API_GLOBAL_HEADERS}</span>
+            <KvEditor rows={globalHeaders} onChange={setGlobalHeaders} testid="api-global-headers" />
+          </div>
+          <div>
+            <span className="text-[11px] text-slate-500">{SYSSET_API_GLOBAL_QUERY}</span>
+            <KvEditor rows={globalQuery} onChange={setGlobalQuery} testid="api-global-query" />
+          </div>
+        </div>
+      </details>
+
+      {/* Per-table descriptors */}
+      <h3 className="text-[13px] font-semibold text-slate-700 mt-5 mb-2">{SYSSET_API_TABLES_HEADING}</h3>
+      <div className="space-y-3">
+        {SYSSET_API_TABLE_ORDER.map((key) => {
+          const t = tables[key];
+          const cols = API_TABLE_COLUMNS[key] || [];
+          return (
+            <div key={key} className="rounded-md border border-slate-200 p-3"
+                 data-testid={`api-table-${key}`}>
+              <div className="text-[12px] font-medium text-slate-700 mb-2">
+                {SYSSET_API_TABLE_LABELS[key] || key}
+              </div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <input
+                  type="text" value={t.path} dir="ltr"
+                  onChange={(e) => setTable(key, { path: e.target.value })}
+                  placeholder={SYSSET_API_TABLE_PATH_PH}
+                  data-testid={`api-table-path-${key}`}
+                  className={inputCls}
+                />
+                <input
+                  type="text" value={t.rows_path} dir="ltr"
+                  onChange={(e) => setTable(key, { rows_path: e.target.value })}
+                  placeholder={SYSSET_API_TABLE_ROWSPATH_PH}
+                  className={inputCls}
+                />
+                <input
+                  type="text" value={t.item_path} dir="ltr"
+                  onChange={(e) => setTable(key, { item_path: e.target.value })}
+                  placeholder={SYSSET_API_ITEM_PATH_PH}
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Our columns → their names (this is the field map) */}
+              <p className="text-[11px] text-slate-500 mb-1">{SYSSET_API_COLUMNS_HEADING}</p>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-2">
+                {cols.map((col) => (
+                  <li key={col} className="flex items-center gap-2">
+                    <code className="text-[12px] text-slate-700 min-w-[120px] truncate" title={col}>{col}</code>
+                    <span className="text-slate-400">→</span>
+                    <input
+                      type="text" value={t.map[col]} dir="ltr"
+                      onChange={(e) => setCol(key, col, e.target.value)}
+                      placeholder={SYSSET_API_THEIR_NAME_PH}
+                      data-testid={`api-map-${key}-${col}`}
+                      className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono grow min-w-[80px]"
+                    />
+                  </li>
+                ))}
+              </ul>
+
+              {/* Advanced per-table knobs */}
+              <details>
+                <summary className="text-[12px] text-slate-600 cursor-pointer select-none">{SYSSET_API_ADV_HEADING}</summary>
+                <div className="mt-2 space-y-3 ps-1">
+                  {/* Method overrides */}
+                  <div>
+                    <p className="text-[11px] text-slate-500 mb-1">{SYSSET_API_METHODS_HEADING}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {SYSSET_API_OPS.map((op) => (
+                        <input
+                          key={op} type="text" value={t.methods[op]} dir="ltr"
+                          onChange={(e) => setMethod(key, op, e.target.value)}
+                          placeholder={op}
+                          className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[96px]"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {/* Path template overrides */}
+                  <div>
+                    <p className="text-[11px] text-slate-500 mb-1">{SYSSET_API_PATHS_HEADING}</p>
+                    <div className="space-y-1">
+                      {SYSSET_API_OPS.map((op) => (
+                        <div key={op} className="flex items-center gap-2">
+                          <code className="text-[11px] text-slate-500 w-[52px]">{op}</code>
+                          <input
+                            type="text" value={t.paths[op]} dir="ltr"
+                            onChange={(e) => setPathT(key, op, e.target.value)}
+                            placeholder={`${t.path}${op === 'get' || op === 'update' || op === 'delete' ? '/{id}' : ''}`}
+                            className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono grow"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Pagination */}
+                  <div>
+                    <p className="text-[11px] text-slate-500 mb-1">{SYSSET_API_PAGINATION_HEADING}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={t.pagination.style}
+                        onChange={(e) => setPag(key, { style: e.target.value })}
+                        data-testid={`api-pagination-style-${key}`}
+                        className="h-7 px-2 text-sm rounded-md border border-slate-300 bg-white"
+                      >
+                        {Object.entries(SYSSET_API_PAGINATION_STYLES).map(([v, label]) => (
+                          <option key={v} value={v}>{SYSSET_API_PAGINATION_STYLE}: {label}</option>
+                        ))}
+                      </select>
+                      {t.pagination.style === 'page' && (
+                        <>
+                          <input type="text" dir="ltr" value={t.pagination.page_param || ''} onChange={(e) => setPag(key, { page_param: e.target.value })} placeholder="page" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[100px]" />
+                          <input type="text" dir="ltr" value={t.pagination.size_param || ''} onChange={(e) => setPag(key, { size_param: e.target.value })} placeholder="per_page" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[100px]" />
+                          <input type="number" dir="ltr" value={t.pagination.size || ''} onChange={(e) => setPag(key, { size: e.target.value })} placeholder="size" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[80px]" />
+                        </>
+                      )}
+                      {t.pagination.style === 'offset' && (
+                        <>
+                          <input type="text" dir="ltr" value={t.pagination.offset_param || ''} onChange={(e) => setPag(key, { offset_param: e.target.value })} placeholder="offset" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[100px]" />
+                          <input type="text" dir="ltr" value={t.pagination.limit_param || ''} onChange={(e) => setPag(key, { limit_param: e.target.value })} placeholder="limit" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[100px]" />
+                          <input type="number" dir="ltr" value={t.pagination.size || ''} onChange={(e) => setPag(key, { size: e.target.value })} placeholder="size" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[80px]" />
+                        </>
+                      )}
+                      {t.pagination.style === 'cursor' && (
+                        <>
+                          <input type="text" dir="ltr" value={t.pagination.cursor_param || ''} onChange={(e) => setPag(key, { cursor_param: e.target.value })} placeholder="cursor" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[110px]" />
+                          <input type="text" dir="ltr" value={t.pagination.next_path || ''} onChange={(e) => setPag(key, { next_path: e.target.value })} placeholder="paging.next" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-[140px]" />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {/* Body wrapper */}
+                  <input
+                    type="text" value={t.body_wrapper} dir="ltr"
+                    onChange={(e) => setTable(key, { body_wrapper: e.target.value })}
+                    placeholder={SYSSET_API_BODYWRAP_PH}
+                    className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono w-full"
+                  />
+                  {/* Per-table query params + headers */}
+                  <div>
+                    <span className="text-[11px] text-slate-500">{SYSSET_API_QUERY_HEADING}</span>
+                    <KvEditor rows={t.query} onChange={(rows) => setTable(key, { query: rows })} testid={`api-table-query-${key}`} />
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-slate-500">{SYSSET_API_HEADERS_HEADING}</span>
+                    <KvEditor rows={t.headers} onChange={(rows) => setTable(key, { headers: rows })} testid={`api-table-headers-${key}`} />
+                  </div>
+                  {/* Extra field mappings (keys beyond the known columns) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] text-slate-500">{SYSSET_API_EXTRA_MAP_HEADING}</span>
+                      <button type="button" onClick={() => addExtra(key)}
+                              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800">
+                        <Plus className="w-3 h-3" />{SYSSET_API_EXTRA_MAP_ADD}
+                      </button>
+                    </div>
+                    {t.extraMap.map((r, idx) => (
+                      <div key={idx} className="flex items-center gap-2 mb-1">
+                        <input type="text" value={r.our} dir="ltr" onChange={(e) => updateExtra(key, idx, { our: e.target.value })} placeholder="our_field" className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono grow min-w-[100px]" />
+                        <span className="text-slate-400">→</span>
+                        <input type="text" value={r.their} dir="ltr" onChange={(e) => updateExtra(key, idx, { their: e.target.value })} placeholder={SYSSET_API_THEIR_NAME_PH} className="h-7 px-2 text-sm rounded-md border border-slate-200 font-mono grow min-w-[100px]" />
+                        <button type="button" onClick={() => removeExtra(key, idx)} aria-label={SYSSET_CUSTOM_REMOVE_ARIA} className="text-slate-400 hover:text-rose-600 p-1">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
+
+              <RequestPreview
+                tableKey={key}
+                t={t}
+                globals={{ baseUrl, authHeader, token, hasToken, basicUser, hasPassword, globalHeaders, globalQuery }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!baseUrl.trim() || saving}
+          data-testid="api-config-save"
+          className={[
+            'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium',
+            !baseUrl.trim() || saving
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-slate-900 text-white hover:bg-slate-800',
+          ].join(' ')}
+        >
+          {saving
+            ? <><Loader2 className="w-4 h-4 animate-spin" />{SYSSET_API_BTN_TESTING}</>
+            : <><Link2 className="w-4 h-4" />{SYSSET_API_BTN_TEST}</>}
+        </button>
+      </div>
     </section>
   );
 }

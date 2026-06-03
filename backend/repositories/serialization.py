@@ -75,3 +75,93 @@ def from_document(doc: dict, model: Type[T]) -> T:
         if isinstance(value, datetime):
             data[key] = _ensure_utc(value)
     return model(**data)
+
+
+# ===========================================================================
+# HTTP/REST ("api" backend) <-> domain model mapping
+# ===========================================================================
+#
+# Unlike Mongo (which stores native datetimes as BSON dates and uses `_id` as
+# its PK), an HTTP/JSON API carries datetimes as strings and has no `_id`
+# convention. So the API backend gets its own pair of helpers:
+#
+#   - The PK stays under its REAL field name (`id` / `token`) on the wire —
+#     no `_id` rename. The matcher and URL-building stay uniform.
+#   - Datetimes serialise to ISO-8601 UTC strings and parse back to tz-aware
+#     `datetime` via `_ensure_utc`. This is load-bearing: the soft-delete
+#     sentinel (year 9999) MUST round-trip as a datetime, or every active-row
+#     query (`deleted_at == SOFT_DELETE_SENTINEL`) silently returns nothing.
+#
+# Field-name translation (our field <-> the remote API's field name) lives in
+# ApiRepository, not here — these helpers operate purely in our field space.
+
+
+@lru_cache(maxsize=None)
+def datetime_fields(model) -> frozenset:
+    """
+    Return the set of field names on `model` whose type is `datetime`
+    (including `Optional[datetime]`).
+
+    Discovered from the pydantic/SQLModel field annotations rather than the
+    SQLAlchemy column types — the `UTCDateTime` TypeDecorator does not report a
+    usable `python_type`, but the annotation (`datetime` / `Optional[datetime]`)
+    is always present and unambiguous. Cached per model.
+    """
+    import typing
+
+    out: set[str] = set()
+    for name, field in model.model_fields.items():
+        annotation = field.annotation
+        args = typing.get_args(annotation)
+        candidates = args if args else (annotation,)
+        if any(t is datetime for t in candidates):
+            out.add(name)
+    return frozenset(out)
+
+
+def to_api_payload(obj) -> dict:
+    """
+    Serialise a domain model instance to a JSON-safe dict for an HTTP request.
+
+    `model_dump()` yields native Python values (incl. `datetime` objects and
+    the `extra_data` dict); we convert datetime fields to ISO-8601 UTC strings.
+    The PK is kept under its real field name.
+    """
+    dt_fields = datetime_fields(type(obj))
+    data = obj.model_dump()
+    for field in dt_fields:
+        value = data.get(field)
+        if isinstance(value, datetime):
+            data[field] = _ensure_utc(value).isoformat()
+    return data
+
+
+def _parse_dt(value):
+    """Parse an ISO-8601 string (or pass a datetime) to tz-aware UTC."""
+    if isinstance(value, datetime):
+        return _ensure_utc(value)
+    if isinstance(value, str) and value:
+        text = value
+        if text.endswith("Z"):  # tolerate a 'Z' suffix on Python < 3.11
+            text = text[:-1] + "+00:00"
+        return _ensure_utc(datetime.fromisoformat(text))
+    return value
+
+
+def from_api_row(row: dict, model: Type[T]) -> T:
+    """
+    Reconstruct a domain model instance from an HTTP/JSON row.
+
+    Expects keys already translated into OUR field names (ApiRepository applies
+    the per-table field map before calling this). Parses model-declared
+    datetime fields back to tz-aware UTC and drops any keys the model doesn't
+    define, so a remote returning extra fields doesn't blow up `model(**data)`.
+    """
+    dt_fields = datetime_fields(model)
+    known = set(model.model_fields.keys())
+    data: dict = {}
+    for key, value in row.items():
+        if key not in known:
+            continue
+        data[key] = _parse_dt(value) if key in dt_fields and value is not None else value
+    return model(**data)

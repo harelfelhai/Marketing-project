@@ -30,14 +30,14 @@ import json
 from pathlib import Path
 
 # Every storage backend the UI may surface as an option.
-KNOWN_BACKENDS: tuple[str, ...] = ("sql", "mongo")
+KNOWN_BACKENDS: tuple[str, ...] = ("sql", "mongo", "api")
 
-# Backends that are actually wired and selectable right now. Both the SQL
-# and MongoDB repository providers are implemented and proven at parity by
-# the dual-backend test suite. Selecting 'mongo' requires the deployment to
-# have configured `MONGO_URL` (and a reachable mongod); the switch takes
-# effect on the next reconnect / restart.
-AVAILABLE_BACKENDS: tuple[str, ...] = ("sql", "mongo")
+# Backends that are actually wired and selectable right now. The SQL, MongoDB,
+# and HTTP/REST ("api") repository providers are all implemented. Selecting
+# 'mongo' requires a configured `MONGO_URL` (and a reachable mongod); selecting
+# 'api' requires a configured `api_backend` block (base_url + per-table
+# descriptors). The switch takes effect on the next reconnect / restart.
+AVAILABLE_BACKENDS: tuple[str, ...] = ("sql", "mongo", "api")
 
 DEFAULT_BACKEND = "sql"
 
@@ -246,6 +246,176 @@ class SystemSettingsService:
         """Return the admin-configured MongoDB URL, or None if not yet set."""
         return self._read_all().get("mongo_url") or None
 
+    def _read_api_config(self) -> dict | None:
+        """
+        Return the stored `api_backend` config, or None when not configured.
+
+        "Configured" means a non-empty base_url and at least one table — the
+        same bar the storage factory enforces before serving requests.
+        """
+        raw = self._read_all().get("api_backend")
+        if not isinstance(raw, dict):
+            return None
+        if not (raw.get("base_url") and isinstance(raw.get("tables"), dict) and raw["tables"]):
+            return None
+        return raw
+
+    @staticmethod
+    def _redact_api_config(config: dict) -> dict:
+        """
+        Return a copy of the api_backend config safe to return to the frontend:
+        the auth secrets (token + basic-auth password) are stripped, replaced by
+        booleans (`has_token` / `has_password`) so the UI can show "configured"
+        without the values.
+
+        base_url / per-table paths / field maps / methods / pagination etc. ARE
+        returned — they are infrastructure configuration (not real-world
+        identity), so surfacing them lets an admin edit the multi-field config
+        without re-typing it. This is the one deliberate departure from the
+        write-only `mongo_url` pattern; the secrets never leave the server.
+        """
+        import copy
+
+        redacted = copy.deepcopy(config)
+        auth = redacted.get("auth")
+        if isinstance(auth, dict):
+            auth["has_token"] = bool(auth.pop("token", None))
+            auth["has_password"] = bool(auth.pop("password", None))
+        return redacted
+
+    def _validate_api_config(self, config) -> dict:
+        """
+        Validate + normalise an incoming api_backend config. Returns the clean
+        config to persist. Raises ValueError (→ 422) on a malformed shape.
+
+        The schema is intentionally GENERIC so almost any REST API can be wired
+        without code changes — see ApiRepository's module docstring for the full
+        per-table descriptor (envelopes, method/path overrides, pagination,
+        extra headers/query params, body wrapper).
+        """
+        if not isinstance(config, dict):
+            raise ValueError("api config must be an object.")
+        base_url = config.get("base_url")
+        if not isinstance(base_url, str) or not base_url.strip():
+            raise ValueError("base_url must be a non-empty string.")
+        tables = config.get("tables")
+        if not isinstance(tables, dict) or not tables:
+            raise ValueError("at least one table must be configured under 'tables'.")
+
+        def _str_map(value, label) -> dict:
+            if value is None:
+                return {}
+            if not isinstance(value, dict) or not all(
+                isinstance(k, str) for k in value
+            ):
+                raise ValueError(f"{label} must be a map with string keys.")
+            return {str(k): ("" if v is None else (v if isinstance(v, (int, float, bool)) else str(v)))
+                    for k, v in value.items()}
+
+        def _opt_str(value, label) -> str:
+            if value is None:
+                return ""
+            if not isinstance(value, str):
+                raise ValueError(f"{label} must be a string.")
+            return value
+
+        clean_tables: dict = {}
+        for key, desc in tables.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("each table key must be a non-empty string.")
+            if not isinstance(desc, dict):
+                raise ValueError(f"table '{key}' must be an object.")
+            entry: dict = {}
+            if desc.get("path") is not None:
+                if not isinstance(desc["path"], str):
+                    raise ValueError(f"table '{key}': path must be a string.")
+                entry["path"] = desc["path"].strip()
+            entry["rows_path"] = _opt_str(desc.get("rows_path"), f"table '{key}': rows_path")
+            item_path = _opt_str(desc.get("item_path"), f"table '{key}': item_path")
+            if item_path:
+                entry["item_path"] = item_path
+
+            field_map = desc.get("field_map") or {}
+            if not isinstance(field_map, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in field_map.items()
+            ):
+                raise ValueError(f"table '{key}': field_map must be a map of string->string.")
+            entry["field_map"] = {k: v for k, v in field_map.items() if v.strip()}
+
+            methods = _str_map(desc.get("methods"), f"table '{key}': methods")
+            if methods:
+                entry["methods"] = {k: str(v).upper() for k, v in methods.items()}
+            path_templates = _str_map(desc.get("path_templates"), f"table '{key}': path_templates")
+            if path_templates:
+                entry["path_templates"] = path_templates
+            qp = _str_map(desc.get("query_params"), f"table '{key}': query_params")
+            if qp:
+                entry["query_params"] = qp
+            hdrs = _str_map(desc.get("headers"), f"table '{key}': headers")
+            if hdrs:
+                entry["headers"] = hdrs
+            body_wrapper = _opt_str(desc.get("body_wrapper"), f"table '{key}': body_wrapper")
+            if body_wrapper:
+                entry["body_wrapper"] = body_wrapper
+
+            pagination = desc.get("pagination")
+            if pagination:
+                if not isinstance(pagination, dict):
+                    raise ValueError(f"table '{key}': pagination must be an object.")
+                style = pagination.get("style", "none")
+                if style not in ("none", "page", "offset", "cursor"):
+                    raise ValueError(
+                        f"table '{key}': pagination.style must be one of "
+                        f"none|page|offset|cursor."
+                    )
+                if style != "none":
+                    entry["pagination"] = pagination
+
+            clean_tables[key.strip()] = entry
+
+        clean: dict = {"base_url": base_url.strip(), "tables": clean_tables}
+
+        gh = _str_map(config.get("headers"), "headers")
+        if gh:
+            clean["headers"] = gh
+        gqp = _str_map(config.get("query_params"), "query_params")
+        if gqp:
+            clean["query_params"] = gqp
+
+        auth = config.get("auth")
+        if auth is not None:
+            if not isinstance(auth, dict):
+                raise ValueError("auth must be an object.")
+            clean_auth: dict = {}
+            header = auth.get("header")
+            if header is not None:
+                if not isinstance(header, str):
+                    raise ValueError("auth.header must be a string.")
+                clean_auth["header"] = header
+            if auth.get("username") is not None:
+                if not isinstance(auth["username"], str):
+                    raise ValueError("auth.username must be a string.")
+                clean_auth["username"] = auth["username"]
+            # Accept new secrets; otherwise preserve the previously stored ones
+            # (the frontend never sends existing secrets back — it only sees
+            # has_token / has_password). A blank value means "leave unchanged".
+            prev = self._read_all().get("api_backend")
+            prev_auth = (prev or {}).get("auth", {}) if isinstance(prev, dict) else {}
+            for secret in ("token", "password"):
+                val = auth.get(secret)
+                if isinstance(val, str) and val.strip():
+                    clean_auth[secret] = val
+                elif prev_auth.get(secret):
+                    clean_auth[secret] = prev_auth[secret]
+            clean["auth"] = clean_auth
+
+        timeout = config.get("timeout_s")
+        if timeout is not None:
+            if not isinstance(timeout, (int, float)) or timeout <= 0:
+                raise ValueError("timeout_s must be a positive number.")
+            clean["timeout_s"] = timeout
+        return clean
+
     def get(self) -> dict:
         """
         Return the full settings view: the active backend, the catalog of
@@ -266,6 +436,12 @@ class SystemSettingsService:
             "ingestion_fields": self._read_ingestion_fields(),
             "vocabularies": self._read_vocabularies(),
             "mongo_configured": self._read_mongo_url() is not None,
+            "api_configured": self._read_api_config() is not None,
+            "api_config": (
+                self._redact_api_config(self._read_api_config())
+                if self._read_api_config() is not None
+                else None
+            ),
             "applies_on_restart": True,
         }
 
@@ -286,6 +462,12 @@ class SystemSettingsService:
         if backend not in AVAILABLE_BACKENDS:
             raise ValueError(
                 f"Storage backend '{backend}' is not available yet."
+            )
+        # The contract never lies: an unconfigured backend can't be activated.
+        if backend == "api" and self._read_api_config() is None:
+            raise ValueError(
+                "Storage backend 'api' requires an API configuration first "
+                "(set base_url and at least one table)."
             )
         data = self._read_all()
         data["storage_backend"] = backend
@@ -500,5 +682,35 @@ class SystemSettingsService:
         # Reset the process-wide singleton so the next request uses the
         # new URL rather than the stale one from the previous build.
         reset_mongo_connection()
+
+        return self.get()
+
+    def set_api_config(self, config: dict) -> dict:
+        """
+        Validate + connection-test an `api_backend` config and persist it.
+
+        The auth token is stored server-side and NEVER returned to the
+        frontend (only the redacted `api_config` + `api_configured` flag are
+        surfaced — see `_redact_api_config`). When the incoming config omits a
+        token, the previously stored one is preserved.
+
+        Raises:
+            ValueError: the config is malformed or the remote API is
+                unreachable / auth-rejected. The endpoint maps this to 422.
+        """
+        clean = self._validate_api_config(config)
+
+        from repositories.api_connection import test_api_config, reset_api_connection
+        ok, err = test_api_config(clean)
+        if not ok:
+            raise ValueError(f"Cannot reach the configured API: {err}")
+
+        data = self._read_all()
+        data["api_backend"] = clean
+        self._write_all(data)
+
+        # Reset the process-wide client so the next request uses the new
+        # auth/timeout rather than the stale one from the previous build.
+        reset_api_connection()
 
         return self.get()

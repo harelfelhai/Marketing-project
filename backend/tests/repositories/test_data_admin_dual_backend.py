@@ -15,11 +15,13 @@ import models  # noqa: F401
 from models.entity import Entity
 from models.phone_number import PhoneNumber
 from models.types import SOFT_DELETE_SENTINEL, not_deleted
-from repositories.storage import MongoStorage, SqlStorage
+from repositories.api_connection import set_api_config_for_tests
+from repositories.storage import ApiStorage, MongoStorage, SqlStorage
 from services.data_admin import DataAdminService
+from tests.repositories.fake_api import default_api_config, make_fake_api
 
 
-@pytest.fixture(params=["sql", "mongo"])
+@pytest.fixture(params=["sql", "mongo", "api"])
 def svc(request):
     if request.param == "sql":
         engine = create_engine(
@@ -30,9 +32,20 @@ def svc(request):
         SQLModel.metadata.create_all(engine)
         with Session(engine) as session:
             yield DataAdminService(storage=SqlStorage(session))
-    else:
+    elif request.param == "mongo":
         database = mongomock.MongoClient()["test"]
         yield DataAdminService(storage=MongoStorage(database))
+    else:
+        # 'api' backend: ApiStorage over an in-memory fake REST server. This
+        # proves soft-delete cascade/restore (the datetime-sentinel comparison
+        # and {"in"}/None filter paths) behaves identically over HTTP.
+        config = default_api_config()
+        client, _store = make_fake_api()
+        set_api_config_for_tests(config=config, client=client)
+        try:
+            yield DataAdminService(storage=ApiStorage(config))
+        finally:
+            set_api_config_for_tests(None, None)
 
 
 def _seed_root(svc, *, full_name="Root Person"):

@@ -2018,6 +2018,29 @@ export function MockDataProvider({ children }) {
     return structuredClone(snapshot);
   }, [db.systemSettings]);
 
+  // In mock mode the API connection "always succeeds" — we flip api_configured
+  // and store a REDACTED copy of the config (auth token stripped, mirroring the
+  // backend's Secrets-Free contract) so the editor can re-open with the values.
+  const applyUpdateApiConfig = useCallback((config) => {
+    const redacted = structuredClone(config || {});
+    if (redacted.auth && typeof redacted.auth === 'object') {
+      const hadToken = Boolean(redacted.auth.token);
+      delete redacted.auth.token;
+      redacted.auth.has_token = hadToken;
+    }
+    let snapshot;
+    setDb((prev) => {
+      const next = {
+        ...prev.systemSettings,
+        api_configured: true,
+        api_config: redacted,
+      };
+      snapshot = next;
+      return { ...prev, systemSettings: next };
+    });
+    return structuredClone(snapshot);
+  }, [db.systemSettings]);
+
   const value = {
     // State slices
     clients,
@@ -2069,6 +2092,7 @@ export function MockDataProvider({ children }) {
     applyUpdateIngestionFields,
     applyUpdateVocabulary,
     applyUpdateMongoUrl,
+    applyUpdateApiConfig,
     // Operator-managed closed lists — the single source every controlled
     // dropdown reads from (hydrated at boot, updated live on edit).
     vocabularies: db.systemSettings?.vocabularies || {},

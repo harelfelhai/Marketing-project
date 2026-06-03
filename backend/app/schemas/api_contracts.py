@@ -295,6 +295,19 @@ class SystemSettingsResponse(BaseModel):
         default=False,
         description="True when an admin has stored a MongoDB connection URL.",
     )
+    api_configured: bool = Field(
+        default=False,
+        description="True when an admin has stored an HTTP/REST api_backend config.",
+    )
+    api_config: Optional[dict] = Field(
+        default=None,
+        description=(
+            "The stored api_backend config with the auth TOKEN redacted "
+            "(replaced by auth.has_token). base_url + per-table paths/field_maps "
+            "are returned so the multi-field config is editable; the secret "
+            "never leaves the server. None when not configured."
+        ),
+    )
     applies_on_restart: bool = Field(
         ...,
         description="When True, a change is saved but takes effect on next restart.",
@@ -318,6 +331,47 @@ class MongoUrlUpdate(BaseModel):
             "MongoDB connection string. The URL is validated by attempting a live "
             "connection before being stored. Never returned to the client."
         ),
+    )
+
+
+class ApiConfigUpdate(BaseModel):
+    """
+    Request body for PUT /api/v1/system/settings/api-config.
+
+    Configures the HTTP/REST ("api") storage backend. The config is validated
+    and connection-tested before being stored; the `auth.token` is held
+    server-side and never returned (only a redacted view + `api_configured`
+    flag are surfaced). Omitting the token preserves the previously stored one.
+    """
+
+    base_url: str = Field(..., description="Base URL of the remote API, e.g. https://host/v1.")
+    tables: Dict[str, dict] = Field(
+        ...,
+        description=(
+            "Per-table descriptors keyed by aggregate name (entity, phone_number, "
+            "pipeline_task, user, session, notification_subscription, "
+            "notification_delivery). Each may set: path, rows_path, item_path, "
+            "field_map, methods, path_templates, query_params, headers, "
+            "body_wrapper, pagination — all optional and generic."
+        ),
+    )
+    auth: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Optional auth: { header, token } for header/bearer, and/or "
+            "{ username, password } for HTTP Basic. token + password are stored "
+            "server-side only (never returned)."
+        ),
+    )
+    headers: Optional[dict] = Field(
+        default=None, description="Optional global headers applied to every request."
+    )
+    query_params: Optional[dict] = Field(
+        default=None,
+        description="Optional global query params on every request (e.g. api_key).",
+    )
+    timeout_s: Optional[float] = Field(
+        default=None, description="Optional per-request timeout in seconds (default 10)."
     )
 
 

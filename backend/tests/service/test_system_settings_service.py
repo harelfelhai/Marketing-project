@@ -79,6 +79,88 @@ class TestWrite:
             svc.set_storage_backend("redis")
 
 
+class TestApiBackendConfig:
+    """The HTTP/REST ('api') backend config: store, redact, validate, gate."""
+
+    _GOOD = {
+        "base_url": "https://api.example.com/v1",
+        "tables": {"entity": {"path": "people", "field_map": {"full_name": "name"}}},
+        "auth": {"header": "Authorization", "token": "Bearer SECRET"},
+    }
+
+    @pytest.fixture(autouse=True)
+    def _stub_connectivity(self, monkeypatch):
+        # set_api_config connection-tests the remote; stub it so the service
+        # logic is exercised without a network. Also stub the singleton reset.
+        import repositories.api_connection as conn
+        monkeypatch.setattr(conn, "test_api_config", lambda cfg, **kw: (True, ""))
+        monkeypatch.setattr(conn, "reset_api_connection", lambda: None)
+
+    def test_api_is_known_and_available(self):
+        assert "api" in KNOWN_BACKENDS
+        assert "api" in AVAILABLE_BACKENDS
+
+    def test_default_not_configured(self, svc):
+        out = svc.get()
+        assert out["api_configured"] is False
+        assert out["api_config"] is None
+
+    def test_set_persists_and_flags_configured(self, svc, tmp_path):
+        out = svc.set_api_config(self._GOOD)
+        assert out["api_configured"] is True
+        again = SystemSettingsService(path=str(tmp_path / "system_settings.json"))
+        assert again.get()["api_configured"] is True
+
+    def test_token_is_redacted_in_response(self, svc):
+        out = svc.set_api_config(self._GOOD)
+        cfg = out["api_config"]
+        assert cfg["base_url"] == "https://api.example.com/v1"
+        assert cfg["tables"]["entity"]["path"] == "people"   # non-secret returned
+        assert "token" not in cfg["auth"]                    # secret stripped
+        assert cfg["auth"]["has_token"] is True
+
+    def test_token_persisted_server_side_but_never_returned(self, svc, tmp_path):
+        svc.set_api_config(self._GOOD)
+        raw = json.loads((tmp_path / "system_settings.json").read_text(encoding="utf-8"))
+        assert raw["api_backend"]["auth"]["token"] == "Bearer SECRET"  # stored
+        assert svc.get()["api_config"]["auth"].get("token") is None    # not surfaced
+
+    def test_omitted_token_preserves_previous(self, svc):
+        svc.set_api_config(self._GOOD)
+        # A second save without a token must keep the stored one.
+        svc.set_api_config({
+            "base_url": "https://api.example.com/v2",
+            "tables": {"entity": {"path": "people"}},
+            "auth": {"header": "Authorization"},
+        })
+        out = svc.get()
+        assert out["api_config"]["base_url"] == "https://api.example.com/v2"
+        assert out["api_config"]["auth"]["has_token"] is True
+
+    def test_missing_base_url_raises(self, svc):
+        with pytest.raises(ValueError, match="base_url"):
+            svc.set_api_config({"tables": {"entity": {"path": "p"}}})
+
+    def test_empty_tables_raises(self, svc):
+        with pytest.raises(ValueError, match="table"):
+            svc.set_api_config({"base_url": "https://x", "tables": {}})
+
+    def test_unreachable_api_raises(self, svc, monkeypatch):
+        import repositories.api_connection as conn
+        monkeypatch.setattr(conn, "test_api_config", lambda cfg, **kw: (False, "refused"))
+        with pytest.raises(ValueError, match="Cannot reach"):
+            svc.set_api_config(self._GOOD)
+
+    def test_select_api_requires_config_first(self, svc):
+        with pytest.raises(ValueError, match="requires an API configuration"):
+            svc.set_storage_backend("api")
+
+    def test_select_api_succeeds_once_configured(self, svc):
+        svc.set_api_config(self._GOOD)
+        out = svc.set_storage_backend("api")
+        assert out["storage_backend"] == "api"
+
+
 class TestDisplayFields:
     def test_default_is_empty(self, svc):
         assert svc.get()["display_fields"] == {}

@@ -206,6 +206,29 @@ export async function updateMongoUrl(url, mockDb) {
 }
 
 /**
+ * updateApiConfig — configure the HTTP/REST ("api") storage backend.
+ *
+ * MOCK_MODE = false → PUT /system/settings/api-config (the backend validates
+ *                     the shape, connection-tests the remote API, and stores
+ *                     the auth token server-side — only a redacted view comes
+ *                     back).
+ * MOCK_MODE = true  → MockDataContext.applyUpdateApiConfig() — flips
+ *                     api_configured and stores the redacted config locally.
+ *
+ * @param {object} config { base_url, tables, auth?, timeout_s? }.
+ * @param {object} mockDb MockDataContext instance.
+ * @returns {Promise<object>} The full updated settings object.
+ */
+export async function updateApiConfig(config, mockDb) {
+  if (!MOCK_MODE) {
+    const { data } = await apiClient.put('/system/settings/api-config', config);
+    return data;
+  }
+  await mockDelay(600);
+  return mockDb.applyUpdateApiConfig(config);
+}
+
+/**
  * updateVocabulary — persist a vocabulary list by name.
  *
  * Vocabulary names: 'relation_types', 'ingestion_sources', 'phone_types', etc.

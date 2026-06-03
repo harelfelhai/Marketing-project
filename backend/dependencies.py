@@ -125,11 +125,15 @@ def get_storage(
     Per-request `Storage` bundle — one Repository per aggregate, wired to the
     currently active storage backend.
     """
-    from repositories.storage import MongoStorage, SqlStorage
+    from repositories.storage import ApiStorage, MongoStorage, SqlStorage
 
-    if _resolve_storage_backend() == "mongo":
+    backend = _resolve_storage_backend()
+    if backend == "mongo":
         from repositories.mongo_connection import get_mongo_database
         return MongoStorage(get_mongo_database())
+    if backend == "api":
+        from repositories.api_connection import require_api_config
+        return ApiStorage(require_api_config())
     return SqlStorage(session)
 
 

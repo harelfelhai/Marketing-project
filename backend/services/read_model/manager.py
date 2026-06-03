@@ -139,7 +139,19 @@ class ReadModelManager:
         Write-through hook.  Call after any API write (ingest, patch,
         delete, restore) to keep the store fresh for subsequent reads.
         Best-effort: a reload failure does NOT roll back the write.
+
+        Skipped for the 'api' storage backend: a synchronous reload there means
+        3 full-table GETs over HTTP on the request path after every write. The
+        120s background poll keeps the store fresh instead, so reads may lag a
+        write by up to one poll interval on the api backend (documented
+        tradeoff). SQL/Mongo are unaffected.
         """
+        try:
+            from dependencies import _resolve_storage_backend
+            if _resolve_storage_backend() == "api":
+                return
+        except Exception:
+            pass
         try:
             self._reload()
         except Exception:
