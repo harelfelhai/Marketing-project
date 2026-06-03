@@ -12,12 +12,16 @@ The `--reload` flag enables hot-reloading for development. Remove it
 in production and use a process manager (e.g. gunicorn + uvicorn workers).
 """
 
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from database import create_db_and_tables
 from repositories.api_repository import ApiBackendError
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # App Instance
@@ -97,11 +101,30 @@ def on_startup() -> None:
     # Runs once per boot. Failure modes (file missing, malformed) are
     # logged but do not crash the app — see services/admin_sync.py for
     # the documented behavior.
+    #
+    # Storage selection: sync into whichever backend the System Settings
+    # selector currently points at — otherwise on a Mongo/api deploy the
+    # admins land in SQLite while auth reads from Mongo/api and every
+    # login fails with "wrong username or password". If building the
+    # active backend's storage fails (e.g. the api_backend block hasn't
+    # been configured yet on a fresh switch) we fall back to SqlStorage
+    # and log it; boot must never break on admin sync.
     from database import get_session
     from services.admin_sync import sync_admins
     db = next(get_session())
     try:
-        sync_admins(session=db)
+        from dependencies import get_storage
+        from repositories.storage import SqlStorage
+        try:
+            admin_storage = get_storage(session=db)
+        except Exception as exc:  # noqa: BLE001 — degrade, never crash
+            logger.warning(
+                "Active storage backend unavailable for admin sync "
+                "(%s); falling back to SqlStorage. Logins on the active "
+                "backend will fail until the backend is reachable.", exc,
+            )
+            admin_storage = SqlStorage(db)
+        sync_admins(storage=admin_storage)
 
         # Warm the read cache once at boot so the first Client Hub load is
         # already served from memory (the "load the DB at startup" request).
